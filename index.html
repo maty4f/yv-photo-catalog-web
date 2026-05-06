@@ -170,6 +170,30 @@
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-inline-end: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Per-field copy buttons */
+  .input-wrap { position: relative; }
+  .input-wrap input, .input-wrap textarea { padding-inline-end: 42px !important; }
+  .copy-corner {
+    position: absolute;
+    top: 4px;
+    inset-inline-end: 4px;
+    background: white;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    z-index: 2;
+    font-family: inherit;
+    font-weight: 600;
+    opacity: 0.65;
+    transition: all .15s;
+    line-height: 1.3;
+  }
+  .copy-corner:hover { opacity: 1; background: var(--accent); color: white; border-color: var(--accent); }
+  .copy-corner.copied { background: var(--good) !important; color: white !important; border-color: var(--good) !important; opacity: 1 !important; }
+
   /* Results — structured form fields */
   .results { display: none; }
   .results.show { display: block; }
@@ -1560,6 +1584,59 @@ function showStatus(msg, kind) {
   identifyStatus.textContent = msg;
   identifyStatus.className = 'status-msg show ' + (kind || '');
 }
+
+// =====================================================================
+//  PER-FIELD COPY BUTTONS — small "📋" button at the corner of each
+//  result-form input/textarea.
+// =====================================================================
+function wrapFieldsWithCopyButtons() {
+  const fields = document.querySelectorAll(
+    '#results input[type="text"][id^="r-"], #results textarea[id^="r-"]'
+  );
+  fields.forEach(el => {
+    if (el.parentElement?.classList.contains('input-wrap')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'input-wrap';
+    el.parentNode.insertBefore(wrap, el);
+    wrap.appendChild(el);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'copy-corner';
+    btn.textContent = '📋';
+    btn.title = 'העתק / Copy';
+    btn.dataset.copyTarget = el.id;
+    wrap.appendChild(btn);
+  });
+}
+
+// Delegated click handler — works for buttons inside or outside #results
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.copy-corner');
+  if (!btn) return;
+  const target = document.getElementById(btn.dataset.copyTarget);
+  if (!target) return;
+  const value = (target.value ?? target.innerText ?? '').trim();
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch (err) {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = value;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  const orig = btn.textContent;
+  btn.textContent = '✓';
+  btn.classList.add('copied');
+  setTimeout(() => {
+    btn.textContent = orig;
+    btn.classList.remove('copied');
+  }, 1100);
+});
+
+wrapFieldsWithCopyButtons();
 
 // init
 refreshButtons();
