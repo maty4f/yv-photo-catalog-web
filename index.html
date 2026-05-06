@@ -170,6 +170,47 @@
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-inline-end: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Collection bar — shows current collection + photo counter */
+  .collection-bar {
+    display: none;
+    background: linear-gradient(180deg, #f3efe6, #e8e1ce);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 14px;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    direction: rtl;
+    text-align: right;
+    unicode-bidi: isolate;
+  }
+  .collection-bar.show { display: flex; }
+  .collection-bar > b { color: var(--accent); font-size: 14px; }
+  .collection-bar .counter { background: white; border: 1px solid var(--line); padding: 3px 10px; border-radius: 14px; font-size: 12.5px; }
+  .collection-bar .counter b { color: var(--accent); }
+  .collection-bar .actions-inline { margin-inline-start: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+  .collection-bar button { padding: 5px 12px; font-size: 12.5px; }
+
+  /* Photo workflow wrapper — hidden until collection is set */
+  #photo-workflow.locked { opacity: 0.45; pointer-events: none; filter: grayscale(0.6); }
+  #photo-workflow.locked::before {
+    content: "🔒 הגדר אוסף תחילה (שלב 0)";
+    display: block;
+    text-align: center;
+    background: #fff3cd;
+    border: 1px solid #ffe69c;
+    color: #856404;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  /* Compact row with 3 columns (label + input + copy) */
+  .compact-row.with-copy { grid-template-columns: 180px 1fr auto; }
+
   /* Per-field copy buttons */
   .input-wrap { position: relative; }
   .input-wrap input, .input-wrap textarea { padding-inline-end: 42px !important; }
@@ -314,6 +355,18 @@
     </div>
   </div>
 
+  <!-- ====================================================== -->
+  <!--  COLLECTION BAR — shown when a collection is active     -->
+  <!-- ====================================================== -->
+  <div class="collection-bar" id="collection-bar">
+    <b>אוסף <span id="cb-id"></span></b>
+    <span class="counter">תצלום <b id="cb-counter">1</b> מתוך <b id="cb-total">?</b></span>
+    <div class="actions-inline">
+      <button class="ghost" type="button" id="cb-back-btn">↑ חזרה לאוסף</button>
+      <button class="secondary" type="button" id="cb-final-btn">📊 דוח סופי</button>
+    </div>
+  </div>
+
   <!-- Studios DB Panel -->
   <div class="studios-panel" id="studios-panel">
     <h4>🏛 מאגר סטודיו צילום באירופה <small id="studios-count" style="font-weight:400; color:var(--muted); margin-inline-start:6px"></small></h4>
@@ -324,6 +377,101 @@
     </div>
     <div class="studios-list" id="studios-list"></div>
   </div>
+
+  <!-- ====================================================== -->
+  <!--  STEP 0: Collection setup                                -->
+  <!-- ====================================================== -->
+  <section class="step" id="step-collection">
+    <div class="head">
+      <span class="num">0</span>
+      <span class="title">הגדרת אוסף <small>Collection setup — חד-פעמי לכל אוסף</small></span>
+    </div>
+    <div class="body">
+
+      <!-- Saved collections dropdown -->
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom: 14px; flex-wrap:wrap; padding-bottom:10px; border-bottom:1px dashed var(--line)">
+        <label style="font-size:13px; font-weight:600; min-width:110px">אוספים קודמים:</label>
+        <select id="saved-collections-select" style="flex: 1; min-width: 160px;">
+          <option value="">— אוסף חדש —</option>
+        </select>
+        <button type="button" class="ghost" id="load-collection-btn" disabled>טען</button>
+        <button type="button" class="ghost" id="delete-collection-btn" disabled style="color:var(--soft); border-color:var(--soft);" title="מחק את האוסף הנבחר מ-localStorage">🗑</button>
+      </div>
+
+      <!-- Collection ID -->
+      <div class="compact-row" style="grid-template-columns: 130px 1fr">
+        <label>מספר אוסף</label>
+        <input type="text" id="col-id" placeholder="11522">
+      </div>
+
+      <!-- Intake form -->
+      <div style="margin-top:12px">
+        <label class="label">טופס איסוף / רישום ספיר <small>PDF / Word — מכיל את הביוגרפיה, רשימת תצלומים, ומידע נוסף</small></label>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+          <button type="button" class="ghost" id="col-form-btn">📎 העלה טופס</button>
+          <input type="file" id="col-form-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
+          <span id="col-form-status" class="mini-status"></span>
+        </div>
+        <textarea id="col-form-text" placeholder="(הטקסט מהטופס יופיע כאן אחרי החילוץ — או הדבק ידנית את התוכן)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 100px;"></textarea>
+      </div>
+
+      <div class="actions">
+        <button id="identify-collection-btn" class="primary" disabled>🔍 זהה את האוסף (AI)</button>
+        <button id="manual-collection-btn" type="button" class="ghost">✎ או הזן ידנית</button>
+      </div>
+      <div id="collection-status" class="status-msg"></div>
+
+      <!-- Collection profile form -->
+      <div id="collection-profile" style="display:none; margin-top:18px; padding-top:14px; border-top:1px solid var(--line)">
+        <h4 style="margin:0 0 10px; color:var(--accent); font-size:14.5px">פרופיל האוסף <small style="color:var(--muted); font-weight:400">(ניתן לעריכה — ייושם לכל תצלום באוסף)</small></h4>
+
+        <div class="compact-row"><label>שם המוסר (HE)</label><input type="text" id="col-donor-he"></div>
+        <div class="compact-row"><label>Donor name (EN)</label><input type="text" id="col-donor-en"></div>
+        <div class="compact-row"><label>קשר למשפחה</label><input type="text" id="col-donor-relation" placeholder="נכד / בן / אחות / וכו׳"></div>
+        <div class="compact-row"><label>מקור (HE)</label><input type="text" id="col-source-he"></div>
+        <div class="compact-row"><label>Source (EN)</label><input type="text" id="col-source-en"></div>
+        <div class="compact-row"><label>תקופה / Period</label><input type="text" id="col-period" placeholder="1920–1945"></div>
+        <div class="compact-row"><label>אזור / Region</label><input type="text" id="col-region" placeholder="Łódź, Poland"></div>
+        <div class="compact-row"><label>מספר תצלומים צפוי</label><input type="text" id="col-photo-count" placeholder="30"></div>
+
+        <div style="margin-top:8px"><label class="label">ביוגרפיה משפחתית / Family biography</label></div>
+        <div class="field-row">
+          <textarea id="col-bio-he" rows="3"></textarea>
+          <textarea id="col-bio-en" rows="3"></textarea>
+        </div>
+
+        <div style="margin-top:8px"><label class="label">סיפור האוסף / Collection story <small>(תקציר ה"מידע נוסף" של הטופס)</small></label></div>
+        <div class="field-row">
+          <textarea id="col-story-he" rows="3"></textarea>
+          <textarea id="col-story-en" rows="3"></textarea>
+        </div>
+
+        <div style="margin-top:8px"><label class="label">פרובננס / Provenance</label></div>
+        <div class="field-row">
+          <textarea id="col-prov-he" rows="2"></textarea>
+          <textarea id="col-prov-en" rows="2"></textarea>
+        </div>
+
+        <div style="margin-top:8px">
+          <label class="label">אישים מרכזיים / Key people</label>
+          <table class="id-table-edit">
+            <thead><tr><th style="width:25%">שם</th><th style="width:18%">שנות חיים</th><th style="width:22%">תפקיד / קשר</th><th>גורל</th><th style="width:30px"></th></tr></thead>
+            <tbody id="col-people-tbody"><tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">לא הוזנו אישים</td></tr></tbody>
+          </table>
+          <button type="button" class="ghost" id="col-people-add" style="margin-top:6px; font-size:12px; padding:5px 10px;">+ הוסף אדם</button>
+        </div>
+
+        <div class="actions">
+          <button id="save-collection-btn">💾 שמור פרופיל ועבור לתצלומים →</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================== -->
+  <!--  PHOTO WORKFLOW — locked until collection is set            -->
+  <!-- =========================================================== -->
+  <div id="photo-workflow" class="locked">
 
   <!-- ====================================================== -->
   <!--  STEP 1: Photos (front + back)                          -->
@@ -545,12 +693,15 @@
   <!--  Sticky download bar                                    -->
   <!-- ====================================================== -->
   <div class="download-bar" id="download-bar" style="display:none;">
-    <span style="font-size:13px; color:var(--muted)">לאחר עריכה, הורד את הדוח המלא:</span>
-    <div style="display:flex; gap:8px;">
+    <span style="font-size:13px; color:var(--muted)">לאחר עריכה:</span>
+    <div style="display:flex; gap:8px; flex-wrap: wrap;">
       <button id="preview-btn" class="ghost" type="button">👁 תצוגה מקדימה</button>
-      <button id="download-final-btn" class="big">⬇ הורד HTML</button>
+      <button id="download-final-btn">⬇ הורד תצלום זה</button>
+      <button id="save-next-btn" class="big primary" type="button">💾 שמור והמשך לתצלום הבא →</button>
     </div>
   </div>
+
+  </div><!-- /#photo-workflow -->
 
   <div class="footer-hint">
     <strong>💡 פרטיות:</strong> הכל קורה בדפדפן שלך. ה-API key (אם יש) נשמר רק ב-localStorage. תצלומים נשלחים ישירות ל-api.anthropic.com (HTTPS) — לא דרך שום שרת ביניים.
@@ -615,6 +766,10 @@ const state = {
     anthropic: localStorage.getItem('yv_api_key_anthropic') || localStorage.getItem('yv_api_key') || '',
     gemini:    localStorage.getItem('yv_api_key_gemini') || '',
   },
+  // ─── Collection state ────────────────────────────────────────
+  collection: null,    // {id, intake_form, profile, photos[]} when active
+  saved_collections: JSON.parse(localStorage.getItem('yv_collections') || '{}'),
+  current_photo_index: 1, // running counter within current collection
 };
 
 // =====================================================================
@@ -1092,7 +1247,47 @@ async function callGemini() {
 }
 
 function buildSystemRules(ctxText, studiosBrief) {
-  return `אתה מקטלג בכיר במדור התצלומים של יד ושם. בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים**:
+  // Inject collection profile if active
+  let collectionContext = '';
+  if (state.collection) {
+    const p = state.collection.profile;
+    const peopleStr = (p.key_people || []).map(person =>
+      `  - ${person.name} (${person.dates || '?'}) — ${person.relation || ''} — ${person.fate || ''}`
+    ).join('\n');
+    collectionContext = `## פרופיל האוסף — חל על כל תצלום באוסף
+
+מספר אוסף: ${state.collection.id}
+תצלום מס׳: ${state.collection.id}/${state.current_photo_index}
+מוסר (HE): ${p.donor_he || 'לא ידוע'}
+Donor (EN): ${p.donor_en || 'unknown'}
+קשר: ${p.donor_relation || ''}
+מקור (HE): ${p.source_he || ''}
+Source (EN): ${p.source_en || ''}
+תקופה: ${p.period || ''}
+אזור: ${p.region || ''}
+
+ביוגרפיה משפחתית (HE): ${p.family_biography_he || ''}
+Family biography (EN): ${p.family_biography_en || ''}
+
+סיפור האוסף (HE): ${p.collection_story_he || ''}
+Collection story (EN): ${p.collection_story_en || ''}
+
+פרובננס (HE): ${p.provenance_he || ''}
+Provenance (EN): ${p.provenance_en || ''}
+
+אישים מרכזיים באוסף:
+${peopleStr || '  (אין)'}
+
+**שים לב:** כל תצלום באוסף יורש מהפרופיל הזה את המוסר/מקור/ביוגרפיה. בקטלוג של תצלום ספציפי:
+- כותר ייבנה מהמיקום הויזואלי, התאריך הספציפי (אם ידוע), וההקשר מהאוסף
+- "מידע נוסף" → "ביוגרפיה ופרובננס" יורש מסיפור האוסף + פרובננס
+- אם זוהו אישים מהמפתח של האוסף — סמן ✓ confirmed
+- מקומות ספציפיים לתצלום הזה (ולא הכלליים של האוסף) יוצגו ב-places_en
+
+`;
+  }
+
+  return collectionContext + `אתה מקטלג בכיר במדור התצלומים של יד ושם. בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים**:
 
 ## כותר (חובה בפורמט קבוע)
 \`[City in English], [Country in English], [content], [date]\`
@@ -1454,19 +1649,222 @@ function composeInfoBody(visual, context, persons, objects, inscriptions, studio
   ).join('\n\n');
 }
 
-downloadBtn.addEventListener('click', () => {
+function downloadCurrentPhotoHTML() {
   const html = buildFinalHTML();
-  const stem = (state.photos.front?.name || 'photo').replace(/\.[^.]+$/, '').replace(/[^\w֐-׿.-]/g, '_');
+  const idStr = state.collection
+    ? `${state.collection.id}_${String(state.current_photo_index).padStart(3, '0')}`
+    : (state.photos.front?.name || 'photo').replace(/\.[^.]+$/, '').replace(/[^\w֐-׿.-]/g, '_');
   const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
-  const fname = `photo_${stem}_${today}.html`;
+  const fname = `photo_${idStr}_${today}.html`;
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = fname;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return fname;
+}
+
+downloadBtn.addEventListener('click', () => {
+  const fname = downloadCurrentPhotoHTML();
   showStatus(`✓ הורד: ${fname}`, 'ok');
 });
+
+// Save & next photo
+const saveNextBtn = document.getElementById('save-next-btn');
+saveNextBtn.addEventListener('click', () => {
+  if (!state.collection) { alert('אין אוסף פעיל. הגדר אוסף תחילה.'); return; }
+  // Capture the catalog data from the form
+  const get = id => document.getElementById(id).value;
+  const idRows = [...document.querySelectorAll('#r-id-tbody tr')].map(tr => {
+    const cells = [...tr.querySelectorAll('input')];
+    if (cells.length < 4) return null;
+    return { num: cells[0].value, name: cells[1].value, position_he: cells[2].value, position_en: cells[3].value };
+  }).filter(r => r && r.name);
+
+  const photoEntry = {
+    photo_id: `${state.collection.id}/${state.current_photo_index}`,
+    sequence: state.current_photo_index,
+    front_filename: state.photos.front?.name || '',
+    back_filename: state.photos.back?.name || '',
+    front_thumbnail: state.thumbnails.front, // keep small thumbnail in localStorage
+    cataloged_at: new Date().toISOString(),
+    title_he: get('r-title-he'),
+    title_en: get('r-title-en'),
+    places_en: get('r-places'),
+    creation_date: get('r-creation-date'),
+    photographer: get('r-photographer'),
+    info: {
+      visual_he: get('r-visual-he'), visual_en: get('r-visual-en'),
+      context_he: get('r-context-he'), context_en: get('r-context-en'),
+      persons_he: get('r-persons-he'), persons_en: get('r-persons-en'),
+      objects_he: get('r-objects-he'), objects_en: get('r-objects-en'),
+      inscriptions_he: get('r-inscriptions-he'), inscriptions_en: get('r-inscriptions-en'),
+      studio_he: get('r-studio-he'), studio_en: get('r-studio-en'),
+      bio_he: get('r-bio-he'), bio_en: get('r-bio-en'),
+      notes_he: get('r-notes-he'), notes_en: get('r-notes-en'),
+    },
+    id_table: idRows,
+    subjects: activeSubjects,
+  };
+
+  // Auto-download the photo HTML
+  const fname = downloadCurrentPhotoHTML();
+  photoEntry.html_filename = fname;
+
+  // Save to collection
+  state.collection.photos.push(photoEntry);
+  state.collection.last_updated = new Date().toISOString();
+  state.saved_collections[state.collection.id] = state.collection;
+  // Strip thumbnails from localStorage if collection grows too big
+  try {
+    localStorage.setItem('yv_collections', JSON.stringify(state.saved_collections));
+  } catch (e) {
+    // Quota exceeded — strip thumbnails
+    Object.values(state.saved_collections).forEach(c =>
+      (c.photos || []).forEach(p => delete p.front_thumbnail));
+    try { localStorage.setItem('yv_collections', JSON.stringify(state.saved_collections)); } catch (e2) {
+      console.warn('localStorage full, skipping save', e2);
+    }
+  }
+
+  // Move to next photo
+  state.current_photo_index++;
+  resetPhotoForm();
+  document.getElementById('cb-counter').textContent = state.current_photo_index;
+  renderSavedCollectionsDropdown();
+  // Scroll back to step 1
+  document.getElementById('photo-workflow').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+function resetPhotoForm() {
+  clearPhoto('front');
+  clearPhoto('back');
+  contextEl.value = '';
+  document.getElementById('results').classList.remove('show');
+  document.getElementById('no-results').style.display = 'block';
+  document.getElementById('download-bar').style.display = 'none';
+  state.identification = null;
+  // Reset result fields to defaults
+  ['r-title-he','r-title-en','r-places','r-color','r-photographer','r-creation-date','r-recon-date',
+   'r-donor-he','r-donor-en','r-source-he','r-source-en',
+   'r-visual-he','r-visual-en','r-context-he','r-context-en','r-persons-he','r-persons-en',
+   'r-objects-he','r-objects-en','r-inscriptions-he','r-inscriptions-en',
+   'r-studio-he','r-studio-en','r-bio-he','r-bio-en','r-notes-he','r-notes-en']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  // Reset defaults
+  document.getElementById('r-material').value = '26T קובץ סריקה';
+  document.getElementById('r-rights').value = 'יד ושם (T9123081)';
+  document.getElementById('r-class').value = 'בלתי מסווג';
+  document.getElementById('r-negative').value = 'ל';
+  document.getElementById('r-size').value = 'רגיל';
+  document.getElementById('r-www').value = 'Y';
+  document.getElementById('r-intra').value = 'Y';
+  document.getElementById('r-copies').value = 'סרוק';
+  document.getElementById('r-id-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">לא הוזנו אנשים — לחץ "הוסף שורה" אם רלוונטי</td></tr>';
+  activeSubjects = [];
+  renderSubjects([]);
+  document.getElementById('r-studio-result').innerHTML = '';
+  showStatus('', '');
+}
+
+// =====================================================================
+//  FINAL REPORT — multi-photo summary HTML for the collection
+// =====================================================================
+document.getElementById('cb-final-btn').addEventListener('click', () => {
+  if (!state.collection) return;
+  const photos = state.collection.photos || [];
+  if (!photos.length) { alert('עדיין לא קוטלגו תצלומים באוסף הזה.'); return; }
+  const html = buildCollectionReport(state.collection);
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
+  a.href = url; a.download = `collection_${state.collection.id}_report_${today}.html`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+function buildCollectionReport(c) {
+  const p = c.profile || {};
+  const photos = c.photos || [];
+  const peopleHTML = (p.key_people || []).map(person =>
+    `<tr><td>${esc(person.name)}</td><td>${esc(person.dates || '')}</td><td>${esc(person.relation || '')}</td><td>${esc(person.fate || '')}</td></tr>`
+  ).join('');
+  const photosHTML = photos.map(ph => `
+    <tr>
+      <td><b>${esc(ph.photo_id)}</b></td>
+      <td>${ph.front_thumbnail ? `<img src="${ph.front_thumbnail}" alt="" style="max-width:100px; max-height:80px; border-radius:3px;">` : ''}</td>
+      <td><b>${esc(ph.title_he || '')}</b><br><span style="color:#666; font-size:12px;">${esc(ph.title_en || '')}</span></td>
+      <td>${esc(ph.creation_date || '—')}</td>
+      <td>${esc(ph.places_en || '—')}</td>
+      <td><div style="font-size:12px; max-width:280px;">${esc((ph.info?.visual_he || '').slice(0, 180))}${(ph.info?.visual_he || '').length > 180 ? '…' : ''}</div></td>
+    </tr>
+  `).join('');
+  return `<!DOCTYPE html>
+<html lang="he" dir="rtl"><head><meta charset="UTF-8"><title>אוסף ${esc(c.id)} — דוח סופי</title>
+<style>
+  body{margin:0;font-family:"SBL Hebrew","David",serif;background:#f7f5f0;color:#1a1a1a;line-height:1.55;direction:rtl;text-align:right}
+  .wrap{max-width:1200px;margin:0 auto;padding:24px}
+  h1{color:#6b5b3e;border-bottom:2px solid #6b5b3e;padding-bottom:8px}
+  h2{color:#6b5b3e;margin-top:28px;border-bottom:1px solid #d8d4cc;padding-bottom:5px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;background:white}
+  table th,table td{border:1px solid #d8d4cc;padding:8px;vertical-align:top;text-align:right}
+  table th{background:#ede5d3;color:#5e4c1e;font-weight:700}
+  .meta{display:grid;grid-template-columns:200px 1fr;gap:6px 14px;background:white;padding:14px;border-radius:6px;border:1px solid #d8d4cc}
+  .meta dt{font-weight:600;color:#5a5a5a}
+  .meta dd{margin:0;color:#1a1a1a}
+  .bilingual{display:grid;grid-template-columns:1fr 1fr;gap:12px;background:white;padding:14px;border-radius:6px;border:1px solid #d8d4cc}
+  .bilingual .he{direction:rtl;text-align:right;unicode-bidi:isolate}
+  .bilingual .en{direction:ltr;text-align:left;font-family:Georgia,serif;border-inline-start:1px solid #d8d4cc;padding-inline-start:12px}
+  .bilingual h4{margin:0 0 6px;color:#6b5b3e;font-size:13.5px}
+  .photos-table img{display:block}
+  @media print{body{background:#fff}}
+</style></head><body><div class="wrap">
+
+<h1>אוסף ${esc(c.id)} — דוח סופי / Collection Report</h1>
+<div style="font-size:13px;color:#5a5a5a;margin-bottom:16px">
+  עודכן: ${esc((c.last_updated || '').slice(0,10))} · ${photos.length} תצלומים קוטלגו · צפי: ${esc(p.expected_photo_count || '?')}
+</div>
+
+<h2>פרטי האוסף / Collection details</h2>
+<dl class="meta">
+  <dt>מספר אוסף / ID</dt><dd>${esc(c.id)}</dd>
+  <dt>שם המוסר / Donor</dt><dd>${esc(p.donor_he || '—')} / ${esc(p.donor_en || '—')}${p.donor_relation ? ' (' + esc(p.donor_relation) + ')' : ''}</dd>
+  <dt>מקור / Source</dt><dd>${esc(p.source_he || '—')} / ${esc(p.source_en || '—')}</dd>
+  <dt>תקופה / Period</dt><dd>${esc(p.period || '—')}</dd>
+  <dt>אזור / Region</dt><dd>${esc(p.region || '—')}</dd>
+</dl>
+
+<h2>ביוגרפיה משפחתית / Family biography</h2>
+<div class="bilingual">
+  <div class="he"><h4>עברית</h4>${esc(p.family_biography_he || '—').replace(/\n/g, '<br>')}</div>
+  <div class="en"><h4>English</h4>${esc(p.family_biography_en || '—').replace(/\n/g, '<br>')}</div>
+</div>
+
+<h2>סיפור האוסף / Collection story</h2>
+<div class="bilingual">
+  <div class="he"><h4>עברית</h4>${esc(p.collection_story_he || '—').replace(/\n/g, '<br>')}</div>
+  <div class="en"><h4>English</h4>${esc(p.collection_story_en || '—').replace(/\n/g, '<br>')}</div>
+</div>
+
+<h2>פרובננס / Provenance</h2>
+<div class="bilingual">
+  <div class="he"><h4>עברית</h4>${esc(p.provenance_he || '—').replace(/\n/g, '<br>')}</div>
+  <div class="en"><h4>English</h4>${esc(p.provenance_en || '—').replace(/\n/g, '<br>')}</div>
+</div>
+
+${peopleHTML ? `<h2>אישים מרכזיים / Key people</h2>
+<table><thead><tr><th>שם / Name</th><th>שנות חיים / Dates</th><th>קשר / Relation</th><th>גורל / Fate</th></tr></thead><tbody>${peopleHTML}</tbody></table>` : ''}
+
+<h2>תצלומים באוסף / Photos in collection (${photos.length})</h2>
+<table class="photos-table">
+  <thead><tr><th>מס׳</th><th>תצלום</th><th>כותר / Title</th><th>תאריך</th><th>מקומות</th><th>תיאור ויזואלי</th></tr></thead>
+  <tbody>${photosHTML}</tbody>
+</table>
+
+</div></body></html>`;
+}
 
 previewBtn.addEventListener('click', () => {
   const html = buildFinalHTML();
@@ -1584,6 +1982,331 @@ function showStatus(msg, kind) {
   identifyStatus.textContent = msg;
   identifyStatus.className = 'status-msg show ' + (kind || '');
 }
+
+// =====================================================================
+//  COLLECTION — state, persistence, UI
+// =====================================================================
+const colIdEl = document.getElementById('col-id');
+const colFormBtn = document.getElementById('col-form-btn');
+const colFormInput = document.getElementById('col-form-input');
+const colFormStatus = document.getElementById('col-form-status');
+const colFormText = document.getElementById('col-form-text');
+const identifyCollectionBtn = document.getElementById('identify-collection-btn');
+const manualCollectionBtn = document.getElementById('manual-collection-btn');
+const collectionStatus = document.getElementById('collection-status');
+const collectionProfileBox = document.getElementById('collection-profile');
+const saveCollectionBtn = document.getElementById('save-collection-btn');
+const stepCollection = document.getElementById('step-collection');
+const photoWorkflow = document.getElementById('photo-workflow');
+const collectionBar = document.getElementById('collection-bar');
+
+// File handling for the intake form (extracts text using existing extractors)
+colFormBtn.addEventListener('click', () => colFormInput.click());
+colFormInput.addEventListener('change', () => {
+  const f = colFormInput.files?.[0];
+  if (f) extractIntakeForm(f);
+});
+async function extractIntakeForm(file) {
+  const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+  setMini(colFormStatus, '<span class="dot"></span>מחלץ ' + esc(file.name) + '…', 'working');
+  try {
+    let text = '', meta = {};
+    if (ext === '.pdf') ({ text, meta } = await extractPDF(file));
+    else if (ext === '.docx') ({ text, meta } = await extractDOCX(file));
+    else if (['.txt','.md','.markdown','.rtf','.log'].includes(ext)) {
+      text = await file.text();
+      meta = { format: ext.slice(1) };
+    } else throw new Error('סוג לא נתמך: ' + ext);
+    colFormText.value = text;
+    setMini(colFormStatus, '<span class="dot"></span>✓ נטען <span class="meta">' + (meta.page_count ? meta.page_count + ' עמ׳' : meta.format) + ' · ' + text.length.toLocaleString() + ' תווים</span>', 'ok');
+    refreshCollectionButtons();
+  } catch (err) {
+    setMini(colFormStatus, '<span class="dot"></span>שגיאה: ' + err.message, 'err');
+  }
+}
+
+// Refresh enabled state of buttons in step 0
+function refreshCollectionButtons() {
+  const hasId = colIdEl.value.trim().length > 0;
+  const hasForm = colFormText.value.trim().length > 0;
+  const hasKey = !!getActiveApiKey();
+  identifyCollectionBtn.disabled = !(hasId && hasForm && hasKey);
+  identifyCollectionBtn.title = !hasId ? 'יש להזין מספר אוסף' :
+                                !hasForm ? 'יש להעלות טופס או להדביק טקסט' :
+                                !hasKey ? 'יש להגדיר API key' : '';
+}
+colIdEl.addEventListener('input', refreshCollectionButtons);
+colFormText.addEventListener('input', refreshCollectionButtons);
+
+// Manual mode: just show the empty profile form
+manualCollectionBtn.addEventListener('click', () => {
+  if (!colIdEl.value.trim()) { alert('יש להזין מספר אוסף תחילה'); return; }
+  collectionProfileBox.style.display = 'block';
+});
+
+// Identify collection via AI
+identifyCollectionBtn.addEventListener('click', async () => {
+  const formText = colFormText.value.trim();
+  if (!formText) return;
+  identifyCollectionBtn.disabled = true;
+  identifyCollectionBtn.innerHTML = '<span class="spinner"></span>מנתח אוסף…';
+  setMini(colFormStatus, '', '');
+  showCollectionStatus('שולח את הטופס ל-' + (state.provider === 'gemini' ? 'Gemini' : 'Claude') + '…', 'info');
+  try {
+    const profile = state.provider === 'gemini'
+      ? await callGeminiForCollection(formText)
+      : await callAnthropicForCollection(formText);
+    fillCollectionProfile(profile);
+    collectionProfileBox.style.display = 'block';
+    showCollectionStatus('✓ פרופיל אוסף נוצר. סקור וערוך לפי הצורך, ואז שמור.', 'ok');
+    collectionProfileBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    console.error(err);
+    showCollectionStatus('שגיאה: ' + err.message, 'err');
+  } finally {
+    identifyCollectionBtn.disabled = false;
+    identifyCollectionBtn.innerHTML = '🔍 זהה את האוסף (AI)';
+    refreshCollectionButtons();
+  }
+});
+
+function showCollectionStatus(msg, kind) {
+  collectionStatus.textContent = msg;
+  collectionStatus.className = 'status-msg show ' + (kind || '');
+}
+
+function buildCollectionPrompt(formText) {
+  return `אתה מקטלג בכיר במדור התצלומים של יד ושם. הטקסט הבא הוא טופס איסוף / רישום ספיר של אוסף תצלומים. הוצא ממנו פרופיל מובנה של האוסף שישמש כהקשר לקטלוג כל תצלום באוסף.
+
+החזר JSON תקין בלבד (ללא טקסט נוסף, ללא code fences) לפי הסכימה:
+
+{
+  "donor_he": "שם המוסר בעברית",
+  "donor_en": "Donor name in English",
+  "donor_relation": "קשר למשפחה: נכד / בן / אחות / וכו׳",
+  "source_he": "שם בעל החומר אם שונה מהמוסר (HE)",
+  "source_en": "Source name (EN)",
+  "period": "טווח תקופה: 1920–1945 / לפני המלחמה / וכו׳",
+  "region": "אזור גיאוגרפי ראשי: Łódź, Poland",
+  "expected_photo_count": 30,
+  "family_biography_he": "פסקה ביוגרפית על המשפחה / האוסף — בעברית",
+  "family_biography_en": "Biographical paragraph about the family / collection — in English",
+  "collection_story_he": "תקציר של ה'מידע נוסף' שבטופס — סיפור האוסף, קצר אבל מקיף, בעברית. אם אין מידע נוסף בטופס, השאר ריק.",
+  "collection_story_en": "Summary of the form's 'additional info' section — the collection's story, short but comprehensive, in English",
+  "provenance_he": "פרובננס: איך הגיע התצלומים, היסטוריית הקובץ — HE",
+  "provenance_en": "Provenance — EN",
+  "key_people": [
+    { "name": "שם מלא", "dates": "1898-1944", "relation": "סבא / אחות / וכו׳", "fate": "נספה באושוויץ / שרד / וכו׳" }
+  ],
+  "photo_list": [
+    { "index": 1, "description_he": "תיאור קצר אם מופיע בטופס" }
+  ]
+}
+
+חוקים:
+- תאריכים בפורמט DD/MM/YYYY או טווח שנים
+- שמות באנגלית בכתיב לטיני (Łódź ולא לודז׳ בשדה English)
+- אם פרט לא מופיע בטופס — השאר את השדה ריק (string ריק) או null
+- אם אין רשימת תצלומים בטופס — photo_list: []
+- אם אין אישים מזוהים — key_people: []
+
+הטופס:
+\`\`\`
+${formText}
+\`\`\`
+
+החזר JSON בלבד.`;
+}
+
+async function callAnthropicForCollection(formText) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': getActiveApiKey(),
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: getActiveModel(),
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: [{ type: 'text', text: buildCollectionPrompt(formText) }] }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return parseJsonResponse(data.content?.[0]?.text || '', 'Claude');
+}
+
+async function callGeminiForCollection(formText) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: buildCollectionPrompt(formText) }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 4000, responseMimeType: 'application/json' },
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+  return parseJsonResponse(text, 'Gemini');
+}
+
+function fillCollectionProfile(p) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('col-donor-he', p.donor_he);
+  set('col-donor-en', p.donor_en);
+  set('col-donor-relation', p.donor_relation);
+  set('col-source-he', p.source_he);
+  set('col-source-en', p.source_en);
+  set('col-period', p.period);
+  set('col-region', p.region);
+  set('col-photo-count', p.expected_photo_count);
+  set('col-bio-he', p.family_biography_he);
+  set('col-bio-en', p.family_biography_en);
+  set('col-story-he', p.collection_story_he);
+  set('col-story-en', p.collection_story_en);
+  set('col-prov-he', p.provenance_he);
+  set('col-prov-en', p.provenance_en);
+
+  // Key people
+  const tbody = document.getElementById('col-people-tbody');
+  tbody.innerHTML = '';
+  (p.key_people || []).forEach(person => addPersonRow(person));
+  if (!(p.key_people || []).length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">לא הוזנו אישים</td></tr>';
+  }
+}
+
+function addPersonRow(person) {
+  const tbody = document.getElementById('col-people-tbody');
+  if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" value="${esc(person?.name || '')}"></td>
+    <td><input type="text" value="${esc(person?.dates || '')}"></td>
+    <td><input type="text" value="${esc(person?.relation || '')}"></td>
+    <td><input type="text" value="${esc(person?.fate || '')}"></td>
+    <td><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove()">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+document.getElementById('col-people-add').addEventListener('click', () => addPersonRow());
+
+// Read profile back from form
+function readCollectionProfileFromForm() {
+  const get = id => document.getElementById(id).value.trim();
+  const people = [...document.querySelectorAll('#col-people-tbody tr')].map(tr => {
+    const inputs = [...tr.querySelectorAll('input')];
+    if (inputs.length < 4) return null;
+    return { name: inputs[0].value, dates: inputs[1].value, relation: inputs[2].value, fate: inputs[3].value };
+  }).filter(p => p && p.name);
+  return {
+    donor_he: get('col-donor-he'),
+    donor_en: get('col-donor-en'),
+    donor_relation: get('col-donor-relation'),
+    source_he: get('col-source-he'),
+    source_en: get('col-source-en'),
+    period: get('col-period'),
+    region: get('col-region'),
+    expected_photo_count: get('col-photo-count'),
+    family_biography_he: get('col-bio-he'),
+    family_biography_en: get('col-bio-en'),
+    collection_story_he: get('col-story-he'),
+    collection_story_en: get('col-story-en'),
+    provenance_he: get('col-prov-he'),
+    provenance_en: get('col-prov-en'),
+    key_people: people,
+  };
+}
+
+// Save collection and switch to photo mode
+saveCollectionBtn.addEventListener('click', () => {
+  const id = colIdEl.value.trim();
+  if (!id) { alert('יש להזין מספר אוסף'); return; }
+  const profile = readCollectionProfileFromForm();
+  // Preserve existing photos if reloading the same collection
+  const existing = state.saved_collections[id];
+  state.collection = {
+    id,
+    intake_form_text: colFormText.value,
+    profile,
+    photos: existing?.photos || [],
+    last_updated: new Date().toISOString(),
+  };
+  state.saved_collections[id] = state.collection;
+  localStorage.setItem('yv_collections', JSON.stringify(state.saved_collections));
+  state.current_photo_index = (state.collection.photos.length || 0) + 1;
+  showPhotoWorkflow();
+  renderSavedCollectionsDropdown();
+});
+
+function showPhotoWorkflow() {
+  stepCollection.style.display = 'none';
+  photoWorkflow.classList.remove('locked');
+  collectionBar.classList.add('show');
+  document.getElementById('cb-id').textContent = state.collection.id;
+  document.getElementById('cb-counter').textContent = state.current_photo_index;
+  document.getElementById('cb-total').textContent = state.collection.profile.expected_photo_count || (state.collection.photos.length + 1);
+  document.getElementById('photo-workflow').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showCollectionSetup() {
+  stepCollection.style.display = 'block';
+  collectionBar.classList.remove('show');
+  photoWorkflow.classList.add('locked');
+  stepCollection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+document.getElementById('cb-back-btn').addEventListener('click', showCollectionSetup);
+
+// Saved collections dropdown
+const savedSel = document.getElementById('saved-collections-select');
+const loadColBtn = document.getElementById('load-collection-btn');
+const delColBtn = document.getElementById('delete-collection-btn');
+
+function renderSavedCollectionsDropdown() {
+  const ids = Object.keys(state.saved_collections).sort();
+  savedSel.innerHTML = '<option value="">— אוסף חדש —</option>' +
+    ids.map(id => {
+      const c = state.saved_collections[id];
+      return `<option value="${esc(id)}">${esc(id)} (${(c.photos || []).length} תצלומים)</option>`;
+    }).join('');
+}
+savedSel.addEventListener('change', () => {
+  const has = !!savedSel.value;
+  loadColBtn.disabled = !has;
+  delColBtn.disabled = !has;
+});
+loadColBtn.addEventListener('click', () => {
+  const id = savedSel.value;
+  if (!id || !state.saved_collections[id]) return;
+  const c = state.saved_collections[id];
+  colIdEl.value = id;
+  colFormText.value = c.intake_form_text || '';
+  fillCollectionProfile(c.profile || {});
+  collectionProfileBox.style.display = 'block';
+  state.collection = c;
+  state.current_photo_index = (c.photos.length || 0) + 1;
+  showCollectionStatus(`טוען אוסף ${id} (${(c.photos||[]).length} תצלומים שעובדו, חוזר לתצלום ${state.current_photo_index})`, 'info');
+});
+delColBtn.addEventListener('click', () => {
+  const id = savedSel.value;
+  if (!id) return;
+  if (!confirm(`למחוק לצמיתות את אוסף ${id} מ-localStorage?`)) return;
+  delete state.saved_collections[id];
+  localStorage.setItem('yv_collections', JSON.stringify(state.saved_collections));
+  renderSavedCollectionsDropdown();
+});
+renderSavedCollectionsDropdown();
 
 // =====================================================================
 //  PER-FIELD COPY BUTTONS — small "📋" button at the corner of each
