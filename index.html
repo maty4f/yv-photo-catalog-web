@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>קטלוג תצלומים — יד ושם (web)</title>
+
+<!-- External libraries: CDN with SRI for security -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs" type="module"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --card: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #5a5a5a;
+    --line: #d8d4cc;
+    --accent: #6b5b3e;
+    --accent-2: #8a7758;
+    --good: #2e7d32;
+    --warn: #b07000;
+    --soft: #b22222;
+    --tint: #fbf9f3;
+    --drop: #f3efe6;
+    --drop-active: #ede2c2;
+    --code-bg: #2d2d2d;
+    --code-fg: #f8f8f2;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    font-family: "SBL Hebrew", "Frank Ruhl Libre", "David", "Helvetica Neue", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    direction: rtl;
+    text-align: right;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+  header.doc {
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+  }
+  header.doc h1 {
+    font-size: 22px;
+    margin: 0 0 4px 0;
+    color: var(--accent);
+  }
+  header.doc .sub { font-size: 13px; color: var(--muted); }
+
+  /* Section */
+  section.step {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+  section.step > .head {
+    padding: 11px 16px;
+    background: linear-gradient(180deg, #fbfaf6, #f3efe6);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  section.step > .head .num {
+    background: var(--accent);
+    color: white;
+    border-radius: 50%;
+    width: 26px; height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+  }
+  section.step > .head .title {
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 15px;
+  }
+  section.step > .head .title small {
+    color: var(--muted);
+    font-weight: 400;
+    margin-inline-start: 8px;
+    font-size: 12px;
+  }
+  section.step > .body { padding: 16px; }
+
+  /* Drop zone */
+  .drop {
+    border: 2px dashed var(--accent);
+    background: var(--drop);
+    border-radius: 8px;
+    padding: 30px 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+    user-select: none;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .drop:hover, .drop.dragover { background: var(--drop-active); border-color: var(--accent-2); }
+  .drop.has-file { background: white; border-style: solid; }
+  .drop .hint { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); font-weight: normal; }
+  .drop .preview-mini {
+    display: none;
+    max-width: 200px;
+    max-height: 140px;
+    border-radius: 4px;
+    margin: 0 auto 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
+  }
+  .drop.has-file .preview-mini { display: block; }
+  .drop.has-file .placeholder { display: none; }
+  .filename {
+    display: block;
+    margin-top: 6px;
+    font-size: 12.5px;
+    color: var(--ink);
+    font-weight: 500;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  textarea, input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--tint);
+    color: var(--ink);
+    resize: vertical;
+    direction: rtl;
+    text-align: right;
+    line-height: 1.55;
+  }
+  textarea { min-height: 120px; }
+  textarea.large { min-height: 220px; }
+  textarea:focus, input:focus { outline: none; border-color: var(--accent); background: white; }
+
+  .label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .label small { color: var(--muted); font-weight: 400; margin-inline-start: 6px; }
+
+  .actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 12px;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  button:hover:not(:disabled) { background: var(--accent-2); }
+  button:disabled { background: #b8b3a8; cursor: not-allowed; opacity: .7; }
+  button.big { padding: 14px 28px; font-size: 16px; }
+  button.secondary { background: #4a5568; }
+  button.secondary:hover:not(:disabled) { background: #2d3748; }
+  button.ghost { background: transparent; color: var(--accent); padding: 8px 14px; border: 1px dashed var(--accent); }
+  button.ghost:hover { background: rgba(107,91,62,.08); }
+
+  /* Context-file row */
+  .ctx-file-row { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .ctx-status { font-size: 12px; color: var(--muted); }
+  .ctx-status.working { color: var(--accent); }
+  .ctx-status.ok { color: var(--good); }
+  .ctx-status.err { color: var(--soft); }
+  .ctx-meta {
+    display: inline-block;
+    background: var(--tint);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--muted);
+    margin-inline-start: 6px;
+    font-family: monospace;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .status-msg {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    display: none;
+  }
+  .status-msg.show { display: block; }
+  .status-msg.ok { background: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
+  .status-msg.err { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; }
+  .status-msg.info { background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
+
+  /* Prompt block */
+  .prompt-box {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border-radius: 6px;
+    padding: 14px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.45;
+    max-height: 300px;
+    overflow: auto;
+    direction: ltr;
+    text-align: left;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-top: 10px;
+  }
+
+  .footer-hint {
+    margin-top: 26px;
+    padding: 14px;
+    background: #fef9e7;
+    border: 1px solid #e6d28a;
+    border-inline-start: 5px solid #c19b2e;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #6b4f0f;
+  }
+  .footer-hint a { color: #6b5b3e; }
+
+  footer.bottom {
+    margin-top: 30px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+  }
+  footer.bottom code { background: var(--tint); padding: 2px 6px; border-radius: 3px; font-size: 11px; direction: ltr; unicode-bidi: isolate; }
+
+  .badge-icon {
+    display: inline-block;
+    background: var(--good);
+    color: white;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 18px;
+    font-size: 11px;
+    margin-inline-end: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc">
+    <h1>קטלוג תצלומים — יד ושם <small style="font-size:13px; color:var(--muted); font-weight: 400; margin-inline-start: 6px;">גרסת web</small></h1>
+    <div class="sub">העלאת תצלום, חילוץ קונטקסט מקובץ, יצירת פרומפט מובנה ל-Claude — הכל בדפדפן, ללא התקנה</div>
+  </header>
+
+  <!-- ====================================================== -->
+  <!--  STEP 1: Photo                                         -->
+  <!-- ====================================================== -->
+  <section class="step">
+    <div class="head">
+      <span class="num">1</span>
+      <span class="title">תצלום <small>Photograph</small></span>
+    </div>
+    <div class="body">
+      <div id="dropzone" class="drop" tabindex="0">
+        <img id="preview" class="preview-mini" alt="">
+        <span class="placeholder">
+          גרור לכאן תצלום, או לחץ לבחירת קובץ
+          <span class="hint">JPG / PNG / TIFF / HEIC / WEBP</span>
+        </span>
+        <span id="filename" class="filename" style="display:none"></span>
+      </div>
+      <input type="file" id="file-input" accept="image/*" hidden>
+    </div>
+  </section>
+
+  <!-- ====================================================== -->
+  <!--  STEP 2: Context                                       -->
+  <!-- ====================================================== -->
+  <section class="step">
+    <div class="head">
+      <span class="num">2</span>
+      <span class="title">מידע מוקדם <small>Provided context — אופציונלי</small></span>
+    </div>
+    <div class="body">
+      <label class="label" for="context-input">
+        טקסט חופשי <small>או — חילוץ אוטומטי מקובץ:</small>
+      </label>
+      <textarea id="context-input" placeholder="מה ידוע על התצלום: מקור, תאריך משוער, מקום, אישים, אירוע, כיתוב מקורי בגב, וכל מידע אחר רלוונטי…"></textarea>
+
+      <div class="ctx-file-row">
+        <button type="button" class="ghost" id="ctx-file-btn">
+          📎 העלה מקובץ <small>PDF / Word / Excel / CSV / TXT</small>
+        </button>
+        <input type="file" id="ctx-file-input" accept=".pdf,.docx,.csv,.tsv,.xlsx,.xlsm,.txt,.md,.markdown,.rtf,.log,.json" hidden>
+        <span id="ctx-file-status" class="ctx-status"></span>
+      </div>
+      <div style="margin-top:8px; font-size:11.5px; color:var(--muted)">
+        הכל קורה בדפדפן שלך — שום דבר לא נשלח לאף שרת. הקובץ ייקרא מקומית, יחולץ הטקסט, וזה ימולא בשדה למעלה.
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================================================== -->
+  <!--  STEP 3: Generate prompt                               -->
+  <!-- ====================================================== -->
+  <section class="step">
+    <div class="head">
+      <span class="num">3</span>
+      <span class="title">יצירת פרומפט ל-Claude <small>Generate Claude prompt</small></span>
+    </div>
+    <div class="body">
+      <p style="margin-top:0; font-size:13.5px; color:var(--muted)">
+        לוחץ על הכפתור — נוצר פרומפט עם <b>כל הכללים של יד ושם</b> + הקונטקסט שלך, ומועתק ללוח. אז פותח Claude.ai, מצרף את התצלום ומדביק.
+      </p>
+      <div class="actions">
+        <button id="copy-prompt-btn" class="big" disabled>📋 העתק פרומפט מלא</button>
+        <button id="show-prompt-btn" class="ghost" disabled>הצג פרומפט</button>
+        <a href="https://claude.ai/new" target="_blank" rel="noopener">
+          <button class="secondary" type="button">פתח Claude.ai →</button>
+        </a>
+      </div>
+      <div id="copy-status" class="status-msg"></div>
+      <div id="prompt-box" class="prompt-box" style="display:none"></div>
+    </div>
+  </section>
+
+  <!-- ====================================================== -->
+  <!--  STEP 4: Receive Claude's HTML & download              -->
+  <!-- ====================================================== -->
+  <section class="step">
+    <div class="head">
+      <span class="num">4</span>
+      <span class="title">קבלת הפלט מ-Claude <small>Paste Claude's HTML output</small></span>
+    </div>
+    <div class="body">
+      <p style="margin-top:0; font-size:13.5px; color:var(--muted)">
+        Claude יחזיר HTML מלא לפי התבנית של ספיר. הדבק את כל הקובץ כאן — אנשמור אותו בשם `photo_&lt;תאריך&gt;.html` ותוכל לפתוח ולהשתמש בו.
+      </p>
+      <textarea id="output-input" class="large" placeholder="הדבק כאן את ה-HTML שהחזיר Claude…&#10;(אמור להתחיל ב-&lt;!DOCTYPE html&gt; וכולל את כל השדות + כפתורי העתקה)"></textarea>
+      <div class="actions">
+        <button id="download-btn" disabled>⬇ הורד כקובץ HTML</button>
+        <button id="open-btn" class="ghost" disabled>פתח בדפדפן (תצוגה מקדימה)</button>
+        <button id="clear-output-btn" class="ghost" type="button">נקה</button>
+      </div>
+      <div id="output-status" class="status-msg"></div>
+    </div>
+  </section>
+
+  <div class="footer-hint">
+    <strong>💡 על האבטחה:</strong> כל העיבוד מתבצע <b>בדפדפן שלך בלבד</b>. תצלומים, קונטקסט, וקבצים שאתה מעלה — לא נשלחים לאף שרת. הספרייה היחידה שנטענת מהאינטרנט היא קוד-JS לחילוץ PDF/Word/Excel (מ-jsDelivr CDN), שאינו רואה את הקבצים שלך.
+    אם הצלחה לטעון את העמוד הזה במחשב העבודה — זה אומר שהאינטרנט הבסיסי פתוח, וגם הספריות יטענו.
+  </div>
+
+  <footer class="bottom">
+    yv-photo-catalog · web edition · 100% client-side ·
+    <a href="https://github.com/maty4f/yv-photo-catalog" target="_blank" style="color:var(--accent)">GitHub</a>
+  </footer>
+
+</div>
+
+<script type="module">
+// =====================================================================
+//  Config & state
+// =====================================================================
+let selectedPhoto = null;
+
+// =====================================================================
+//  Photo upload zone
+// =====================================================================
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('file-input');
+const preview = document.getElementById('preview');
+const filenameEl = document.getElementById('filename');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+});
+['dragenter', 'dragover'].forEach(evt =>
+  dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add('dragover'); }));
+['dragleave', 'drop'].forEach(evt =>
+  dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
+
+dropzone.addEventListener('drop', e => {
+  const file = e.dataTransfer.files?.[0];
+  if (file && file.type.startsWith('image/')) handlePhoto(file);
+});
+fileInput.addEventListener('change', () => {
+  const f = fileInput.files?.[0];
+  if (f) handlePhoto(f);
+});
+
+function handlePhoto(file) {
+  selectedPhoto = file;
+  filenameEl.textContent = `${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+  filenameEl.style.display = 'block';
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.src = e.target.result;
+    dropzone.classList.add('has-file');
+  };
+  reader.readAsDataURL(file);
+  refreshPromptButtons();
+}
+
+// =====================================================================
+//  Context file extraction (PDF / DOCX / XLSX / CSV / TXT)
+// =====================================================================
+const ctxBtn = document.getElementById('ctx-file-btn');
+const ctxInput = document.getElementById('ctx-file-input');
+const ctxStatus = document.getElementById('ctx-file-status');
+const contextEl = document.getElementById('context-input');
+
+ctxBtn.addEventListener('click', () => ctxInput.click());
+
+contextEl.addEventListener('dragover', e => { e.preventDefault(); contextEl.style.borderColor = 'var(--accent)'; });
+contextEl.addEventListener('dragleave', () => { contextEl.style.borderColor = ''; });
+contextEl.addEventListener('drop', e => {
+  e.preventDefault();
+  contextEl.style.borderColor = '';
+  const f = e.dataTransfer.files?.[0];
+  if (f) extractContextFile(f);
+});
+
+ctxInput.addEventListener('change', () => {
+  const f = ctxInput.files?.[0];
+  if (f) extractContextFile(f);
+});
+
+function setCtxStatus(html, kind) {
+  ctxStatus.innerHTML = html;
+  ctxStatus.className = 'ctx-status' + (kind ? ' ' + kind : '');
+}
+
+async function extractContextFile(file) {
+  const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+  setCtxStatus('● מחלץ טקסט מ-' + escapeHtml(file.name) + '…', 'working');
+  try {
+    let text = '';
+    let meta = {};
+    if (ext === '.pdf') {
+      ({ text, meta } = await extractPDF(file));
+    } else if (ext === '.docx') {
+      ({ text, meta } = await extractDOCX(file));
+    } else if (ext === '.xlsx' || ext === '.xlsm') {
+      ({ text, meta } = await extractXLSX(file));
+    } else if (ext === '.csv' || ext === '.tsv') {
+      ({ text, meta } = await extractCSV(file, ext === '.tsv' ? '\t' : ','));
+    } else if (['.txt','.md','.markdown','.rtf','.log','.json','.text'].includes(ext)) {
+      text = await file.text();
+      meta = { format: ext.slice(1), char_count: text.length };
+    } else {
+      throw new Error('סוג קובץ לא נתמך: ' + ext);
+    }
+
+    // Append to existing textarea content
+    const existing = contextEl.value.trim();
+    const sep = existing ? '\n\n――――――――――――――――\n\n' : '';
+    contextEl.value = existing + sep + 'מקור: ' + file.name + '\n\n' + text;
+
+    const parts = [];
+    if (meta.page_count)  parts.push(meta.page_count + ' עמודים');
+    if (meta.row_count)   parts.push(meta.row_count.toLocaleString() + ' שורות');
+    if (meta.sheet_count) parts.push(meta.sheet_count + ' גיליונות');
+    parts.push(text.length.toLocaleString() + ' תווים');
+    setCtxStatus('● ✓ נטען לשדה הקונטקסט <span class="ctx-meta">' + parts.join(' · ') + '</span>', 'ok');
+    refreshPromptButtons();
+    contextEl.focus();
+  } catch (err) {
+    console.error(err);
+    setCtxStatus('● שגיאה: ' + err.message, 'err');
+  }
+}
+
+// PDF — using PDF.js
+async function extractPDF(file) {
+  const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs';
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const txt = textContent.items.map(item => item.str).join(' ').trim();
+    if (txt) pages.push(`━━ עמוד ${i} ━━\n${txt}`);
+  }
+  let text = pages.join('\n\n');
+  if (!text) {
+    text = '[לא ניתן לחלץ טקסט — ייתכן ש-PDF מבוסס תמונות ודורש OCR]';
+  }
+  return { text, meta: { format: 'pdf', page_count: pdf.numPages } };
+}
+
+// DOCX — using mammoth.js
+async function extractDOCX(file) {
+  const buf = await file.arrayBuffer();
+  const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
+  const text = result.value.trim();
+  const paragraphs = text.split(/\n+/).length;
+  return { text, meta: { format: 'docx', paragraph_count: paragraphs } };
+}
+
+// XLSX — using SheetJS
+async function extractXLSX(file) {
+  const buf = await file.arrayBuffer();
+  const wb = window.XLSX.read(buf, { type: 'array' });
+  const sections = [];
+  let totalRows = 0;
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName];
+    const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+    if (!rows.length) continue;
+    const lines = [`━━ גיליון: ${sheetName} ━━`];
+    for (const row of rows) {
+      lines.push(row.map(c => c == null ? '' : String(c)).join(' │ '));
+      totalRows++;
+    }
+    sections.push(lines.join('\n'));
+  }
+  return {
+    text: sections.join('\n\n'),
+    meta: { format: 'xlsx', sheet_count: wb.SheetNames.length, row_count: totalRows },
+  };
+}
+
+// CSV / TSV — pure JS
+async function extractCSV(file, delim) {
+  const text = await file.text();
+  const rows = text.split(/\r?\n/).filter(r => r.trim()).map(r => r.split(delim));
+  const lines = [];
+  rows.forEach((row, i) => {
+    lines.push(row.map(c => c.trim()).join(' │ '));
+    if (i === 0) lines.push('─'.repeat(Math.min(80, row.join('').length + 3 * row.length)));
+  });
+  return {
+    text: lines.join('\n'),
+    meta: { format: delim === '\t' ? 'tsv' : 'csv', row_count: rows.length, col_count: rows[0]?.length || 0 },
+  };
+}
+
+// =====================================================================
+//  Step 3: Generate prompt
+// =====================================================================
+const copyBtn = document.getElementById('copy-prompt-btn');
+const showBtn = document.getElementById('show-prompt-btn');
+const promptBox = document.getElementById('prompt-box');
+const copyStatus = document.getElementById('copy-status');
+
+function refreshPromptButtons() {
+  const ready = !!selectedPhoto;
+  copyBtn.disabled = !ready;
+  showBtn.disabled = !ready;
+}
+
+contextEl.addEventListener('input', refreshPromptButtons);
+
+function buildPrompt() {
+  const photoName = selectedPhoto ? selectedPhoto.name : '<photo>';
+  const ctx = contextEl.value.trim();
+  const ctxBlock = ctx
+    ? `\n## מידע מוקדם / Provided context\n\n${ctx}\n`
+    : `\n## מידע מוקדם / Provided context\n\n— ללא מידע מוקדם / No prior context provided —\n`;
+
+  return `אנא קטלג את התצלום המצורף (${photoName}) לפי הנהלים הרשמיים של ארכיון התצלומים, יד ושם.
+${ctxBlock}
+## כללים מחייבים — לפי קטלוג.docx ונהלי הקטלוג
+
+### א. כותר — חובה בפורמט קבוע:
+\`[City in English], [Country in English], [content], [date]\`
+
+דוגמאות:
+- \`Brussels, Belgium, חברים בתנועת הנוער בני עקיבא, 1935\`
+- \`Lyon, France, training with the Maquis, 21/11/1942\`
+- \`Tel Aviv, Israel, Michael and Rita Taylor's wedding, June 1952\`
+
+### ב. שמות מקומות — אנגלית בלבד, גבולות 01/09/1939
+- \`Brussels\` (לא \`Brussel\`), \`Linz\` ≠ \`Lienz\`, \`Minsk, Belarus\` ≠ \`Mińsk, Poland\`.
+- אם רק מדינה ידועה: \`Poland\`, \`France\`.
+
+### ג. תאריכים
+- מלא: \`DD/MM/YYYY\` (בק-סלאש, לא נקודות) — \`28/05/1945\`
+- שנה: \`1948\` | חודש+שנה: \`מאי 1941\` / \`May 1941\`
+- חודש עברי: \`Tammuz (June–July) 1937\`
+- בערך: \`סביבות 1935\` / \`c. 1935\`
+- לפני/אחרי: \`לפני המלחמה\` / \`before the war\`
+- לא ידוע: השאר ריק
+
+### ד. אנשים לא מזוהים
+- \`תצלום של איש לא מזוהה\` / \`photograph of an unidentified man\`
+- \`תצלום קבוצתי של אנשים לא מזוהים\` / \`group photograph of unidentified individuals\`
+
+### ה. סימוני ודאות (חובה לכל זיהוי)
+- ✓ ודאי / Confirmed (כיתוב, סמל מתועד, קונטקסט סמכותי+תאימות)
+- ~ סביר / Probable (תאימות חזקה אך לא מלאה)
+- ? השערה / Tentative (דמיון ויזואלי בלבד, או היסק תקופה)
+
+**לא לנחש** מקום, מחנה, גטו, יחידה, או אדם ללא ראיה ברורה. עדיף תיאור כללי (\`unidentified concentration camp\`, \`Wehrmacht officer (unit unknown)\`).
+
+## פלט נדרש
+
+הפק קובץ HTML שלם (\`<!DOCTYPE html>\` עד \`</html>\`) — דו-לשוני (עברית מימין, אנגלית משמאל), RTL מלא, עם 7 חטיבות שדות וכפתורי "העתק" לכל שדה:
+
+1. **כותר** (HE) — בפורמט קבוע
+2. **Title** (EN) — בפורמט קבוע
+3. **שדות טכניים**: אופי החומר (9T תצלום / 26T קובץ סריקה / וכו׳), צבע (שחור-לבן / צבעוני), בעל זכויות (יד ושם — T9123081), סיווג (בלתי מסווג), נגטיב (כ/ל), צלם, תאריך יצירה, ת.ת. משוחזר (מלא DD/MM/YYYY), גודל (רגיל/גדול/גדול מאוד), הצגה אינטרנט/אינטרה-נט (Y), עותקים (מקורי/משולב/סרוק)
+4. **מקומות קשורים** באנגלית בלבד
+5. **שם מוסר החומר** + **מקור** (HE+EN)
+6. **מידע נוסף** (HE+EN) — מובנה עם תת-כותרים:
+   - תיאור ויזואלי / Visual description
+   - קונטקסט היסטורי / Historical context
+   - אישים / Persons
+   - אובייקטים ופרטים / Objects & details (מדים, סמלים, חפצים, רכבים — עם ✓/~/?)
+   - כיתובים / Inscriptions (תעתיק במקור + תרגום עברית + תרגום אנגלית)
+   - ביוגרפיה ופרובננס / Biography & provenance
+   - הערות / Notes
+7. **טבלת זיהוי אנשים** (אם רלוונטי) — שלוש עמודות: מס׳, שם מלא, מיקום בתצלום (HE + EN)
+8. **נושאים** מהתזאורוס של יד ושם — chips, כמה שיותר רלוונטיים: \`תקופה שלפני המלחמה / Prewar period\`, \`נשים / Women\`, \`גטו / Ghettos\`, \`ילדים / Children\`, \`מדים / Uniforms\`, \`טלאי צהוב / Yellow badge\`, וכו׳
+
+### עיצוב ה-HTML
+- \`<html lang="he" dir="rtl">\`
+- כל בלוק עברי: \`direction: rtl; text-align: right; unicode-bidi: isolate;\`
+- בלוקים דו-לשוניים: עברית בעמודה הימנית, אנגלית בשמאל
+- כפתור "העתק" לצד כל שדה (העתקה ל-clipboard ב-JS)
+- עיצוב נקי, ארכיוני, עם רקע ניטרלי וגבולות עדינים
+
+הצג את כל קובץ ה-HTML בבלוק קוד אחד מסודר. אני אעתיק אותו ואשמור אותו כקובץ מקומי.`;
+}
+
+copyBtn.addEventListener('click', async () => {
+  const prompt = buildPrompt();
+  try {
+    await navigator.clipboard.writeText(prompt);
+    showCopyStatus('✓ הפרומפט הועתק! עכשיו פתח את Claude.ai, צרף את התצלום, ותדביק (Cmd+V).', 'ok');
+  } catch (e) {
+    showCopyStatus('שגיאה בהעתקה: ' + e.message + ' — הצג את הפרומפט והעתק ידנית', 'err');
+  }
+});
+
+showBtn.addEventListener('click', () => {
+  const prompt = buildPrompt();
+  promptBox.textContent = prompt;
+  promptBox.style.display = promptBox.style.display === 'none' ? 'block' : 'none';
+});
+
+function showCopyStatus(msg, kind) {
+  copyStatus.textContent = msg;
+  copyStatus.className = 'status-msg show ' + kind;
+  setTimeout(() => {
+    if (kind === 'ok') copyStatus.className = 'status-msg';
+  }, 5000);
+}
+
+// =====================================================================
+//  Step 4: Receive Claude's HTML and download
+// =====================================================================
+const outputEl = document.getElementById('output-input');
+const downloadBtn = document.getElementById('download-btn');
+const openBtn = document.getElementById('open-btn');
+const clearOutputBtn = document.getElementById('clear-output-btn');
+const outputStatus = document.getElementById('output-status');
+
+function refreshOutputButtons() {
+  const has = outputEl.value.trim().length > 100;
+  downloadBtn.disabled = !has;
+  openBtn.disabled = !has;
+}
+
+outputEl.addEventListener('input', refreshOutputButtons);
+
+downloadBtn.addEventListener('click', () => {
+  const html = outputEl.value.trim();
+  if (!html) return;
+  const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
+  const photoStem = (selectedPhoto?.name || 'photo').replace(/\.[^.]+$/, '').replace(/[^\w֐-׿.-]/g, '_');
+  const filename = `photo_${photoStem}_${today}.html`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  outputStatus.textContent = `✓ הורד: ${filename}`;
+  outputStatus.className = 'status-msg show ok';
+});
+
+openBtn.addEventListener('click', () => {
+  const html = outputEl.value.trim();
+  if (!html) return;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+});
+
+clearOutputBtn.addEventListener('click', () => {
+  outputEl.value = '';
+  refreshOutputButtons();
+  outputStatus.className = 'status-msg';
+});
+
+// Helpers
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])
+  );
+}
+</script>
+</body>
+</html>
