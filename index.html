@@ -3,297 +3,339 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>קטלוג תצלומים — יד ושם (web)</title>
+<title>קטלוג תצלומים — יד ושם</title>
 
-<!-- External libraries: CDN with SRI for security -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs" type="module"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
   :root {
-    --bg: #f7f5f0;
-    --card: #ffffff;
-    --ink: #1a1a1a;
-    --muted: #5a5a5a;
-    --line: #d8d4cc;
-    --accent: #6b5b3e;
-    --accent-2: #8a7758;
-    --good: #2e7d32;
-    --warn: #b07000;
-    --soft: #b22222;
-    --tint: #fbf9f3;
-    --drop: #f3efe6;
-    --drop-active: #ede2c2;
-    --code-bg: #2d2d2d;
-    --code-fg: #f8f8f2;
+    --bg: #f7f5f0; --card: #fff; --ink: #1a1a1a; --muted: #5a5a5a;
+    --line: #d8d4cc; --accent: #6b5b3e; --accent-2: #8a7758;
+    --good: #2e7d32; --warn: #b07000; --soft: #b22222;
+    --tint: #fbf9f3; --drop: #f3efe6; --drop-active: #ede2c2;
+    --he-tint: #fbf9f3; --en-tint: #f3f6fb;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
-    font-family: "SBL Hebrew", "Frank Ruhl Libre", "David", "Helvetica Neue", sans-serif;
-    background: var(--bg);
-    color: var(--ink);
-    line-height: 1.55;
-    direction: rtl;
-    text-align: right;
+    font-family: "SBL Hebrew","Frank Ruhl Libre","David","Helvetica Neue",sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.55;
+    direction: rtl; text-align: right;
   }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
 
-  header.doc {
-    border-bottom: 2px solid var(--accent);
-    padding-bottom: 14px;
-    margin-bottom: 22px;
-  }
-  header.doc h1 {
-    font-size: 22px;
-    margin: 0 0 4px 0;
-    color: var(--accent);
-  }
+  header.doc { border-bottom: 2px solid var(--accent); padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+  header.doc h1 { font-size: 22px; margin: 0 0 4px 0; color: var(--accent); }
   header.doc .sub { font-size: 13px; color: var(--muted); }
+  header.doc .actions-top { display: flex; gap: 8px; align-items: center; }
 
-  /* Section */
-  section.step {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    margin-bottom: 18px;
-    overflow: hidden;
-  }
+  /* Steps as cards */
+  section.step { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
   section.step > .head {
-    padding: 11px 16px;
-    background: linear-gradient(180deg, #fbfaf6, #f3efe6);
+    padding: 11px 16px; background: linear-gradient(180deg,#fbfaf6,#f3efe6);
     border-bottom: 1px solid var(--line);
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    display: flex; align-items: center; gap: 10px;
   }
   section.step > .head .num {
-    background: var(--accent);
-    color: white;
-    border-radius: 50%;
+    background: var(--accent); color: white; border-radius: 50%;
     width: 26px; height: 26px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 13px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px;
   }
-  section.step > .head .title {
-    font-weight: 700;
-    color: var(--accent);
-    font-size: 15px;
-  }
-  section.step > .head .title small {
-    color: var(--muted);
-    font-weight: 400;
-    margin-inline-start: 8px;
-    font-size: 12px;
-  }
+  section.step > .head .title { font-weight: 700; color: var(--accent); font-size: 15px; }
+  section.step > .head .title small { color: var(--muted); font-weight: 400; margin-inline-start: 8px; font-size: 12px; }
   section.step > .body { padding: 16px; }
 
-  /* Drop zone */
+  /* Twin photo drop zones */
+  .photo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .photo-row { grid-template-columns: 1fr; } }
+  .photo-slot { position: relative; }
+  .photo-slot .label-tag {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--accent); color: white;
+    padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 600;
+    z-index: 2;
+    direction: rtl; unicode-bidi: isolate;
+  }
+  .photo-slot .delete-btn {
+    position: absolute; top: 8px; left: 8px;
+    background: rgba(178,34,34,.92); color: white; border: none;
+    width: 26px; height: 26px; border-radius: 50%;
+    cursor: pointer; font-size: 14px; line-height: 1;
+    display: none; z-index: 2;
+  }
+  .photo-slot.has-file .delete-btn { display: block; }
+  .photo-slot .delete-btn:hover { background: var(--soft); }
+
   .drop {
-    border: 2px dashed var(--accent);
-    background: var(--drop);
-    border-radius: 8px;
-    padding: 30px 18px;
-    text-align: center;
-    cursor: pointer;
-    transition: background .15s, border-color .15s;
-    user-select: none;
-    color: var(--accent);
-    font-size: 14px;
-    font-weight: 600;
+    border: 2px dashed var(--accent); background: var(--drop);
+    border-radius: 8px; padding: 30px 18px; text-align: center;
+    cursor: pointer; transition: background .15s, border-color .15s;
+    user-select: none; color: var(--accent);
+    font-size: 14px; font-weight: 600;
+    min-height: 180px;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
   }
   .drop:hover, .drop.dragover { background: var(--drop-active); border-color: var(--accent-2); }
-  .drop.has-file { background: white; border-style: solid; }
+  .drop.has-file { background: white; border-style: solid; padding: 12px; }
   .drop .hint { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); font-weight: normal; }
-  .drop .preview-mini {
-    display: none;
-    max-width: 200px;
-    max-height: 140px;
-    border-radius: 4px;
-    margin: 0 auto 8px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.1);
-  }
+  .drop .preview-mini { display: none; max-width: 100%; max-height: 180px; border-radius: 4px; margin: 0 auto 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
   .drop.has-file .preview-mini { display: block; }
   .drop.has-file .placeholder { display: none; }
-  .filename {
-    display: block;
-    margin-top: 6px;
-    font-size: 12.5px;
-    color: var(--ink);
-    font-weight: 500;
-    direction: ltr;
-    unicode-bidi: isolate;
-  }
+  .filename { display: block; margin-top: 6px; font-size: 12px; color: var(--ink); font-weight: 500; direction: ltr; unicode-bidi: isolate; word-break: break-all; }
 
-  textarea, input[type="text"] {
-    width: 100%;
-    padding: 10px 12px;
-    font-family: inherit;
-    font-size: 14px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--tint);
-    color: var(--ink);
-    resize: vertical;
-    direction: rtl;
-    text-align: right;
-    line-height: 1.55;
+  textarea, input[type="text"], input[type="password"], select {
+    width: 100%; padding: 9px 12px; font-family: inherit; font-size: 14px;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--tint);
+    color: var(--ink); resize: vertical;
+    direction: rtl; text-align: right; line-height: 1.55;
   }
-  textarea { min-height: 120px; }
-  textarea.large { min-height: 220px; }
-  textarea:focus, input:focus { outline: none; border-color: var(--accent); background: white; }
+  input[type="text"], input[type="password"] { direction: ltr; text-align: left; unicode-bidi: isolate; font-family: "SF Mono", Menlo, monospace; }
+  textarea { min-height: 110px; }
+  textarea.large { min-height: 200px; }
+  textarea.code { direction: ltr; text-align: left; font-family: "SF Mono", monospace; font-size: 12px; }
+  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); background: white; }
 
-  .label {
-    display: block;
-    margin-bottom: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink);
-  }
+  .label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
   .label small { color: var(--muted); font-weight: 400; margin-inline-start: 6px; }
 
-  .actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    align-items: center;
-    margin-top: 12px;
-  }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+
   button {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 6px;
-    font-family: inherit;
-    font-size: 14.5px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background .15s;
+    background: var(--accent); color: white; border: none; padding: 10px 20px;
+    border-radius: 6px; font-family: inherit; font-size: 14.5px; font-weight: 600;
+    cursor: pointer; transition: background .15s;
   }
   button:hover:not(:disabled) { background: var(--accent-2); }
   button:disabled { background: #b8b3a8; cursor: not-allowed; opacity: .7; }
   button.big { padding: 14px 28px; font-size: 16px; }
+  button.primary { background: #1565c0; }
+  button.primary:hover:not(:disabled) { background: #0d47a1; }
   button.secondary { background: #4a5568; }
   button.secondary:hover:not(:disabled) { background: #2d3748; }
+  button.danger { background: var(--soft); }
+  button.danger:hover:not(:disabled) { background: #8b0000; }
   button.ghost { background: transparent; color: var(--accent); padding: 8px 14px; border: 1px dashed var(--accent); }
   button.ghost:hover { background: rgba(107,91,62,.08); }
+  button.gear { background: transparent; color: var(--muted); padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+  button.gear:hover { background: var(--tint); border-color: var(--accent); color: var(--accent); }
 
-  /* Context-file row */
-  .ctx-file-row { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
-  .ctx-status { font-size: 12px; color: var(--muted); }
-  .ctx-status.working { color: var(--accent); }
-  .ctx-status.ok { color: var(--good); }
-  .ctx-status.err { color: var(--soft); }
-  .ctx-meta {
-    display: inline-block;
-    background: var(--tint);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    color: var(--muted);
-    margin-inline-start: 6px;
-    font-family: monospace;
-    direction: ltr;
-    unicode-bidi: isolate;
+  /* Settings panel */
+  .settings-panel {
+    display: none; background: #fffbeb; border: 1px solid #f1d96e;
+    border-radius: 8px; padding: 14px; margin-bottom: 14px;
   }
+  .settings-panel.open { display: block; }
+  .settings-panel .row { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .settings-panel .row:last-child { margin-bottom: 0; }
+  .settings-panel .row label { font-size: 13px; font-weight: 600; color: #6b4f0f; }
+  .settings-panel .hint { font-size: 11.5px; color: #8a7140; margin-top: 6px; }
+  .settings-panel .hint a { color: #6b4f0f; }
 
-  .status-msg {
-    margin-top: 12px;
-    padding: 10px 14px;
-    border-radius: 6px;
-    font-size: 13px;
-    display: none;
-  }
+  /* Studios panel */
+  .studios-panel { display: none; background: #f0f4ff; border: 1px solid #c5cae9; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .studios-panel.open { display: block; }
+  .studios-panel h4 { margin: 0 0 8px 0; color: #283593; font-size: 14px; }
+  .studios-panel .search-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .studios-panel .search-row input { background: white; }
+  .studios-list { max-height: 260px; overflow-y: auto; border: 1px solid #c5cae9; border-radius: 4px; background: white; }
+  .studios-list .studio-item { padding: 8px 12px; border-bottom: 1px solid #e0e7ff; font-size: 13px; cursor: pointer; }
+  .studios-list .studio-item:hover { background: #e0e7ff; }
+  .studios-list .studio-item:last-child { border-bottom: none; }
+  .studios-list .studio-item .meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .studios-list .empty { padding: 20px; text-align: center; color: var(--muted); font-style: italic; font-size: 13px; }
+
+  /* Status messages */
+  .status-msg { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; }
   .status-msg.show { display: block; }
-  .status-msg.ok { background: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
+  .status-msg.ok  { background: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
   .status-msg.err { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; }
-  .status-msg.info { background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
+  .status-msg.info{ background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
+  .status-msg.warn{ background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
 
-  /* Prompt block */
-  .prompt-box {
-    background: var(--code-bg);
-    color: var(--code-fg);
-    border-radius: 6px;
-    padding: 14px;
-    font-family: "SF Mono", Menlo, Consolas, monospace;
-    font-size: 12.5px;
-    line-height: 1.45;
-    max-height: 300px;
-    overflow: auto;
-    direction: ltr;
-    text-align: left;
-    white-space: pre-wrap;
-    word-break: break-word;
-    margin-top: 10px;
+  /* Inline mini status */
+  .mini-status { font-size: 12px; color: var(--muted); }
+  .mini-status.working { color: var(--accent); }
+  .mini-status.ok { color: var(--good); }
+  .mini-status.err { color: var(--soft); }
+  .mini-status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-inline-end: 5px; background: currentColor; vertical-align: middle; }
+  .mini-status .meta {
+    display: inline-block; background: var(--tint); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 7px; font-size: 11px; color: var(--muted);
+    margin-inline-start: 6px; font-family: monospace; direction: ltr; unicode-bidi: isolate;
   }
+
+  /* Spinner */
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-inline-end: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Results — structured form fields */
+  .results { display: none; }
+  .results.show { display: block; }
+  .results .field-group { margin-bottom: 14px; }
+  .results .field-group h4 { margin: 0 0 6px 0; color: var(--accent); font-size: 13.5px; font-weight: 700; }
+  .results .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+  @media (max-width: 720px) { .results .field-row { grid-template-columns: 1fr; } }
+  .results .field-row .lang-tag { font-size: 11px; color: var(--muted); margin-bottom: 3px; display: block; }
+  .results .field-row textarea { min-height: 60px; font-size: 13px; }
+  .results .compact-row { display: grid; grid-template-columns: 180px 1fr; gap: 10px; align-items: center; margin-bottom: 6px; }
+  .results .compact-row label { font-size: 12.5px; color: var(--muted); }
+  .results .compact-row input { font-size: 13px; padding: 6px 10px; }
+  .results .id-table-edit { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+  .results .id-table-edit th, .results .id-table-edit td { border: 1px solid var(--line); padding: 4px 8px; text-align: inherit; }
+  .results .id-table-edit th { background: var(--tint); }
+  .results .id-table-edit td input { width: 100%; border: none; background: transparent; padding: 2px 4px; font-size: 12px; }
+  .results .subject-chips { padding: 8px; background: var(--tint); border: 1px solid var(--line); border-radius: 4px; min-height: 38px; }
+  .results .chip {
+    display: inline-block; background: #ede2c2; color: #5e4c1e;
+    padding: 3px 9px; margin: 2px; border-radius: 12px; font-size: 12px;
+    border: 1px solid #d8c79a;
+  }
+  .results .chip .x { cursor: pointer; margin-inline-start: 5px; color: #8b6914; font-weight: bold; }
+  .results .chip .x:hover { color: var(--soft); }
+
+  /* Studio identification result box */
+  .studio-result { background: #fff8e1; border: 1px solid #f1d96e; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-size: 13px; }
+  .studio-result strong { color: #6b4f0f; }
+  .studio-result .new { color: var(--good); font-weight: 700; }
+  .studio-result .known { color: var(--accent); font-weight: 700; }
+  .studio-result button { margin-top: 8px; }
+
+  /* Sticky bottom bar */
+  .download-bar {
+    position: sticky; bottom: 0;
+    background: var(--card); border-top: 2px solid var(--accent);
+    padding: 10px 16px; margin: 0 -20px -20px;
+    display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    z-index: 50;
+  }
+  @media (max-width: 720px) { .download-bar { padding: 8px 10px; flex-wrap: wrap; } }
 
   .footer-hint {
-    margin-top: 26px;
-    padding: 14px;
-    background: #fef9e7;
-    border: 1px solid #e6d28a;
+    margin-top: 24px; padding: 12px 14px;
+    background: #fef9e7; border: 1px solid #e6d28a;
     border-inline-start: 5px solid #c19b2e;
-    border-radius: 8px;
-    font-size: 13px;
-    color: #6b4f0f;
+    border-radius: 8px; font-size: 12.5px; color: #6b4f0f;
   }
-  .footer-hint a { color: #6b5b3e; }
+  footer.bottom { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
+  footer.bottom a { color: var(--accent); }
 
-  footer.bottom {
-    margin-top: 30px;
-    padding-top: 16px;
-    border-top: 1px solid var(--line);
-    color: var(--muted);
-    font-size: 12px;
-    text-align: center;
-  }
-  footer.bottom code { background: var(--tint); padding: 2px 6px; border-radius: 3px; font-size: 11px; direction: ltr; unicode-bidi: isolate; }
-
-  .badge-icon {
-    display: inline-block;
-    background: var(--good);
-    color: white;
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    text-align: center;
-    line-height: 18px;
-    font-size: 11px;
-    margin-inline-end: 6px;
-  }
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: white; border-radius: 8px; max-width: 560px; width: 100%; max-height: 90vh; overflow: auto; }
+  .modal .head { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+  .modal .head h3 { margin: 0; font-size: 15px; color: var(--accent); }
+  .modal .body { padding: 16px; }
+  .modal .body input, .modal .body select, .modal .body textarea { margin-bottom: 8px; }
+  .modal .body label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 3px; color: var(--ink); }
+  .modal .foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header class="doc">
-    <h1>קטלוג תצלומים — יד ושם <small style="font-size:13px; color:var(--muted); font-weight: 400; margin-inline-start: 6px;">גרסת web</small></h1>
-    <div class="sub">העלאת תצלום, חילוץ קונטקסט מקובץ, יצירת פרומפט מובנה ל-Claude — הכל בדפדפן, ללא התקנה</div>
+    <div>
+      <h1>קטלוג תצלומים — יד ושם <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small></h1>
+      <div class="sub">העלאה, פיענוח, זיהוי אוטומטי וייצוא — הכל בדפדפן</div>
+    </div>
+    <div class="actions-top">
+      <button class="gear" id="studios-toggle" type="button">🏛 מאגר סטודיו</button>
+      <button class="gear" id="settings-toggle" type="button">⚙ הגדרות API</button>
+    </div>
   </header>
 
+  <!-- API Settings -->
+  <div class="settings-panel" id="settings-panel">
+    <div class="row">
+      <label>ספק API</label>
+      <select id="api-provider">
+        <option value="anthropic" selected>Anthropic (Claude)</option>
+        <option value="gemini">Google (Gemini)</option>
+      </select>
+    </div>
+
+    <div class="row provider-row" data-provider="anthropic">
+      <label>מפתח Anthropic</label>
+      <input type="password" id="api-key-anthropic" placeholder="sk-ant-…" autocomplete="off">
+    </div>
+    <div class="row provider-row" data-provider="anthropic">
+      <label>מודל Claude</label>
+      <select id="api-model-anthropic">
+        <option value="claude-sonnet-4-5-20250929" selected>Claude Sonnet 4.5 (מומלץ)</option>
+        <option value="claude-opus-4-1-20250805">Claude Opus 4.1 (איטי, מדויק יותר)</option>
+        <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (זול יותר)</option>
+      </select>
+    </div>
+
+    <div class="row provider-row" data-provider="gemini" style="display:none">
+      <label>מפתח Gemini</label>
+      <input type="password" id="api-key-gemini" placeholder="AIza…" autocomplete="off">
+    </div>
+    <div class="row provider-row" data-provider="gemini" style="display:none">
+      <label>מודל Gemini</label>
+      <select id="api-model-gemini">
+        <option value="gemini-2.5-pro" selected>Gemini 2.5 Pro (מדויק)</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash (מהיר וזול)</option>
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash (זמין יותר)</option>
+      </select>
+    </div>
+
+    <div class="hint">
+      🔒 המפתחות נשמרים אך ורק ב-localStorage של הדפדפן שלך.
+      <br>📍 <b>Anthropic</b>: api.anthropic.com · השגת מפתח: <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> · ~$0.05–0.30 לזיהוי
+      <br>📍 <b>Gemini</b>: generativelanguage.googleapis.com · השגת מפתח: <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a> · בדרך כלל זול יותר, יש tier חינמי
+    </div>
+  </div>
+
+  <!-- Studios DB Panel -->
+  <div class="studios-panel" id="studios-panel">
+    <h4>🏛 מאגר סטודיו צילום באירופה <small id="studios-count" style="font-weight:400; color:var(--muted); margin-inline-start:6px"></small></h4>
+    <div class="search-row">
+      <input type="text" id="studios-search" placeholder="חיפוש: שם / עיר / מדינה…">
+      <button type="button" id="studio-add-btn" class="ghost">➕ הוסף סטודיו</button>
+      <button type="button" id="studio-export-btn" class="ghost">⬇ ייצוא JSON</button>
+    </div>
+    <div class="studios-list" id="studios-list"></div>
+  </div>
+
   <!-- ====================================================== -->
-  <!--  STEP 1: Photo                                         -->
+  <!--  STEP 1: Photos (front + back)                          -->
   <!-- ====================================================== -->
   <section class="step">
-    <div class="head">
-      <span class="num">1</span>
-      <span class="title">תצלום <small>Photograph</small></span>
-    </div>
+    <div class="head"><span class="num">1</span><span class="title">תצלום <small>Photograph — חזית + גב (גב הוא אופציונלי, אך מכיל לעיתים מידע יקר ערך)</small></span></div>
     <div class="body">
-      <div id="dropzone" class="drop" tabindex="0">
-        <img id="preview" class="preview-mini" alt="">
-        <span class="placeholder">
-          גרור לכאן תצלום, או לחץ לבחירת קובץ
-          <span class="hint">JPG / PNG / TIFF / HEIC / WEBP</span>
-        </span>
-        <span id="filename" class="filename" style="display:none"></span>
+      <div class="photo-row">
+        <div class="photo-slot" id="slot-front">
+          <span class="label-tag">חזית / Front</span>
+          <button type="button" class="delete-btn" data-side="front" title="הסר תצלום">✕</button>
+          <div class="drop" tabindex="0" data-side="front">
+            <img class="preview-mini" alt="">
+            <span class="placeholder">
+              גרור חזית התצלום, או לחץ
+              <span class="hint">JPG / PNG / TIFF / HEIC</span>
+            </span>
+            <span class="filename" style="display:none"></span>
+          </div>
+          <input type="file" class="file-input" data-side="front" accept="image/*" hidden>
+        </div>
+
+        <div class="photo-slot" id="slot-back">
+          <span class="label-tag">גב / Back</span>
+          <button type="button" class="delete-btn" data-side="back" title="הסר גב">✕</button>
+          <div class="drop" tabindex="0" data-side="back">
+            <img class="preview-mini" alt="">
+            <span class="placeholder">
+              גרור גב התצלום (אופציונלי)
+              <span class="hint">בגב לעיתים יש כיתוב, חותמת סטודיו, ותאריך</span>
+            </span>
+            <span class="filename" style="display:none"></span>
+          </div>
+          <input type="file" class="file-input" data-side="back" accept="image/*" hidden>
+        </div>
       </div>
-      <input type="file" id="file-input" accept="image/*" hidden>
     </div>
   </section>
 
@@ -301,438 +343,1226 @@
   <!--  STEP 2: Context                                       -->
   <!-- ====================================================== -->
   <section class="step">
-    <div class="head">
-      <span class="num">2</span>
-      <span class="title">מידע מוקדם <small>Provided context — אופציונלי</small></span>
-    </div>
+    <div class="head"><span class="num">2</span><span class="title">מידע מוקדם <small>Provided context — אופציונלי</small></span></div>
     <div class="body">
-      <label class="label" for="context-input">
-        טקסט חופשי <small>או — חילוץ אוטומטי מקובץ:</small>
-      </label>
-      <textarea id="context-input" placeholder="מה ידוע על התצלום: מקור, תאריך משוער, מקום, אישים, אירוע, כיתוב מקורי בגב, וכל מידע אחר רלוונטי…"></textarea>
-
-      <div class="ctx-file-row">
-        <button type="button" class="ghost" id="ctx-file-btn">
-          📎 העלה מקובץ <small>PDF / Word / Excel / CSV / TXT</small>
-        </button>
+      <textarea id="context-input" placeholder="מה ידוע על התצלום: מקור, תאריך משוער, מקום, אישים, אירוע, וכל מידע אחר רלוונטי…"></textarea>
+      <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap: wrap;">
+        <button type="button" class="ghost" id="ctx-file-btn">📎 העלה מקובץ <small>PDF / Word / Excel / CSV / TXT</small></button>
         <input type="file" id="ctx-file-input" accept=".pdf,.docx,.csv,.tsv,.xlsx,.xlsm,.txt,.md,.markdown,.rtf,.log,.json" hidden>
-        <span id="ctx-file-status" class="ctx-status"></span>
+        <span id="ctx-file-status" class="mini-status"></span>
       </div>
       <div style="margin-top:8px; font-size:11.5px; color:var(--muted)">
-        הכל קורה בדפדפן שלך — שום דבר לא נשלח לאף שרת. הקובץ ייקרא מקומית, יחולץ הטקסט, וזה ימולא בשדה למעלה.
+        הכל מתבצע בדפדפן — שום דבר לא נשלח עד שתלחץ "🔍 זהה תצלום" או "פתח Claude.ai".
       </div>
     </div>
   </section>
 
   <!-- ====================================================== -->
-  <!--  STEP 3: Generate prompt                               -->
+  <!--  STEP 3: Identify                                       -->
   <!-- ====================================================== -->
   <section class="step">
-    <div class="head">
-      <span class="num">3</span>
-      <span class="title">יצירת פרומפט ל-Claude <small>Generate Claude prompt</small></span>
-    </div>
+    <div class="head"><span class="num">3</span><span class="title">זיהוי תצלום <small>Identify — אוטומטי או ידני</small></span></div>
     <div class="body">
       <p style="margin-top:0; font-size:13.5px; color:var(--muted)">
-        לוחץ על הכפתור — נוצר פרומפט עם <b>כל הכללים של יד ושם</b> + הקונטקסט שלך, ומועתק ללוח. אז פותח Claude.ai, מצרף את התצלום ומדביק.
+        <b>אוטומטי</b>: לוחץ "🔍 זהה תצלום" — הדפדפן שולח לתצלום ל-Claude API ישירות, מקבל ניתוח מובנה (פלט JSON), וממלא את שדות הקטלוג למטה.<br>
+        <b>ידני</b>: אם אין לך מפתח API — לוחץ "📋 העתק פרומפט" ופותח את Claude.ai בלשונית חדשה.
       </p>
       <div class="actions">
-        <button id="copy-prompt-btn" class="big" disabled>📋 העתק פרומפט מלא</button>
-        <button id="show-prompt-btn" class="ghost" disabled>הצג פרומפט</button>
-        <a href="https://claude.ai/new" target="_blank" rel="noopener">
-          <button class="secondary" type="button">פתח Claude.ai →</button>
-        </a>
+        <button id="identify-btn" class="big primary" disabled>🔍 זהה תצלום (אוטומטי)</button>
+        <button id="copy-prompt-btn" class="ghost" disabled>📋 העתק פרומפט (ידני)</button>
+        <a href="https://claude.ai/new" target="_blank" rel="noopener"><button class="secondary" type="button">פתח Claude.ai →</button></a>
       </div>
-      <div id="copy-status" class="status-msg"></div>
-      <div id="prompt-box" class="prompt-box" style="display:none"></div>
+      <div id="identify-status" class="status-msg"></div>
     </div>
   </section>
 
   <!-- ====================================================== -->
-  <!--  STEP 4: Receive Claude's HTML & download              -->
+  <!--  STEP 4: Results (filled by API or manual paste)         -->
   <!-- ====================================================== -->
   <section class="step">
-    <div class="head">
-      <span class="num">4</span>
-      <span class="title">קבלת הפלט מ-Claude <small>Paste Claude's HTML output</small></span>
-    </div>
+    <div class="head"><span class="num">4</span><span class="title">תוצאות הזיהוי <small>Results — ניתן לערוך ידנית</small></span></div>
     <div class="body">
-      <p style="margin-top:0; font-size:13.5px; color:var(--muted)">
-        Claude יחזיר HTML מלא לפי התבנית של ספיר. הדבק את כל הקובץ כאן — אנשמור אותו בשם `photo_&lt;תאריך&gt;.html` ותוכל לפתוח ולהשתמש בו.
-      </p>
-      <textarea id="output-input" class="large" placeholder="הדבק כאן את ה-HTML שהחזיר Claude…&#10;(אמור להתחיל ב-&lt;!DOCTYPE html&gt; וכולל את כל השדות + כפתורי העתקה)"></textarea>
-      <div class="actions">
-        <button id="download-btn" disabled>⬇ הורד כקובץ HTML</button>
-        <button id="open-btn" class="ghost" disabled>פתח בדפדפן (תצוגה מקדימה)</button>
-        <button id="clear-output-btn" class="ghost" type="button">נקה</button>
+
+      <div id="results" class="results">
+
+        <!-- Title -->
+        <div class="field-group">
+          <h4>כותר / Title</h4>
+          <div class="field-row">
+            <div>
+              <span class="lang-tag">עברית — [City], [Country], [content], [date]</span>
+              <textarea id="r-title-he" rows="2"></textarea>
+            </div>
+            <div>
+              <span class="lang-tag">English — same format</span>
+              <textarea id="r-title-en" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Technical fields -->
+        <div class="field-group">
+          <h4>שדות טכניים / Technical fields</h4>
+          <div class="compact-row"><label>אופי החומר / Material</label><input type="text" id="r-material" value="26T קובץ סריקה"></div>
+          <div class="compact-row"><label>צבע / Color</label><input type="text" id="r-color"></div>
+          <div class="compact-row"><label>בעל הזכויות / Rights</label><input type="text" id="r-rights" value="יד ושם (T9123081)"></div>
+          <div class="compact-row"><label>סיווג / Classification</label><input type="text" id="r-class" value="בלתי מסווג"></div>
+          <div class="compact-row"><label>נגטיב / Negative</label><input type="text" id="r-negative" value="ל"></div>
+          <div class="compact-row"><label>צלם / Photographer</label><input type="text" id="r-photographer"></div>
+          <div class="compact-row"><label>תאריך יצירה / Creation date</label><input type="text" id="r-creation-date"></div>
+          <div class="compact-row"><label>ת.ת. משוחזר / Recon. date</label><input type="text" id="r-recon-date"></div>
+          <div class="compact-row"><label>גודל / Size</label><input type="text" id="r-size" value="רגיל"></div>
+          <div class="compact-row"><label>הצגה ברשת / Internet</label><input type="text" id="r-www" value="Y"></div>
+          <div class="compact-row"><label>הצגה ברשת פנימית / Intranet</label><input type="text" id="r-intra" value="Y"></div>
+          <div class="compact-row"><label>עותקים / Copies</label><input type="text" id="r-copies" value="סרוק"></div>
+        </div>
+
+        <!-- Places -->
+        <div class="field-group">
+          <h4>מקומות קשורים / Related places (English only)</h4>
+          <input type="text" id="r-places">
+        </div>
+
+        <!-- Donor / Source -->
+        <div class="field-group">
+          <h4>מוסר ומקור / Donor & source</h4>
+          <div class="field-row">
+            <div><span class="lang-tag">מוסר (HE)</span><input type="text" id="r-donor-he"></div>
+            <div><span class="lang-tag">Donor (EN)</span><input type="text" id="r-donor-en"></div>
+          </div>
+          <div class="field-row">
+            <div><span class="lang-tag">מקור (HE)</span><input type="text" id="r-source-he"></div>
+            <div><span class="lang-tag">Source (EN)</span><input type="text" id="r-source-en"></div>
+          </div>
+        </div>
+
+        <!-- Info sub-sections -->
+        <div class="field-group">
+          <h4>מידע נוסף / Additional info — מובנה לפי הסקילז</h4>
+
+          <div><span class="lang-tag" style="margin-top:8px">תיאור ויזואלי / Visual description</span></div>
+          <div class="field-row">
+            <textarea id="r-visual-he" rows="3"></textarea>
+            <textarea id="r-visual-en" rows="3"></textarea>
+          </div>
+
+          <div><span class="lang-tag" style="margin-top:8px">קונטקסט היסטורי / Historical context</span></div>
+          <div class="field-row">
+            <textarea id="r-context-he" rows="3"></textarea>
+            <textarea id="r-context-en" rows="3"></textarea>
+          </div>
+
+          <div><span class="lang-tag" style="margin-top:8px">אישים / Persons</span></div>
+          <div class="field-row">
+            <textarea id="r-persons-he" rows="3"></textarea>
+            <textarea id="r-persons-en" rows="3"></textarea>
+          </div>
+
+          <div><span class="lang-tag" style="margin-top:8px">אובייקטים, מדים וסמלים / Objects & uniforms</span></div>
+          <div class="field-row">
+            <textarea id="r-objects-he" rows="3"></textarea>
+            <textarea id="r-objects-en" rows="3"></textarea>
+          </div>
+
+          <div><span class="lang-tag" style="margin-top:8px">כיתובים / Inscriptions (חזית, גב, חותמת — תעתיק + תרגום)</span></div>
+          <div class="field-row">
+            <textarea id="r-inscriptions-he" rows="4"></textarea>
+            <textarea id="r-inscriptions-en" rows="4"></textarea>
+          </div>
+
+          <div><span class="lang-tag" style="margin-top:8px">סטודיו צילום / Photo studio</span></div>
+          <div class="field-row">
+            <textarea id="r-studio-he" rows="2"></textarea>
+            <textarea id="r-studio-en" rows="2"></textarea>
+          </div>
+
+          <div><span class="lang-tag" style="margin-top:8px">ביוגרפיה ופרובננס / Biography & provenance</span></div>
+          <div class="field-row">
+            <textarea id="r-bio-he" rows="3"></textarea>
+            <textarea id="r-bio-en" rows="3"></textarea>
+          </div>
+
+          <div><span class="lang-tag" style="margin-top:8px">הערות / Notes</span></div>
+          <div class="field-row">
+            <textarea id="r-notes-he" rows="2"></textarea>
+            <textarea id="r-notes-en" rows="2"></textarea>
+          </div>
+        </div>
+
+        <!-- ID Table -->
+        <div class="field-group">
+          <h4>טבלת זיהוי אנשים / People identification table</h4>
+          <table class="id-table-edit">
+            <thead><tr><th style="width:50px">מס׳</th><th>שם מלא / Full name</th><th>מיקום עברית</th><th>Position English</th><th style="width:30px"></th></tr></thead>
+            <tbody id="r-id-tbody"><tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">לא הוזנו אנשים — לחץ "הוסף שורה" אם רלוונטי</td></tr></tbody>
+          </table>
+          <button type="button" class="ghost" id="r-id-add-row" style="margin-top:6px; font-size:12px; padding:5px 10px;">+ הוסף שורה</button>
+        </div>
+
+        <!-- Subjects -->
+        <div class="field-group">
+          <h4>נושאים מהתזאורוס / Subjects (HE / EN זוגות)</h4>
+          <div class="subject-chips" id="r-subjects-chips"></div>
+          <input type="text" id="r-subjects-add" placeholder="הקלד נושא בעברית (לדוגמה: גטו) ולחץ Enter" style="margin-top:6px;">
+        </div>
+
+        <!-- Studio identification result -->
+        <div id="r-studio-result"></div>
+
       </div>
-      <div id="output-status" class="status-msg"></div>
+
+      <div id="no-results" style="text-align:center; padding:30px; color:var(--muted); font-style:italic;">
+        עדיין אין תוצאות — לחץ "🔍 זהה תצלום" כדי להתחיל.
+      </div>
     </div>
   </section>
+
+  <!-- ====================================================== -->
+  <!--  Sticky download bar                                    -->
+  <!-- ====================================================== -->
+  <div class="download-bar" id="download-bar" style="display:none;">
+    <span style="font-size:13px; color:var(--muted)">לאחר עריכה, הורד את הדוח המלא:</span>
+    <div style="display:flex; gap:8px;">
+      <button id="preview-btn" class="ghost" type="button">👁 תצוגה מקדימה</button>
+      <button id="download-final-btn" class="big">⬇ הורד HTML</button>
+    </div>
+  </div>
 
   <div class="footer-hint">
-    <strong>💡 על האבטחה:</strong> כל העיבוד מתבצע <b>בדפדפן שלך בלבד</b>. תצלומים, קונטקסט, וקבצים שאתה מעלה — לא נשלחים לאף שרת. הספרייה היחידה שנטענת מהאינטרנט היא קוד-JS לחילוץ PDF/Word/Excel (מ-jsDelivr CDN), שאינו רואה את הקבצים שלך.
-    אם הצלחה לטעון את העמוד הזה במחשב העבודה — זה אומר שהאינטרנט הבסיסי פתוח, וגם הספריות יטענו.
+    <strong>💡 פרטיות:</strong> הכל קורה בדפדפן שלך. ה-API key (אם יש) נשמר רק ב-localStorage. תצלומים נשלחים ישירות ל-api.anthropic.com (HTTPS) — לא דרך שום שרת ביניים.
   </div>
 
   <footer class="bottom">
     yv-photo-catalog · web edition · 100% client-side ·
-    <a href="https://github.com/maty4f/yv-photo-catalog" target="_blank" style="color:var(--accent)">GitHub</a>
+    <a href="https://github.com/maty4f/yv-photo-catalog" target="_blank">GitHub</a>
   </footer>
 
 </div>
 
+<!-- ============================================ -->
+<!--  Modal: Add new studio                        -->
+<!-- ============================================ -->
+<div class="modal-overlay" id="studio-modal">
+  <div class="modal">
+    <div class="head"><h3>הוסף סטודיו צילום</h3><button type="button" class="gear" id="studio-modal-close">✕</button></div>
+    <div class="body">
+      <label>שם הסטודיו (כפי שכתוב בחותמת)</label>
+      <input type="text" id="sm-name" placeholder="Atelier Forbert">
+      <label>וריאנטים נוספים (מופרדים בפסיקים)</label>
+      <input type="text" id="sm-name-alt" placeholder="L. Forbert, Foto Forbert">
+      <label>עיר</label>
+      <input type="text" id="sm-city" placeholder="Warsaw">
+      <label>מדינה (אנגלית, גבולות 1939)</label>
+      <input type="text" id="sm-country" placeholder="Poland">
+      <label>פעיל מ- (שנה או "1880s")</label>
+      <input type="text" id="sm-from" placeholder="1893">
+      <label>פעיל עד-</label>
+      <input type="text" id="sm-to" placeholder="1939">
+      <label>בעלים</label>
+      <input type="text" id="sm-owner" placeholder="Leon Forbert">
+      <label>חותמות / סימנים מובחנים</label>
+      <input type="text" id="sm-stamps" placeholder="FOTO FORBERT WARSZAWA">
+      <label>הערות</label>
+      <textarea id="sm-notes" rows="3"></textarea>
+    </div>
+    <div class="foot">
+      <button type="button" class="ghost" id="sm-cancel">ביטול</button>
+      <button type="button" id="sm-save">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!--  JavaScript                                  -->
+<!-- ============================================ -->
 <script type="module">
-// =====================================================================
-//  Config & state
-// =====================================================================
-let selectedPhoto = null;
 
 // =====================================================================
-//  Photo upload zone
+//  STATE
 // =====================================================================
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('file-input');
-const preview = document.getElementById('preview');
-const filenameEl = document.getElementById('filename');
+const state = {
+  photos: { front: null, back: null },     // File objects
+  thumbnails: { front: null, back: null }, // base64 data URLs
+  studios: [],                              // loaded + user-added
+  studioById: {},                           // index
+  identification: null,                     // last API response JSON
+  provider: localStorage.getItem('yv_api_provider') || 'anthropic',
+  apiKeys: {
+    anthropic: localStorage.getItem('yv_api_key_anthropic') || localStorage.getItem('yv_api_key') || '',
+    gemini:    localStorage.getItem('yv_api_key_gemini') || '',
+  },
+};
 
-dropzone.addEventListener('click', () => fileInput.click());
-dropzone.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+// =====================================================================
+//  PHOTO HANDLING — front + back
+// =====================================================================
+document.querySelectorAll('.drop').forEach(drop => {
+  const side = drop.dataset.side;
+  const fileInput = drop.parentElement.querySelector('.file-input');
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('keypress', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+  });
+  ['dragenter', 'dragover'].forEach(evt =>
+    drop.addEventListener(evt, e => { e.preventDefault(); drop.classList.add('dragover'); }));
+  ['dragleave', 'drop'].forEach(evt =>
+    drop.addEventListener(evt, e => { e.preventDefault(); drop.classList.remove('dragover'); }));
+  drop.addEventListener('drop', e => {
+    const f = e.dataTransfer.files?.[0];
+    if (f && f.type.startsWith('image/')) loadPhoto(side, f);
+  });
 });
-['dragenter', 'dragover'].forEach(evt =>
-  dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add('dragover'); }));
-['dragleave', 'drop'].forEach(evt =>
-  dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
-
-dropzone.addEventListener('drop', e => {
-  const file = e.dataTransfer.files?.[0];
-  if (file && file.type.startsWith('image/')) handlePhoto(file);
+document.querySelectorAll('.file-input').forEach(input => {
+  input.addEventListener('change', () => {
+    const f = input.files?.[0];
+    if (f) loadPhoto(input.dataset.side, f);
+  });
 });
-fileInput.addEventListener('change', () => {
-  const f = fileInput.files?.[0];
-  if (f) handlePhoto(f);
-});
+document.querySelectorAll('.delete-btn').forEach(btn =>
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    clearPhoto(btn.dataset.side);
+  }));
 
-function handlePhoto(file) {
-  selectedPhoto = file;
-  filenameEl.textContent = `${file.name} (${(file.size/1024).toFixed(1)} KB)`;
-  filenameEl.style.display = 'block';
+function loadPhoto(side, file) {
+  state.photos[side] = file;
+  const slot = document.getElementById('slot-' + side);
+  const drop = slot.querySelector('.drop');
+  const preview = drop.querySelector('.preview-mini');
+  const fname = drop.querySelector('.filename');
+  fname.textContent = `${file.name} (${(file.size/1024).toFixed(0)} KB)`;
+  fname.style.display = 'block';
   const reader = new FileReader();
   reader.onload = e => {
     preview.src = e.target.result;
-    dropzone.classList.add('has-file');
+    state.thumbnails[side] = e.target.result;
+    drop.classList.add('has-file');
+    slot.classList.add('has-file');
+    refreshButtons();
   };
   reader.readAsDataURL(file);
-  refreshPromptButtons();
+}
+
+function clearPhoto(side) {
+  state.photos[side] = null;
+  state.thumbnails[side] = null;
+  const slot = document.getElementById('slot-' + side);
+  const drop = slot.querySelector('.drop');
+  drop.classList.remove('has-file');
+  slot.classList.remove('has-file');
+  drop.querySelector('.preview-mini').src = '';
+  drop.querySelector('.filename').style.display = 'none';
+  drop.parentElement.querySelector('.file-input').value = '';
+  refreshButtons();
 }
 
 // =====================================================================
-//  Context file extraction (PDF / DOCX / XLSX / CSV / TXT)
+//  CONTEXT: text + file extraction (PDF / DOCX / XLSX / CSV / TXT)
 // =====================================================================
+const contextEl = document.getElementById('context-input');
 const ctxBtn = document.getElementById('ctx-file-btn');
 const ctxInput = document.getElementById('ctx-file-input');
 const ctxStatus = document.getElementById('ctx-file-status');
-const contextEl = document.getElementById('context-input');
 
 ctxBtn.addEventListener('click', () => ctxInput.click());
-
+ctxInput.addEventListener('change', () => {
+  const f = ctxInput.files?.[0];
+  if (f) extractContext(f);
+});
 contextEl.addEventListener('dragover', e => { e.preventDefault(); contextEl.style.borderColor = 'var(--accent)'; });
 contextEl.addEventListener('dragleave', () => { contextEl.style.borderColor = ''; });
 contextEl.addEventListener('drop', e => {
   e.preventDefault();
   contextEl.style.borderColor = '';
   const f = e.dataTransfer.files?.[0];
-  if (f) extractContextFile(f);
+  if (f) extractContext(f);
 });
 
-ctxInput.addEventListener('change', () => {
-  const f = ctxInput.files?.[0];
-  if (f) extractContextFile(f);
-});
-
-function setCtxStatus(html, kind) {
-  ctxStatus.innerHTML = html;
-  ctxStatus.className = 'ctx-status' + (kind ? ' ' + kind : '');
-}
-
-async function extractContextFile(file) {
+async function extractContext(file) {
   const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
-  setCtxStatus('● מחלץ טקסט מ-' + escapeHtml(file.name) + '…', 'working');
+  setMini(ctxStatus, '<span class="dot"></span>מחלץ ' + esc(file.name) + '…', 'working');
   try {
-    let text = '';
-    let meta = {};
-    if (ext === '.pdf') {
-      ({ text, meta } = await extractPDF(file));
-    } else if (ext === '.docx') {
-      ({ text, meta } = await extractDOCX(file));
-    } else if (ext === '.xlsx' || ext === '.xlsm') {
-      ({ text, meta } = await extractXLSX(file));
-    } else if (ext === '.csv' || ext === '.tsv') {
-      ({ text, meta } = await extractCSV(file, ext === '.tsv' ? '\t' : ','));
-    } else if (['.txt','.md','.markdown','.rtf','.log','.json','.text'].includes(ext)) {
+    let text = '', meta = {};
+    if (ext === '.pdf') ({ text, meta } = await extractPDF(file));
+    else if (ext === '.docx') ({ text, meta } = await extractDOCX(file));
+    else if (ext === '.xlsx' || ext === '.xlsm') ({ text, meta } = await extractXLSX(file));
+    else if (ext === '.csv' || ext === '.tsv') ({ text, meta } = await extractCSV(file, ext === '.tsv' ? '\t' : ','));
+    else if (['.txt','.md','.markdown','.rtf','.log','.json'].includes(ext)) {
       text = await file.text();
       meta = { format: ext.slice(1), char_count: text.length };
-    } else {
-      throw new Error('סוג קובץ לא נתמך: ' + ext);
-    }
+    } else throw new Error('סוג לא נתמך: ' + ext);
 
-    // Append to existing textarea content
     const existing = contextEl.value.trim();
     const sep = existing ? '\n\n――――――――――――――――\n\n' : '';
     contextEl.value = existing + sep + 'מקור: ' + file.name + '\n\n' + text;
-
     const parts = [];
-    if (meta.page_count)  parts.push(meta.page_count + ' עמודים');
-    if (meta.row_count)   parts.push(meta.row_count.toLocaleString() + ' שורות');
+    if (meta.page_count) parts.push(meta.page_count + ' עמ׳');
+    if (meta.row_count) parts.push(meta.row_count.toLocaleString() + ' שורות');
     if (meta.sheet_count) parts.push(meta.sheet_count + ' גיליונות');
     parts.push(text.length.toLocaleString() + ' תווים');
-    setCtxStatus('● ✓ נטען לשדה הקונטקסט <span class="ctx-meta">' + parts.join(' · ') + '</span>', 'ok');
-    refreshPromptButtons();
-    contextEl.focus();
+    setMini(ctxStatus, '<span class="dot"></span>✓ נטען <span class="meta">' + parts.join(' · ') + '</span>', 'ok');
   } catch (err) {
-    console.error(err);
-    setCtxStatus('● שגיאה: ' + err.message, 'err');
+    setMini(ctxStatus, '<span class="dot"></span>שגיאה: ' + err.message, 'err');
   }
 }
 
-// PDF — using PDF.js
 async function extractPDF(file) {
   const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs');
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs';
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
   const pages = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const textContent = await page.getTextContent();
-    const txt = textContent.items.map(item => item.str).join(' ').trim();
+    const tc = await page.getTextContent();
+    const txt = tc.items.map(it => it.str).join(' ').trim();
     if (txt) pages.push(`━━ עמוד ${i} ━━\n${txt}`);
   }
-  let text = pages.join('\n\n');
-  if (!text) {
-    text = '[לא ניתן לחלץ טקסט — ייתכן ש-PDF מבוסס תמונות ודורש OCR]';
-  }
-  return { text, meta: { format: 'pdf', page_count: pdf.numPages } };
+  return { text: pages.join('\n\n') || '[לא ניתן לחלץ — ייתכן ש-PDF סרוק]', meta: { format: 'pdf', page_count: pdf.numPages } };
 }
-
-// DOCX — using mammoth.js
 async function extractDOCX(file) {
-  const buf = await file.arrayBuffer();
-  const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
-  const text = result.value.trim();
-  const paragraphs = text.split(/\n+/).length;
-  return { text, meta: { format: 'docx', paragraph_count: paragraphs } };
+  const r = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+  return { text: r.value.trim(), meta: { format: 'docx', paragraph_count: r.value.split(/\n+/).length } };
 }
-
-// XLSX — using SheetJS
 async function extractXLSX(file) {
-  const buf = await file.arrayBuffer();
-  const wb = window.XLSX.read(buf, { type: 'array' });
-  const sections = [];
-  let totalRows = 0;
-  for (const sheetName of wb.SheetNames) {
-    const ws = wb.Sheets[sheetName];
-    const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+  const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const sections = []; let totalRows = 0;
+  for (const name of wb.SheetNames) {
+    const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, blankrows: false });
     if (!rows.length) continue;
-    const lines = [`━━ גיליון: ${sheetName} ━━`];
-    for (const row of rows) {
-      lines.push(row.map(c => c == null ? '' : String(c)).join(' │ '));
-      totalRows++;
-    }
-    sections.push(lines.join('\n'));
+    sections.push(`━━ ${name} ━━\n` + rows.map(r => r.map(c => c==null?'':String(c)).join(' │ ')).join('\n'));
+    totalRows += rows.length;
   }
-  return {
-    text: sections.join('\n\n'),
-    meta: { format: 'xlsx', sheet_count: wb.SheetNames.length, row_count: totalRows },
-  };
+  return { text: sections.join('\n\n'), meta: { format: 'xlsx', sheet_count: wb.SheetNames.length, row_count: totalRows } };
 }
-
-// CSV / TSV — pure JS
 async function extractCSV(file, delim) {
   const text = await file.text();
   const rows = text.split(/\r?\n/).filter(r => r.trim()).map(r => r.split(delim));
-  const lines = [];
-  rows.forEach((row, i) => {
-    lines.push(row.map(c => c.trim()).join(' │ '));
-    if (i === 0) lines.push('─'.repeat(Math.min(80, row.join('').length + 3 * row.length)));
+  return { text: rows.map(r => r.map(c => c.trim()).join(' │ ')).join('\n'), meta: { format: delim==='\t'?'tsv':'csv', row_count: rows.length } };
+}
+
+// =====================================================================
+//  SETTINGS PANEL & STUDIOS PANEL
+// =====================================================================
+const settingsToggle = document.getElementById('settings-toggle');
+const settingsPanel = document.getElementById('settings-panel');
+const providerSel = document.getElementById('api-provider');
+const apiKeyAnthropic = document.getElementById('api-key-anthropic');
+const apiKeyGemini = document.getElementById('api-key-gemini');
+const modelSelAnthropic = document.getElementById('api-model-anthropic');
+const modelSelGemini = document.getElementById('api-model-gemini');
+
+apiKeyAnthropic.value = state.apiKeys.anthropic;
+apiKeyGemini.value = state.apiKeys.gemini;
+providerSel.value = state.provider;
+syncProviderRows();
+
+providerSel.addEventListener('change', () => {
+  state.provider = providerSel.value;
+  localStorage.setItem('yv_api_provider', state.provider);
+  syncProviderRows();
+  refreshButtons();
+});
+apiKeyAnthropic.addEventListener('input', () => {
+  state.apiKeys.anthropic = apiKeyAnthropic.value.trim();
+  localStorage.setItem('yv_api_key_anthropic', state.apiKeys.anthropic);
+  refreshButtons();
+});
+apiKeyGemini.addEventListener('input', () => {
+  state.apiKeys.gemini = apiKeyGemini.value.trim();
+  localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini);
+  refreshButtons();
+});
+
+function syncProviderRows() {
+  document.querySelectorAll('.provider-row').forEach(row => {
+    row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none';
   });
-  return {
-    text: lines.join('\n'),
-    meta: { format: delim === '\t' ? 'tsv' : 'csv', row_count: rows.length, col_count: rows[0]?.length || 0 },
+}
+
+function getActiveApiKey() {
+  return state.apiKeys[state.provider] || '';
+}
+function getActiveModel() {
+  return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value;
+}
+
+settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('open'));
+
+const studiosToggle = document.getElementById('studios-toggle');
+const studiosPanel = document.getElementById('studios-panel');
+studiosToggle.addEventListener('click', () => {
+  studiosPanel.classList.toggle('open');
+  if (studiosPanel.classList.contains('open')) renderStudiosList();
+});
+
+// =====================================================================
+//  STUDIOS DATABASE — load + render + add + export
+// =====================================================================
+async function loadStudios() {
+  // 1. Load seed from data/studios.json
+  let seed = { studios: [] };
+  try {
+    const res = await fetch('data/studios.json');
+    if (res.ok) seed = await res.json();
+  } catch (e) { console.warn('seed studios fetch failed', e); }
+
+  // 2. Merge with user additions from localStorage
+  const userAdds = JSON.parse(localStorage.getItem('yv_user_studios') || '[]');
+  state.studios = [...(seed.studios || []), ...userAdds];
+  state.studioById = Object.fromEntries(state.studios.map(s => [s.id, s]));
+  document.getElementById('studios-count').textContent = `· ${state.studios.length} סטודיו`;
+}
+loadStudios();
+
+function saveUserStudios() {
+  // The seed is read-only; only user additions persist
+  const seedIds = new Set();
+  fetch('data/studios.json').then(r => r.json()).then(j => {
+    (j.studios || []).forEach(s => seedIds.add(s.id));
+    const userOnly = state.studios.filter(s => !seedIds.has(s.id));
+    localStorage.setItem('yv_user_studios', JSON.stringify(userOnly));
+  });
+}
+
+const studiosList = document.getElementById('studios-list');
+const studiosSearch = document.getElementById('studios-search');
+studiosSearch.addEventListener('input', renderStudiosList);
+
+function renderStudiosList() {
+  const q = studiosSearch.value.trim().toLowerCase();
+  const filtered = !q ? state.studios : state.studios.filter(s =>
+    [s.name, ...(s.name_alt||[]), s.city, s.country, s.country_he, s.city_he, s.owner].some(v => v && v.toLowerCase().includes(q))
+  );
+  if (!filtered.length) {
+    studiosList.innerHTML = '<div class="empty">— אין תוצאות —</div>';
+    return;
+  }
+  studiosList.innerHTML = filtered.map(s => `
+    <div class="studio-item">
+      <div><b>${esc(s.name)}</b> — ${esc(s.city)}, ${esc(s.country)}</div>
+      <div class="meta">${esc([s.active_from, s.active_to].filter(Boolean).join('–'))}${s.owner ? ' · ' + esc(s.owner) : ''}${s.jewish_owned ? ' · בעלות יהודית' : ''}</div>
+    </div>
+  `).join('');
+}
+
+// Studio modal
+const studioModal = document.getElementById('studio-modal');
+document.getElementById('studio-add-btn').addEventListener('click', () => {
+  ['name','name-alt','city','country','from','to','owner','stamps','notes'].forEach(k => {
+    document.getElementById('sm-' + k).value = '';
+  });
+  studioModal.classList.add('show');
+});
+document.getElementById('studio-modal-close').addEventListener('click', () => studioModal.classList.remove('show'));
+document.getElementById('sm-cancel').addEventListener('click', () => studioModal.classList.remove('show'));
+document.getElementById('sm-save').addEventListener('click', () => {
+  const name = document.getElementById('sm-name').value.trim();
+  const city = document.getElementById('sm-city').value.trim();
+  const country = document.getElementById('sm-country').value.trim();
+  if (!name || !city) { alert('שם ועיר חובה'); return; }
+  const id = (name + '-' + city).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
+  const entry = {
+    id,
+    name,
+    name_alt: document.getElementById('sm-name-alt').value.split(',').map(s => s.trim()).filter(Boolean),
+    city, country,
+    active_from: document.getElementById('sm-from').value.trim() || null,
+    active_to: document.getElementById('sm-to').value.trim() || null,
+    owner: document.getElementById('sm-owner').value.trim() || null,
+    stamps_and_marks: [document.getElementById('sm-stamps').value.trim()].filter(Boolean),
+    notes: document.getElementById('sm-notes').value.trim() || null,
+    yv_photos_count: 0,
+    added_at: new Date().toISOString().slice(0,10),
+    added_by: 'user',
+    verified: false,
   };
-}
+  state.studios.push(entry);
+  state.studioById[entry.id] = entry;
+  saveUserStudios();
+  document.getElementById('studios-count').textContent = `· ${state.studios.length} סטודיו`;
+  renderStudiosList();
+  studioModal.classList.remove('show');
+});
+
+document.getElementById('studio-export-btn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ studios: state.studios }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `studios_export_${new Date().toISOString().slice(0,10)}.json`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
 
 // =====================================================================
-//  Step 3: Generate prompt
+//  IDENTIFY — calls Anthropic API directly OR copies prompt
 // =====================================================================
-const copyBtn = document.getElementById('copy-prompt-btn');
-const showBtn = document.getElementById('show-prompt-btn');
-const promptBox = document.getElementById('prompt-box');
-const copyStatus = document.getElementById('copy-status');
+const identifyBtn = document.getElementById('identify-btn');
+const copyPromptBtn = document.getElementById('copy-prompt-btn');
+const identifyStatus = document.getElementById('identify-status');
 
-function refreshPromptButtons() {
-  const ready = !!selectedPhoto;
-  copyBtn.disabled = !ready;
-  showBtn.disabled = !ready;
+function refreshButtons() {
+  const hasFront = !!state.photos.front;
+  const hasKey = !!getActiveApiKey();
+  identifyBtn.disabled = !(hasFront && hasKey);
+  copyPromptBtn.disabled = !hasFront;
+  identifyBtn.title = !hasFront ? 'יש להעלות חזית תצלום' :
+                      !hasKey ? 'יש להגדיר API key (כפתור "הגדרות API" למעלה)' : '';
+  identifyBtn.innerHTML = state.provider === 'gemini' ? '🔍 זהה תצלום (Gemini)' : '🔍 זהה תצלום (Claude)';
 }
 
-contextEl.addEventListener('input', refreshPromptButtons);
+contextEl.addEventListener('input', refreshButtons);
 
-function buildPrompt() {
-  const photoName = selectedPhoto ? selectedPhoto.name : '<photo>';
-  const ctx = contextEl.value.trim();
-  const ctxBlock = ctx
-    ? `\n## מידע מוקדם / Provided context\n\n${ctx}\n`
-    : `\n## מידע מוקדם / Provided context\n\n— ללא מידע מוקדם / No prior context provided —\n`;
-
-  return `אנא קטלג את התצלום המצורף (${photoName}) לפי הנהלים הרשמיים של ארכיון התצלומים, יד ושם.
-${ctxBlock}
-## כללים מחייבים — לפי קטלוג.docx ונהלי הקטלוג
-
-### א. כותר — חובה בפורמט קבוע:
-\`[City in English], [Country in English], [content], [date]\`
-
-דוגמאות:
-- \`Brussels, Belgium, חברים בתנועת הנוער בני עקיבא, 1935\`
-- \`Lyon, France, training with the Maquis, 21/11/1942\`
-- \`Tel Aviv, Israel, Michael and Rita Taylor's wedding, June 1952\`
-
-### ב. שמות מקומות — אנגלית בלבד, גבולות 01/09/1939
-- \`Brussels\` (לא \`Brussel\`), \`Linz\` ≠ \`Lienz\`, \`Minsk, Belarus\` ≠ \`Mińsk, Poland\`.
-- אם רק מדינה ידועה: \`Poland\`, \`France\`.
-
-### ג. תאריכים
-- מלא: \`DD/MM/YYYY\` (בק-סלאש, לא נקודות) — \`28/05/1945\`
-- שנה: \`1948\` | חודש+שנה: \`מאי 1941\` / \`May 1941\`
-- חודש עברי: \`Tammuz (June–July) 1937\`
-- בערך: \`סביבות 1935\` / \`c. 1935\`
-- לפני/אחרי: \`לפני המלחמה\` / \`before the war\`
-- לא ידוע: השאר ריק
-
-### ד. אנשים לא מזוהים
-- \`תצלום של איש לא מזוהה\` / \`photograph of an unidentified man\`
-- \`תצלום קבוצתי של אנשים לא מזוהים\` / \`group photograph of unidentified individuals\`
-
-### ה. סימוני ודאות (חובה לכל זיהוי)
-- ✓ ודאי / Confirmed (כיתוב, סמל מתועד, קונטקסט סמכותי+תאימות)
-- ~ סביר / Probable (תאימות חזקה אך לא מלאה)
-- ? השערה / Tentative (דמיון ויזואלי בלבד, או היסק תקופה)
-
-**לא לנחש** מקום, מחנה, גטו, יחידה, או אדם ללא ראיה ברורה. עדיף תיאור כללי (\`unidentified concentration camp\`, \`Wehrmacht officer (unit unknown)\`).
-
-## פלט נדרש
-
-הפק קובץ HTML שלם (\`<!DOCTYPE html>\` עד \`</html>\`) — דו-לשוני (עברית מימין, אנגלית משמאל), RTL מלא, עם 7 חטיבות שדות וכפתורי "העתק" לכל שדה:
-
-1. **כותר** (HE) — בפורמט קבוע
-2. **Title** (EN) — בפורמט קבוע
-3. **שדות טכניים**: אופי החומר (9T תצלום / 26T קובץ סריקה / וכו׳), צבע (שחור-לבן / צבעוני), בעל זכויות (יד ושם — T9123081), סיווג (בלתי מסווג), נגטיב (כ/ל), צלם, תאריך יצירה, ת.ת. משוחזר (מלא DD/MM/YYYY), גודל (רגיל/גדול/גדול מאוד), הצגה אינטרנט/אינטרה-נט (Y), עותקים (מקורי/משולב/סרוק)
-4. **מקומות קשורים** באנגלית בלבד
-5. **שם מוסר החומר** + **מקור** (HE+EN)
-6. **מידע נוסף** (HE+EN) — מובנה עם תת-כותרים:
-   - תיאור ויזואלי / Visual description
-   - קונטקסט היסטורי / Historical context
-   - אישים / Persons
-   - אובייקטים ופרטים / Objects & details (מדים, סמלים, חפצים, רכבים — עם ✓/~/?)
-   - כיתובים / Inscriptions (תעתיק במקור + תרגום עברית + תרגום אנגלית)
-   - ביוגרפיה ופרובננס / Biography & provenance
-   - הערות / Notes
-7. **טבלת זיהוי אנשים** (אם רלוונטי) — שלוש עמודות: מס׳, שם מלא, מיקום בתצלום (HE + EN)
-8. **נושאים** מהתזאורוס של יד ושם — chips, כמה שיותר רלוונטיים: \`תקופה שלפני המלחמה / Prewar period\`, \`נשים / Women\`, \`גטו / Ghettos\`, \`ילדים / Children\`, \`מדים / Uniforms\`, \`טלאי צהוב / Yellow badge\`, וכו׳
-
-### עיצוב ה-HTML
-- \`<html lang="he" dir="rtl">\`
-- כל בלוק עברי: \`direction: rtl; text-align: right; unicode-bidi: isolate;\`
-- בלוקים דו-לשוניים: עברית בעמודה הימנית, אנגלית בשמאל
-- כפתור "העתק" לצד כל שדה (העתקה ל-clipboard ב-JS)
-- עיצוב נקי, ארכיוני, עם רקע ניטרלי וגבולות עדינים
-
-הצג את כל קובץ ה-HTML בבלוק קוד אחד מסודר. אני אעתיק אותו ואשמור אותו כקובץ מקומי.`;
-}
-
-copyBtn.addEventListener('click', async () => {
-  const prompt = buildPrompt();
+// Manual: copy prompt to clipboard
+copyPromptBtn.addEventListener('click', async () => {
+  const prompt = buildManualPrompt();
   try {
     await navigator.clipboard.writeText(prompt);
-    showCopyStatus('✓ הפרומפט הועתק! עכשיו פתח את Claude.ai, צרף את התצלום, ותדביק (Cmd+V).', 'ok');
+    showStatus('✓ הפרומפט הועתק. עכשיו פתח את Claude.ai, צרף את התצלום (חזית + גב), ותדביק (Cmd+V).', 'ok');
   } catch (e) {
-    showCopyStatus('שגיאה בהעתקה: ' + e.message + ' — הצג את הפרומפט והעתק ידנית', 'err');
+    showStatus('שגיאה: ' + e.message, 'err');
   }
 });
 
-showBtn.addEventListener('click', () => {
-  const prompt = buildPrompt();
-  promptBox.textContent = prompt;
-  promptBox.style.display = promptBox.style.display === 'none' ? 'block' : 'none';
+// Auto: call API (Anthropic or Gemini)
+identifyBtn.addEventListener('click', async () => {
+  identifyBtn.disabled = true;
+  const providerLabel = state.provider === 'gemini' ? 'Gemini' : 'Claude';
+  identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel + '… (10–60 שניות)';
+  showStatus(`שולח ל-${providerLabel} API…`, 'info');
+
+  try {
+    const result = state.provider === 'gemini' ? await callGemini() : await callAnthropic();
+    state.identification = result;
+    fillResultsForm(result);
+    document.getElementById('results').classList.add('show');
+    document.getElementById('no-results').style.display = 'none';
+    document.getElementById('download-bar').style.display = 'flex';
+    showStatus('✓ הזיהוי הושלם. סקור את השדות וערוך לפי הצורך, ואז הורד את ה-HTML למטה.', 'ok');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    console.error(err);
+    showStatus('שגיאה: ' + err.message, 'err');
+  } finally {
+    identifyBtn.disabled = false;
+    refreshButtons();
+  }
 });
 
-function showCopyStatus(msg, kind) {
-  copyStatus.textContent = msg;
-  copyStatus.className = 'status-msg show ' + kind;
-  setTimeout(() => {
-    if (kind === 'ok') copyStatus.className = 'status-msg';
-  }, 5000);
+// File → base64 helper (shared)
+const fileToBase64 = file => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result.split(',')[1]);
+  r.onerror = reject;
+  r.readAsDataURL(file);
+});
+
+function getRulesAndContext() {
+  const ctxText = contextEl.value.trim();
+  const studiosBrief = state.studios.map(s => `${s.id} | ${s.name} (${s.city}, ${s.country})`).join('\n');
+  return buildSystemRules(ctxText, studiosBrief);
+}
+
+function parseJsonResponse(text, providerLabel) {
+  let s = text.trim();
+  const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) s = fenceMatch[1].trim();
+  // Sometimes models wrap in extra text — try to find first {...} block
+  if (!s.startsWith('{')) {
+    const m = s.match(/\{[\s\S]*\}/);
+    if (m) s = m[0];
+  }
+  try { return JSON.parse(s); }
+  catch (e) {
+    console.error(`${providerLabel} raw response:`, text);
+    throw new Error(`${providerLabel} החזיר טקסט שאינו JSON תקין. בדוק את הקונסול (פתח DevTools).`);
+  }
+}
+
+// ─── Anthropic (Claude) ───────────────────────────────────────────────
+async function callAnthropic() {
+  const frontB64 = await fileToBase64(state.photos.front);
+  const backB64 = state.photos.back ? await fileToBase64(state.photos.back) : null;
+  const frontMime = state.photos.front.type || 'image/jpeg';
+  const backMime = state.photos.back?.type || 'image/jpeg';
+
+  const content = [
+    { type: 'text', text: 'אני שולח לך תצלום ארכיוני של יד ושם לקטלוג מלא לפי הנהלים הרשמיים. התשובה שלך חייבת להיות JSON תקין בלבד (ללא טקסט נוסף).' },
+    { type: 'text', text: '## חזית התצלום' },
+    { type: 'image', source: { type: 'base64', media_type: frontMime, data: frontB64 } }
+  ];
+  if (backB64) {
+    content.push({ type: 'text', text: '## גב התצלום (verso)' });
+    content.push({ type: 'image', source: { type: 'base64', media_type: backMime, data: backB64 } });
+  }
+  content.push({ type: 'text', text: getRulesAndContext() });
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': getActiveApiKey(),
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: getActiveModel(),
+      max_tokens: 8000,
+      messages: [{ role: 'user', content }],
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  const text = (data.content?.[0]?.text || '').trim();
+  return parseJsonResponse(text, 'Claude');
+}
+
+// ─── Google Gemini ────────────────────────────────────────────────────
+async function callGemini() {
+  const frontB64 = await fileToBase64(state.photos.front);
+  const backB64 = state.photos.back ? await fileToBase64(state.photos.back) : null;
+  const frontMime = state.photos.front.type || 'image/jpeg';
+  const backMime = state.photos.back?.type || 'image/jpeg';
+
+  const parts = [
+    { text: 'אני שולח לך תצלום ארכיוני של יד ושם לקטלוג מלא לפי הנהלים הרשמיים. התשובה שלך חייבת להיות JSON תקין בלבד (ללא טקסט נוסף).' },
+    { text: '## חזית התצלום' },
+    { inline_data: { mime_type: frontMime, data: frontB64 } }
+  ];
+  if (backB64) {
+    parts.push({ text: '## גב התצלום (verso)' });
+    parts.push({ inline_data: { mime_type: backMime, data: backB64 } });
+  }
+  parts.push({ text: getRulesAndContext() });
+
+  const model = getActiveModel();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': getActiveApiKey(),
+    },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 8000,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Gemini HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  if (!text) throw new Error('Gemini החזיר תגובה ריקה. בדוק את DevTools.');
+  return parseJsonResponse(text, 'Gemini');
+}
+
+function buildSystemRules(ctxText, studiosBrief) {
+  return `אתה מקטלג בכיר במדור התצלומים של יד ושם. בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים**:
+
+## כותר (חובה בפורמט קבוע)
+\`[City in English], [Country in English], [content], [date]\`
+דוגמה: \`Brussels, Belgium, חברים בתנועת הנוער בני עקיבא, 1935\`
+
+## שמות מקומות — אנגלית בלבד, גבולות 01/09/1939
+- Brussels, Belgium (לא Brussel Belgien)
+- Linz ≠ Lienz
+- אם רק מדינה ידועה: \`Poland\`, \`France\`
+
+## תאריכים
+- מלא: \`DD/MM/YYYY\` (בק-סלאש בלבד)
+- חלקי: \`1948\` / \`מאי 1941\` / \`Tammuz (June–July) 1937\`
+- בערך: \`סביבות 1935\` / \`c. 1935\`
+- לפני/אחרי המלחמה: \`לפני המלחמה\` / \`before the war\`
+- ת.ת. משוחזר תמיד מלא: ידוע 1942 → \`01/01/1942\`
+
+## אנשים לא מזוהים
+\`תצלום של איש לא מזוהה\` / \`photograph of an unidentified man\`
+
+## סימוני ודאות (לכל זיהוי)
+- ✓ Confirmed | ~ Probable | ? Tentative
+- **לא לנחש** מקום/מחנה/גטו/יחידה/אדם ללא ראיה ברורה.
+
+## סקילז לניתוח (השתמש בכולם)
+1. **תיאור ויזואלי**: קומפוזיציה, זווית, סגנון, איכות
+2. **קונטקסט היסטורי**: תקופה, מקום, אירוע, מצב פוליטי
+3. **זיהוי אנשים**: עם רמת ודאות, תיאור ויזואלי לבלתי-מזוהים
+4. **אובייקטים, מדים וסמלים**: Wehrmacht/SS/Schupo/Jüdischer Ordnungsdienst, חפצים יהודיים, רכבים, נשק, מדים יחידתיים
+5. **כיתובים**: תעתיק במקור (גרמנית/יידיש/פולנית/רוסית/צ'כית/הונגרית/יוונית) + תרגום עברית + אנגלית. **חשוב במיוחד: כיתובים בגב התצלום** — חותמת סטודיו, תאריך, שמות, הקדשות.
+6. **סטודיו**: זהה חותמת/לוגו של סטודיו צילום (חזית או גב). מאגר סטודיו ידועים:
+${studiosBrief || '(מאגר ריק — אם זיהית סטודיו, סמן "should_add: true")'}
+
+## נושאים (תזאורוס יד ושם — דוגמאות נפוצות)
+תקופה שלפני המלחמה, תקופה שאחרי המלחמה, נשים, פנים, גטו, ילדים, מדים, בניינים, מחנות, מראה רחוב, נוער, אות קלון, בתי כנסת, בתי קברות, מצבות קבורה, עבודות כפייה, השחרור, מחנות עקורים, גופות, בתי מלאכה, חתונות, תנועות נוער
+
+## מידע מוקדם שנמסר
+${ctxText || '(אין מידע מוקדם)'}
+
+## פלט נדרש — JSON בלבד (ללא טקסט נוסף, ללא code fences):
+
+\`\`\`json
+{
+  "title_he": "כותר עברית בפורמט הנדרש",
+  "title_en": "Title English in required format",
+  "places_en": "comma-separated places in English",
+  "material_type": "26T קובץ סריקה",
+  "color": "שחור-לבן",
+  "rights_owner": "יד ושם (T9123081)",
+  "classification": "בלתי מסווג",
+  "negative": "ל",
+  "photographer": "",
+  "creation_date": "",
+  "recon_date": "01/01/1942",
+  "photo_size": "רגיל",
+  "show_internet": "Y",
+  "show_intranet": "Y",
+  "copies": "סרוק",
+  "donor_he": "פלוני אלמוני",
+  "donor_en": "Anonymous donor",
+  "source_he": "",
+  "source_en": "",
+  "info": {
+    "visual_he": "תיאור ויזואלי",
+    "visual_en": "Visual description",
+    "context_he": "קונטקסט היסטורי",
+    "context_en": "Historical context",
+    "persons_he": "אישים — תיאור פרוזה",
+    "persons_en": "Persons — prose",
+    "objects_he": "אובייקטים, מדים, סמלים",
+    "objects_en": "Objects, uniforms, insignia",
+    "inscriptions_he": "כיתובים — חזית + גב + תרגום",
+    "inscriptions_en": "Inscriptions — front + back + translation",
+    "studio_he": "סטודיו — תיאור החותמת והזיהוי, או 'אין זיהוי'",
+    "studio_en": "Studio — stamp description and identification, or 'none'",
+    "biography_he": "ביוגרפיה ופרובננס",
+    "biography_en": "Biography & provenance",
+    "notes_he": "הערות וסייגים",
+    "notes_en": "Notes & caveats"
+  },
+  "id_table": [
+    { "num": 1, "name": "Full Name (זוהה ע\\"י המוסר)", "position_he": "שורה תחתונה, ראשון משמאל", "position_en": "Front row, first from the left" }
+  ],
+  "subjects_he": ["תקופה שלפני המלחמה", "ילדים"],
+  "subjects_en": ["Prewar period", "Children"],
+  "studio_id": {
+    "found": true,
+    "studio_db_id": "foto-forbert-warsaw",
+    "should_add": false,
+    "new_entry": null,
+    "notes": "זוהה לפי חותמת בגב, תואם למאגר"
+  }
+}
+\`\`\`
+
+הקפד:
+- "id_table" — מערך ריק [] אם אין אנשים מזוהים
+- "studio_id.found" = true רק אם חותמת/לוגו נראים בבירור
+- "studio_id.studio_db_id" — אם הסטודיו ידוע במאגר; אחרת null
+- "studio_id.new_entry" — אם זוהה סטודיו חדש שלא במאגר, יש למלא ערך מלא (id, name, city, country, owner, stamps_and_marks, notes); אחרת null
+- אם בגב התצלום יש כיתוב — חובה לתעתק ולתרגם בשדה "inscriptions"
+
+החזר JSON בלבד.`;
+}
+
+function buildManualPrompt() {
+  const ctx = contextEl.value.trim();
+  return `אנא קטלג את התצלום המצורף לפי הנהלים הרשמיים של ארכיון התצלומים, יד ושם.
+
+${ctx ? '## מידע מוקדם\n\n' + ctx + '\n\n' : ''}## דרישות
+
+הפק קובץ HTML שלם דו-לשוני (RTL), לפי תבנית photo_yv של ספיר עם 7 חטיבות, כל שדה עם כפתור "העתק":
+- כותר עברית + Title English בפורמט [City, Country, content, date]
+- שדות טכניים (אופי החומר, צבע, נגטיב, צלם, תאריכים, גודל, הצגה ברשת, עותקים)
+- מקומות באנגלית (גבולות 1939)
+- מוסר ומקור (HE/EN)
+- מידע נוסף עם תת-כותרות: תיאור ויזואלי, קונטקסט היסטורי, אישים, אובייקטים+מדים, כיתובים (כולל גב התצלום!), סטודיו צילום, ביוגרפיה+פרובננס, הערות
+- טבלת זיהוי אנשים (מס׳/שם/מיקום HE+EN)
+- נושאים מתזאורוס
+
+חוקים:
+- כל זיהוי עם ✓/~/?
+- לא לנחש; אם אין ודאות — תיאור כללי
+- כיתוב בגב — תעתיק במקור + תרגום HE+EN
+- חותמת סטודיו אם קיימת — שם, עיר, תקופה`;
 }
 
 // =====================================================================
-//  Step 4: Receive Claude's HTML and download
+//  RESULTS FORM — fill from JSON
 // =====================================================================
-const outputEl = document.getElementById('output-input');
-const downloadBtn = document.getElementById('download-btn');
-const openBtn = document.getElementById('open-btn');
-const clearOutputBtn = document.getElementById('clear-output-btn');
-const outputStatus = document.getElementById('output-status');
+function fillResultsForm(d) {
+  setVal('r-title-he', d.title_he);
+  setVal('r-title-en', d.title_en);
+  setVal('r-places', d.places_en);
+  setVal('r-material', d.material_type || '26T קובץ סריקה');
+  setVal('r-color', d.color);
+  setVal('r-rights', d.rights_owner || 'יד ושם (T9123081)');
+  setVal('r-class', d.classification || 'בלתי מסווג');
+  setVal('r-negative', d.negative || 'ל');
+  setVal('r-photographer', d.photographer);
+  setVal('r-creation-date', d.creation_date);
+  setVal('r-recon-date', d.recon_date);
+  setVal('r-size', d.photo_size || 'רגיל');
+  setVal('r-www', d.show_internet || 'Y');
+  setVal('r-intra', d.show_intranet || 'Y');
+  setVal('r-copies', d.copies || 'סרוק');
+  setVal('r-donor-he', d.donor_he);
+  setVal('r-donor-en', d.donor_en);
+  setVal('r-source-he', d.source_he);
+  setVal('r-source-en', d.source_en);
 
-function refreshOutputButtons() {
-  const has = outputEl.value.trim().length > 100;
-  downloadBtn.disabled = !has;
-  openBtn.disabled = !has;
+  const i = d.info || {};
+  setVal('r-visual-he', i.visual_he);
+  setVal('r-visual-en', i.visual_en);
+  setVal('r-context-he', i.context_he);
+  setVal('r-context-en', i.context_en);
+  setVal('r-persons-he', i.persons_he);
+  setVal('r-persons-en', i.persons_en);
+  setVal('r-objects-he', i.objects_he);
+  setVal('r-objects-en', i.objects_en);
+  setVal('r-inscriptions-he', i.inscriptions_he);
+  setVal('r-inscriptions-en', i.inscriptions_en);
+  setVal('r-studio-he', i.studio_he);
+  setVal('r-studio-en', i.studio_en);
+  setVal('r-bio-he', i.biography_he);
+  setVal('r-bio-en', i.biography_en);
+  setVal('r-notes-he', i.notes_he);
+  setVal('r-notes-en', i.notes_en);
+
+  // ID table
+  const tbody = document.getElementById('r-id-tbody');
+  tbody.innerHTML = '';
+  (d.id_table || []).forEach((row, i) => addIdRow(row));
+  if (!(d.id_table || []).length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">לא הוזנו אנשים — לחץ "הוסף שורה" אם רלוונטי</td></tr>';
+  }
+
+  // Subjects
+  const subjects = (d.subjects_he || []).map((he, i) => ({ he, en: (d.subjects_en || [])[i] || '' }));
+  renderSubjects(subjects);
+
+  // Studio result panel
+  renderStudioResult(d.studio_id);
 }
 
-outputEl.addEventListener('input', refreshOutputButtons);
+function setVal(id, v) { document.getElementById(id).value = v || ''; }
+
+function addIdRow(row) {
+  const tbody = document.getElementById('r-id-tbody');
+  if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" value="${esc(row?.num || tbody.children.length + 1)}"></td>
+    <td><input type="text" value="${esc(row?.name || '')}"></td>
+    <td><input type="text" value="${esc(row?.position_he || '')}"></td>
+    <td><input type="text" value="${esc(row?.position_en || '')}"></td>
+    <td><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove()">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+document.getElementById('r-id-add-row').addEventListener('click', () => addIdRow());
+
+// Subjects (chips)
+let activeSubjects = [];
+function renderSubjects(items) {
+  activeSubjects = items;
+  const chips = document.getElementById('r-subjects-chips');
+  if (!items.length) {
+    chips.innerHTML = '<span style="color:var(--muted); font-size:12px; font-style:italic">— אין נושאים. הוסף בשדה למטה —</span>';
+    return;
+  }
+  chips.innerHTML = items.map((s, i) =>
+    `<span class="chip">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}<span class="x" data-idx="${i}">✕</span></span>`
+  ).join('');
+  chips.querySelectorAll('.x').forEach(x =>
+    x.addEventListener('click', () => {
+      activeSubjects.splice(parseInt(x.dataset.idx), 1);
+      renderSubjects(activeSubjects);
+    }));
+}
+const subjectsAdd = document.getElementById('r-subjects-add');
+subjectsAdd.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const v = subjectsAdd.value.trim();
+    if (v) {
+      activeSubjects.push({ he: v, en: '' });
+      renderSubjects(activeSubjects);
+      subjectsAdd.value = '';
+    }
+  }
+});
+
+// Studio result
+function renderStudioResult(s) {
+  const box = document.getElementById('r-studio-result');
+  if (!s || !s.found) {
+    box.innerHTML = '';
+    return;
+  }
+  if (s.studio_db_id && state.studioById[s.studio_db_id]) {
+    const dbS = state.studioById[s.studio_db_id];
+    box.innerHTML = `<div class="studio-result">
+      <span class="known">✓ סטודיו זוהה במאגר:</span> <b>${esc(dbS.name)}</b>, ${esc(dbS.city)}, ${esc(dbS.country)}
+      ${dbS.active_from ? ` · פעיל ${esc([dbS.active_from, dbS.active_to].filter(Boolean).join('–'))}` : ''}
+      ${s.notes ? `<div style="margin-top:6px; font-size:12px;">${esc(s.notes)}</div>` : ''}
+    </div>`;
+  } else if (s.should_add && s.new_entry) {
+    const ne = s.new_entry;
+    box.innerHTML = `<div class="studio-result">
+      <span class="new">➕ סטודיו חדש זוהה (לא במאגר):</span> <b>${esc(ne.name)}</b>, ${esc(ne.city || '?')}, ${esc(ne.country || '?')}
+      ${s.notes ? `<div style="margin-top:6px; font-size:12px;">${esc(s.notes)}</div>` : ''}
+      <button type="button" id="add-new-studio-btn">➕ הוסף למאגר הסטודיו</button>
+    </div>`;
+    document.getElementById('add-new-studio-btn').addEventListener('click', () => {
+      ne.id = ne.id || ((ne.name + '-' + (ne.city || 'unknown')).toLowerCase().replace(/[^a-z0-9-]+/g, '-'));
+      ne.added_at = new Date().toISOString().slice(0, 10);
+      ne.added_by = 'identification';
+      ne.verified = false;
+      ne.yv_photos_count = 1;
+      state.studios.push(ne);
+      state.studioById[ne.id] = ne;
+      saveUserStudios();
+      document.getElementById('studios-count').textContent = `· ${state.studios.length} סטודיו`;
+      box.innerHTML = `<div class="studio-result"><span class="known">✓ נוסף למאגר: ${esc(ne.name)}</span></div>`;
+    });
+  } else {
+    box.innerHTML = `<div class="studio-result"><span style="color:var(--muted)">סטודיו זוהה אך ללא פרטים מספיקים: ${esc(s.notes || '')}</span></div>`;
+  }
+}
+
+// =====================================================================
+//  DOWNLOAD — generate full HTML from form fields
+// =====================================================================
+const downloadBtn = document.getElementById('download-final-btn');
+const previewBtn = document.getElementById('preview-btn');
+
+function buildFinalHTML() {
+  const get = id => document.getElementById(id).value;
+
+  // Get embedded image (front only, for preview)
+  const frontImg = state.thumbnails.front
+    ? `<img src="${state.thumbnails.front}" alt="" style="max-width:100%; max-height:480px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.08);">`
+    : '<div style="color:#5a5a5a; font-style:italic; padding:24px">תצלום אינו מוטמע / Not embedded</div>';
+
+  // ID table HTML
+  const idRows = [...document.querySelectorAll('#r-id-tbody tr')].map(tr => {
+    const cells = [...tr.querySelectorAll('input')];
+    if (cells.length < 4) return null;
+    return { num: cells[0].value, name: cells[1].value, he: cells[2].value, en: cells[3].value };
+  }).filter(r => r && r.name);
+  const idTableHE = idRows.length
+    ? `<table style="width:100%; border-collapse:collapse; font-size:13.5px;">
+         <thead><tr><th style="border:1px solid #c8c2b3; padding:5px 8px; background:#ede5d3;">מס׳</th><th style="border:1px solid #c8c2b3; padding:5px 8px; background:#ede5d3;">שם מלא</th><th style="border:1px solid #c8c2b3; padding:5px 8px; background:#ede5d3;">מיקום</th></tr></thead>
+         <tbody>${idRows.map(r => `<tr><td style="border:1px solid #c8c2b3; padding:5px 8px;">${esc(r.num)}</td><td style="border:1px solid #c8c2b3; padding:5px 8px;">${esc(r.name)}</td><td style="border:1px solid #c8c2b3; padding:5px 8px;">${esc(r.he)}</td></tr>`).join('')}</tbody>
+       </table>`
+    : '<div style="color:#5a5a5a; font-style:italic; padding:10px">— ללא טבלת זיהוי —</div>';
+  const idTableEN = idRows.length
+    ? `<table style="width:100%; border-collapse:collapse; font-size:13.5px;">
+         <thead><tr><th style="border:1px solid #c8c2b3; padding:5px 8px; background:#ede5d3;">#</th><th style="border:1px solid #c8c2b3; padding:5px 8px; background:#ede5d3;">Full name</th><th style="border:1px solid #c8c2b3; padding:5px 8px; background:#ede5d3;">Position</th></tr></thead>
+         <tbody>${idRows.map(r => `<tr><td style="border:1px solid #c8c2b3; padding:5px 8px;">${esc(r.num)}</td><td style="border:1px solid #c8c2b3; padding:5px 8px;">${esc(r.name)}</td><td style="border:1px solid #c8c2b3; padding:5px 8px;">${esc(r.en)}</td></tr>`).join('')}</tbody>
+       </table>`
+    : '<div style="color:#5a5a5a; font-style:italic; padding:10px">— No ID table —</div>';
+
+  // Subjects chips
+  const chipsHTML = activeSubjects.map(s =>
+    `<span style="display:inline-block; background:#ede2c2; color:#5e4c1e; padding:3px 10px; margin:2px; border-radius:12px; font-size:12.5px; border:1px solid #d8c79a;">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}</span>`
+  ).join('');
+
+  // Compose info_he / info_en bodies
+  const infoHE = composeInfoBody(get('r-visual-he'), get('r-context-he'), get('r-persons-he'), get('r-objects-he'), get('r-inscriptions-he'), get('r-studio-he'), get('r-bio-he'), get('r-notes-he'), 'he');
+  const infoEN = composeInfoBody(get('r-visual-en'), get('r-context-en'), get('r-persons-en'), get('r-objects-en'), get('r-inscriptions-en'), get('r-studio-en'), get('r-bio-en'), get('r-notes-en'), 'en');
+
+  return YV_TEMPLATE
+    .replace(/\{\{TITLE_HE\}\}/g, esc(get('r-title-he')))
+    .replace(/\{\{TITLE_EN\}\}/g, esc(get('r-title-en')))
+    .replace(/\{\{PLACES_EN\}\}/g, esc(get('r-places')))
+    .replace(/\{\{MATERIAL_TYPE\}\}/g, esc(get('r-material')))
+    .replace(/\{\{COLOR\}\}/g, esc(get('r-color')))
+    .replace(/\{\{RIGHTS_OWNER\}\}/g, esc(get('r-rights')))
+    .replace(/\{\{CLASSIFICATION\}\}/g, esc(get('r-class')))
+    .replace(/\{\{NEGATIVE\}\}/g, esc(get('r-negative')))
+    .replace(/\{\{PHOTOGRAPHER\}\}/g, esc(get('r-photographer')))
+    .replace(/\{\{CREATION_DATE\}\}/g, esc(get('r-creation-date')))
+    .replace(/\{\{RECON_DATE\}\}/g, esc(get('r-recon-date')))
+    .replace(/\{\{PHOTO_SIZE\}\}/g, esc(get('r-size')))
+    .replace(/\{\{SHOW_INTERNET\}\}/g, esc(get('r-www')))
+    .replace(/\{\{SHOW_INTRANET\}\}/g, esc(get('r-intra')))
+    .replace(/\{\{COPIES\}\}/g, esc(get('r-copies')))
+    .replace(/\{\{DONOR_HE\}\}/g, esc(get('r-donor-he')))
+    .replace(/\{\{DONOR_EN\}\}/g, esc(get('r-donor-en')))
+    .replace(/\{\{SOURCE_HE\}\}/g, esc(get('r-source-he')))
+    .replace(/\{\{SOURCE_EN\}\}/g, esc(get('r-source-en')))
+    .replace(/\{\{INFO_HE\}\}/g, infoHE)
+    .replace(/\{\{INFO_EN\}\}/g, infoEN)
+    .replace(/\{\{ID_TABLE_HE\}\}/g, idTableHE)
+    .replace(/\{\{ID_TABLE_EN\}\}/g, idTableEN)
+    .replace(/\{\{SUBJECTS_HE_CHIPS\}\}/g, chipsHTML)
+    .replace(/\{\{SUBJECTS_EN_CHIPS\}\}/g, chipsHTML)
+    .replace(/\{\{IMAGE_PREVIEW\}\}/g, frontImg)
+    .replace(/\{\{ANALYSIS_DATE\}\}/g, new Date().toLocaleDateString('he-IL'))
+    .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.photos.front?.name || ''))
+    .replace(/\{\{INTAKE_NUMBER\}\}/g, '—')
+    .replace(/\{\{PHOTO_ID\}\}/g, '—')
+    .replace(/\{\{ADMIN_NOTES\}\}/g, '—');
+}
+
+function composeInfoBody(visual, context, persons, objects, inscriptions, studio, bio, notes, lang) {
+  const titles = lang === 'he'
+    ? { v:'תיאור ויזואלי', c:'קונטקסט היסטורי', p:'אישים', o:'אובייקטים, מדים וסמלים', i:'כיתובים', s:'סטודיו צילום', b:'ביוגרפיה ופרובננס', n:'הערות' }
+    : { v:'Visual description', c:'Historical context', p:'Persons', o:'Objects & uniforms', i:'Inscriptions', s:'Photo studio', b:'Biography & provenance', n:'Notes' };
+  const sections = [
+    [titles.v, visual], [titles.c, context], [titles.p, persons],
+    [titles.o, objects], [titles.i, inscriptions], [titles.s, studio],
+    [titles.b, bio], [titles.n, notes]
+  ];
+  return sections.filter(([_, v]) => v && v.trim()).map(([t, v]) =>
+    `<strong style="display:block; margin-top:10px; color:#6b5b3e">${t}:</strong>\n${esc(v).replace(/\n/g, '<br>')}`
+  ).join('\n\n');
+}
 
 downloadBtn.addEventListener('click', () => {
-  const html = outputEl.value.trim();
-  if (!html) return;
+  const html = buildFinalHTML();
+  const stem = (state.photos.front?.name || 'photo').replace(/\.[^.]+$/, '').replace(/[^\w֐-׿.-]/g, '_');
   const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
-  const photoStem = (selectedPhoto?.name || 'photo').replace(/\.[^.]+$/, '').replace(/[^\w֐-׿.-]/g, '_');
-  const filename = `photo_${photoStem}_${today}.html`;
-
+  const fname = `photo_${stem}_${today}.html`;
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  outputStatus.textContent = `✓ הורד: ${filename}`;
-  outputStatus.className = 'status-msg show ok';
+  showStatus(`✓ הורד: ${fname}`, 'ok');
 });
 
-openBtn.addEventListener('click', () => {
-  const html = outputEl.value.trim();
-  if (!html) return;
+previewBtn.addEventListener('click', () => {
+  const html = buildFinalHTML();
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 });
 
-clearOutputBtn.addEventListener('click', () => {
-  outputEl.value = '';
-  refreshOutputButtons();
-  outputStatus.className = 'status-msg';
-});
+// =====================================================================
+//  TEMPLATE — embedded photo_yv structure
+// =====================================================================
+const YV_TEMPLATE = `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="UTF-8"><title>{{TITLE_HE}}</title>
+<style>
+  body{margin:0;font-family:"SBL Hebrew","Frank Ruhl Libre","David",serif;background:#f7f5f0;color:#1a1a1a;line-height:1.55;direction:rtl;text-align:right}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 28px 80px}
+  header{border-bottom:2px solid #6b5b3e;padding-bottom:14px;margin-bottom:22px}
+  header h1{font-size:22px;margin:0;color:#6b5b3e}
+  header .sub{font-size:13px;color:#5a5a5a;margin-top:4px}
+  .meta-strip{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#5a5a5a;margin-bottom:14px;direction:rtl;text-align:right;unicode-bidi:isolate}
+  .meta-strip span b{color:#1a1a1a;font-weight:600}
+  .preview{background:#fff;border:1px solid #d8d4cc;border-radius:6px;padding:12px;margin-bottom:22px;text-align:center}
+  .field{background:#fff;border:1px solid #d8d4cc;border-radius:8px;margin-bottom:14px;overflow:hidden}
+  .field>.head{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:linear-gradient(180deg,#fbfaf6,#f3efe6);border-bottom:1px solid #d8d4cc;direction:rtl;text-align:right;unicode-bidi:isolate}
+  .field>.head .label{font-weight:700;color:#6b5b3e;font-size:14.5px}
+  .field>.head .label small{color:#5a5a5a;font-weight:400;margin-inline-start:8px;font-size:12px}
+  .copy-btn{background:#6b5b3e;color:#fff;border:none;border-radius:4px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+  .copy-btn:hover{background:#8a7758}
+  .copy-btn.copied{background:#2e7d32}
+  .copy-btn.alt{background:#4a5568}
+  .copy-btn.alt:hover{background:#2d3748}
+  .bilingual{display:grid;grid-template-columns:1fr 1fr}
+  .bilingual .lang{padding:12px 16px;font-size:14.5px;white-space:pre-wrap;word-wrap:break-word}
+  .bilingual .he{background:#fbf9f3;direction:rtl;text-align:right;border-inline-end:1px solid #d8d4cc;unicode-bidi:isolate}
+  .bilingual .en{background:#f3f6fb;direction:ltr;text-align:left;font-family:Georgia,serif}
+  .single{padding:12px 16px;font-size:15px}
+  .single.he{direction:rtl;text-align:right;background:#fbf9f3;unicode-bidi:isolate}
+  .single.en{direction:ltr;text-align:left;background:#f3f6fb;font-family:Georgia,serif}
+  .compact{padding:10px 14px;background:#f0f4ee;font-size:14px;direction:rtl;text-align:right;unicode-bidi:isolate}
+  .section-bar{background:#6b5b3e;color:#fff;padding:8px 14px;border-radius:4px;font-weight:700;font-size:14px;margin:24px 0 12px;direction:rtl;text-align:right;unicode-bidi:isolate}
+  .section-bar small{color:#efe7d2;font-weight:400;font-size:12px;margin-inline-start:6px}
+  .toast{position:fixed;bottom:24px;inset-inline-start:50%;transform:translateX(-50%);background:#2e7d32;color:#fff;padding:8px 16px;border-radius:4px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:1000}
+  .toast.show{opacity:1}
+  @media (max-width:760px){.bilingual{grid-template-columns:1fr}}
+  @media print{.copy-btn,.toast{display:none}body{background:#fff}.field{break-inside:avoid}}
+</style></head><body>
+<div class="wrap">
+<header><h1>קטלוג תצלום — מערכת ספיר / Yad Vashem Sapir Photo Catalog</h1><div class="sub">{{ANALYSIS_DATE}}</div></header>
+<div class="meta-strip"><span><b>קובץ / File:</b> {{SOURCE_FILENAME}}</span><span><b>מס׳ נכנסות:</b> {{INTAKE_NUMBER}}</span><span><b>סימול תצלום:</b> {{PHOTO_ID}}</span></div>
+<div class="preview">{{IMAGE_PREVIEW}}</div>
 
-// Helpers
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])
-  );
+<div class="section-bar">כותר <small>Title</small></div>
+<div class="field"><div class="head"><span class="label">כותר <small>Hebrew title</small></span><button class="copy-btn" data-copy="title-he">העתק</button></div><div id="title-he" class="single he">{{TITLE_HE}}</div></div>
+<div class="field"><div class="head"><span class="label">Title <small>כותר באנגלית</small></span><button class="copy-btn" data-copy="title-en">Copy</button></div><div id="title-en" class="single en">{{TITLE_EN}}</div></div>
+
+<div class="section-bar">שדות טכניים <small>Technical fields</small></div>
+<div class="field"><div class="head"><span class="label">אופי החומר <small>Material</small></span><button class="copy-btn" data-copy="material">העתק</button></div><div id="material" class="compact">{{MATERIAL_TYPE}}</div></div>
+<div class="field"><div class="head"><span class="label">צבע <small>Color</small></span><button class="copy-btn" data-copy="color">העתק</button></div><div id="color" class="compact">{{COLOR}}</div></div>
+<div class="field"><div class="head"><span class="label">בעל הזכויות <small>Rights</small></span><button class="copy-btn" data-copy="rights">העתק</button></div><div id="rights" class="compact">{{RIGHTS_OWNER}}</div></div>
+<div class="field"><div class="head"><span class="label">סיווג 1 <small>Class</small></span><button class="copy-btn" data-copy="class">העתק</button></div><div id="class" class="compact">{{CLASSIFICATION}}</div></div>
+<div class="field"><div class="head"><span class="label">נגטיב <small>Negative</small></span><button class="copy-btn" data-copy="negative">העתק</button></div><div id="negative" class="compact">{{NEGATIVE}}</div></div>
+<div class="field"><div class="head"><span class="label">צלם <small>Photographer</small></span><button class="copy-btn" data-copy="photographer">העתק</button></div><div id="photographer" class="compact">{{PHOTOGRAPHER}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך יצירה <small>Creation date</small></span><button class="copy-btn" data-copy="creation">העתק</button></div><div id="creation" class="compact">{{CREATION_DATE}}</div></div>
+<div class="field"><div class="head"><span class="label">ת.ת. משוחזר <small>Recon. date</small></span><button class="copy-btn" data-copy="recon">העתק</button></div><div id="recon" class="compact">{{RECON_DATE}}</div></div>
+<div class="field"><div class="head"><span class="label">גודל <small>Size</small></span><button class="copy-btn" data-copy="size">העתק</button></div><div id="size" class="compact">{{PHOTO_SIZE}}</div></div>
+<div class="field"><div class="head"><span class="label">הצגה אינטרנט / אינטרה-נט <small>Display</small></span><button class="copy-btn" data-copy="show">העתק</button></div><div id="show" class="compact">{{SHOW_INTERNET}} / {{SHOW_INTRANET}}</div></div>
+<div class="field"><div class="head"><span class="label">עותקים <small>Copies</small></span><button class="copy-btn" data-copy="copies">העתק</button></div><div id="copies" class="compact">{{COPIES}}</div></div>
+
+<div class="section-bar">מקומות <small>Places (English)</small></div>
+<div class="field"><div class="head"><span class="label">מקומות קשורים <small>Related places</small></span><button class="copy-btn" data-copy="places">Copy</button></div><div id="places" class="single en">{{PLACES_EN}}</div></div>
+
+<div class="section-bar">מוסר ומקור <small>Donor & source</small></div>
+<div class="field"><div class="head"><span class="label">שם מוסר החומר</span><button class="copy-btn" data-copy="donor-he">HE</button><button class="copy-btn alt" data-copy="donor-en">EN</button></div><div class="bilingual"><div id="donor-he" class="lang he">{{DONOR_HE}}</div><div id="donor-en" class="lang en">{{DONOR_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">מקור</span><button class="copy-btn" data-copy="source-he">HE</button><button class="copy-btn alt" data-copy="source-en">EN</button></div><div class="bilingual"><div id="source-he" class="lang he">{{SOURCE_HE}}</div><div id="source-en" class="lang en">{{SOURCE_EN}}</div></div></div>
+
+<div class="section-bar">מידע נוסף <small>Additional info</small></div>
+<div class="field"><div class="head"><span class="label">מידע נוסף</span><button class="copy-btn" data-copy="info-he">העתק עברית</button><button class="copy-btn alt" data-copy="info-en">Copy English</button></div><div class="bilingual"><div id="info-he" class="lang he">{{INFO_HE}}</div><div id="info-en" class="lang en">{{INFO_EN}}</div></div></div>
+
+<div class="section-bar">טבלת זיהוי אנשים <small>People ID table</small></div>
+<div class="field"><div class="head"><span class="label">זיהוי</span></div><div class="bilingual"><div class="lang he">{{ID_TABLE_HE}}</div><div class="lang en">{{ID_TABLE_EN}}</div></div></div>
+
+<div class="section-bar">נושאים <small>Subjects</small></div>
+<div class="field"><div class="head"><span class="label">נושאים מתזאורוס</span></div><div style="padding:10px 14px; background:#fbf9f3; direction:rtl; text-align:right; unicode-bidi:isolate;">{{SUBJECTS_HE_CHIPS}}</div></div>
+
+<div class="section-bar">הערות אדמיניסטרציה <small>Admin notes</small></div>
+<div class="field"><div class="head"><span class="label">הערות</span></div><div class="single he">{{ADMIN_NOTES}}</div></div>
+
+</div>
+<div id="toast" class="toast">הועתק / Copied</div>
+<script>
+document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
+  b.addEventListener('click',async()=>{
+    const el=document.getElementById(b.getAttribute('data-copy'));
+    if(!el)return;
+    try{await navigator.clipboard.writeText(el.innerText.trim());const o=b.textContent;b.classList.add('copied');b.textContent='✓';document.getElementById('toast').classList.add('show');setTimeout(()=>{b.classList.remove('copied');b.textContent=o;document.getElementById('toast').classList.remove('show');},1100);}catch(e){const t=document.createElement('textarea');t.value=el.innerText.trim();document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
+  });
+});
+</script>
+</body></html>`;
+
+// =====================================================================
+//  HELPERS
+// =====================================================================
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+function setMini(el, html, kind) {
+  el.innerHTML = html;
+  el.className = 'mini-status' + (kind ? ' ' + kind : '');
+}
+function showStatus(msg, kind) {
+  identifyStatus.textContent = msg;
+  identifyStatus.className = 'status-msg show ' + (kind || '');
+}
+
+// init
+refreshButtons();
 </script>
 </body>
 </html>
