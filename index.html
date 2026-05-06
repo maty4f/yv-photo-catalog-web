@@ -1542,7 +1542,7 @@ document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
     try{await navigator.clipboard.writeText(el.innerText.trim());const o=b.textContent;b.classList.add('copied');b.textContent='✓';document.getElementById('toast').classList.add('show');setTimeout(()=>{b.classList.remove('copied');b.textContent=o;document.getElementById('toast').classList.remove('show');},1100);}catch(e){const t=document.createElement('textarea');t.value=el.innerText.trim();document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
   });
 });
-</script>
+<\/script>
 </body></html>`;
 
 // =====================================================================
