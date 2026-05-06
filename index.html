@@ -770,6 +770,8 @@ const state = {
   collection: null,    // {id, intake_form, profile, photos[]} when active
   saved_collections: JSON.parse(localStorage.getItem('yv_collections') || '{}'),
   current_photo_index: 1, // running counter within current collection
+  collection_form_file: null,    // original File obj of the intake form (PDF/DOCX) — sent directly to AI
+  collection_form_is_pdf: false,
 };
 
 // =====================================================================
@@ -2008,17 +2010,50 @@ colFormInput.addEventListener('change', () => {
 });
 async function extractIntakeForm(file) {
   const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
-  setMini(colFormStatus, '<span class="dot"></span>מחלץ ' + esc(file.name) + '…', 'working');
+  const sizeMB = file.size / (1024 * 1024);
+
+  // Always remember the original file — for PDFs we send it directly to AI
+  // (handles both searchable PDFs and scanned/image-only PDFs via OCR)
+  state.collection_form_file = file;
+  state.collection_form_is_pdf = (ext === '.pdf');
+
+  setMini(colFormStatus, '<span class="dot"></span>טוען ' + esc(file.name) + '…', 'working');
+
+  // Size warning
+  if (sizeMB > 25) {
+    setMini(colFormStatus, '<span class="dot"></span>⚠ קובץ גדול: ' + sizeMB.toFixed(1) + ' MB. ייתכן וייכשל בשליחה ל-API (מגבלה ~32MB).', 'warn');
+  }
+
   try {
     let text = '', meta = {};
-    if (ext === '.pdf') ({ text, meta } = await extractPDF(file));
-    else if (ext === '.docx') ({ text, meta } = await extractDOCX(file));
-    else if (['.txt','.md','.markdown','.rtf','.log'].includes(ext)) {
+    if (ext === '.pdf') {
+      // For PDFs: try text extraction for the user's preview, but the AI will get the PDF directly
+      try {
+        ({ text, meta } = await extractPDF(file));
+      } catch (e) {
+        text = '';
+        meta = { format: 'pdf', extraction_failed: true };
+      }
+      const looksScanned = !text.trim() || text.includes('[לא ניתן לחלץ טקסט');
+      if (looksScanned) {
+        colFormText.value = '⚠ ה-PDF נראה סרוק (אין שכבת טקסט).\n\nכשתלחץ "🔍 זהה את האוסף" — ה-AI יקבל את ה-PDF ישירות ויבצע OCR אוטומטי\n(כולל עברית, אנגלית, גרמנית, יידיש, פולנית, רוסית — לפי הצורך).\n\nגודל קובץ: ' + sizeMB.toFixed(1) + ' MB · ' + (meta.page_count || '?') + ' עמודים\n\n— אפשר גם להדביק כאן ידנית טקסט אם יש לך —';
+        setMini(colFormStatus, '<span class="dot"></span>📷 PDF סרוק — ה-AI יבצע OCR ישירות <span class="meta">' + (meta.page_count || '?') + ' עמ׳ · ' + sizeMB.toFixed(1) + ' MB</span>', 'info');
+      } else {
+        colFormText.value = text;
+        setMini(colFormStatus, '<span class="dot"></span>✓ PDF עם טקסט: ' + meta.page_count + ' עמ׳ · ' + text.length.toLocaleString() + ' תווים <span class="meta">PDF יישלח ישירות ל-AI לאישור</span>', 'ok');
+      }
+    } else if (ext === '.docx') {
+      ({ text, meta } = await extractDOCX(file));
+      colFormText.value = text;
+      setMini(colFormStatus, '<span class="dot"></span>✓ נטען DOCX: ' + meta.paragraph_count + ' פסקאות · ' + text.length.toLocaleString() + ' תווים', 'ok');
+    } else if (['.txt','.md','.markdown','.rtf','.log'].includes(ext)) {
       text = await file.text();
       meta = { format: ext.slice(1) };
-    } else throw new Error('סוג לא נתמך: ' + ext);
-    colFormText.value = text;
-    setMini(colFormStatus, '<span class="dot"></span>✓ נטען <span class="meta">' + (meta.page_count ? meta.page_count + ' עמ׳' : meta.format) + ' · ' + text.length.toLocaleString() + ' תווים</span>', 'ok');
+      colFormText.value = text;
+      setMini(colFormStatus, '<span class="dot"></span>✓ נטען טקסט: ' + text.length.toLocaleString() + ' תווים', 'ok');
+    } else {
+      throw new Error('סוג לא נתמך: ' + ext);
+    }
     refreshCollectionButtons();
   } catch (err) {
     setMini(colFormStatus, '<span class="dot"></span>שגיאה: ' + err.message, 'err');
@@ -2028,7 +2063,7 @@ async function extractIntakeForm(file) {
 // Refresh enabled state of buttons in step 0
 function refreshCollectionButtons() {
   const hasId = colIdEl.value.trim().length > 0;
-  const hasForm = colFormText.value.trim().length > 0;
+  const hasForm = colFormText.value.trim().length > 0 || !!state.collection_form_file;
   const hasKey = !!getActiveApiKey();
   identifyCollectionBtn.disabled = !(hasId && hasForm && hasKey);
   identifyCollectionBtn.title = !hasId ? 'יש להזין מספר אוסף' :
@@ -2047,15 +2082,18 @@ manualCollectionBtn.addEventListener('click', () => {
 // Identify collection via AI
 identifyCollectionBtn.addEventListener('click', async () => {
   const formText = colFormText.value.trim();
-  if (!formText) return;
+  const hasPdfFile = state.collection_form_is_pdf && !!state.collection_form_file;
+  if (!formText && !hasPdfFile) return;
+
   identifyCollectionBtn.disabled = true;
-  identifyCollectionBtn.innerHTML = '<span class="spinner"></span>מנתח אוסף…';
+  const mode = hasPdfFile ? 'מבצע OCR + ניתוח אוסף' : 'מנתח אוסף';
+  identifyCollectionBtn.innerHTML = '<span class="spinner"></span>' + mode + '…';
   setMini(colFormStatus, '', '');
-  showCollectionStatus('שולח את הטופס ל-' + (state.provider === 'gemini' ? 'Gemini' : 'Claude') + '…', 'info');
+  showCollectionStatus(`שולח ${hasPdfFile ? 'את ה-PDF (כולל OCR)' : 'את הטופס'} ל-${state.provider === 'gemini' ? 'Gemini' : 'Claude'}…`, 'info');
   try {
     const profile = state.provider === 'gemini'
-      ? await callGeminiForCollection(formText)
-      : await callAnthropicForCollection(formText);
+      ? await callGeminiForCollection({ text: formText, pdfFile: hasPdfFile ? state.collection_form_file : null })
+      : await callAnthropicForCollection({ text: formText, pdfFile: hasPdfFile ? state.collection_form_file : null });
     fillCollectionProfile(profile);
     collectionProfileBox.style.display = 'block';
     showCollectionStatus('✓ פרופיל אוסף נוצר. סקור וערוך לפי הצורך, ואז שמור.', 'ok');
@@ -2075,8 +2113,11 @@ function showCollectionStatus(msg, kind) {
   collectionStatus.className = 'status-msg show ' + (kind || '');
 }
 
-function buildCollectionPrompt(formText) {
-  return `אתה מקטלג בכיר במדור התצלומים של יד ושם. הטקסט הבא הוא טופס איסוף / רישום ספיר של אוסף תצלומים. הוצא ממנו פרופיל מובנה של האוסף שישמש כהקשר לקטלוג כל תצלום באוסף.
+function buildCollectionPrompt(formText, hasPdf) {
+  const sourceDesc = hasPdf
+    ? 'ה-PDF המצורף הוא טופס איסוף / רישום ספיר של אוסף תצלומים. הוא עשוי להיות סרוק — בצע OCR לכל העמודים אם נדרש (תמיכה בעברית, אנגלית, גרמנית, יידיש, פולנית, רוסית, צ\'כית, הונגרית). אם יש כתב יד — תעתק במידת היכולת.'
+    : 'הטקסט הבא הוא טופס איסוף / רישום ספיר של אוסף תצלומים.';
+  return `אתה מקטלג בכיר במדור התצלומים של יד ושם. ${sourceDesc} הוצא ממנו פרופיל מובנה של האוסף שישמש כהקשר לקטלוג כל תצלום באוסף.
 
 החזר JSON תקין בלבד (ללא טקסט נוסף, ללא code fences) לפי הסכימה:
 
@@ -2109,16 +2150,25 @@ function buildCollectionPrompt(formText) {
 - אם פרט לא מופיע בטופס — השאר את השדה ריק (string ריק) או null
 - אם אין רשימת תצלומים בטופס — photo_list: []
 - אם אין אישים מזוהים — key_people: []
+${hasPdf ? '- אם זה PDF סרוק — בצע OCR בעמודים, תעתק כיתובי כותרות ושדות, וזהה גם טקסט בכתב יד אם אפשר' : ''}
 
-הטופס:
-\`\`\`
-${formText}
-\`\`\`
+${hasPdf ? '(הטופס מצורף כ-PDF — קרא אותו ישירות.)' : 'הטופס:\n```\n' + formText + '\n```'}
 
 החזר JSON בלבד.`;
 }
 
-async function callAnthropicForCollection(formText) {
+async function callAnthropicForCollection({ text, pdfFile }) {
+  const content = [];
+  const hasPdf = !!pdfFile;
+  if (hasPdf) {
+    const pdfB64 = await fileToBase64(pdfFile);
+    content.push({
+      type: 'document',
+      source: { type: 'base64', media_type: 'application/pdf', data: pdfB64 }
+    });
+  }
+  content.push({ type: 'text', text: buildCollectionPrompt(text, hasPdf) });
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -2130,7 +2180,7 @@ async function callAnthropicForCollection(formText) {
     body: JSON.stringify({
       model: getActiveModel(),
       max_tokens: 4000,
-      messages: [{ role: 'user', content: [{ type: 'text', text: buildCollectionPrompt(formText) }] }],
+      messages: [{ role: 'user', content }],
     }),
   });
   if (!res.ok) {
@@ -2141,13 +2191,21 @@ async function callAnthropicForCollection(formText) {
   return parseJsonResponse(data.content?.[0]?.text || '', 'Claude');
 }
 
-async function callGeminiForCollection(formText) {
+async function callGeminiForCollection({ text, pdfFile }) {
+  const parts = [];
+  const hasPdf = !!pdfFile;
+  if (hasPdf) {
+    const pdfB64 = await fileToBase64(pdfFile);
+    parts.push({ inline_data: { mime_type: 'application/pdf', data: pdfB64 } });
+  }
+  parts.push({ text: buildCollectionPrompt(text, hasPdf) });
+
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: buildCollectionPrompt(formText) }] }],
+      contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 4000, responseMimeType: 'application/json' },
     }),
   });
@@ -2156,8 +2214,8 @@ async function callGeminiForCollection(formText) {
     throw new Error(err.error?.message || `HTTP ${res.status}`);
   }
   const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
-  return parseJsonResponse(text, 'Gemini');
+  const text2 = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+  return parseJsonResponse(text2, 'Gemini');
 }
 
 function fillCollectionProfile(p) {
