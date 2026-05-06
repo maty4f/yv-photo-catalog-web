@@ -146,6 +146,37 @@
   .timeline-editor .tc-cell input { text-align: center; direction: ltr; font-family: "SF Mono", monospace; }
   .timeline-editor .del-cell { width: 30px; text-align: center; }
 
+  /* Split button on film drop */
+  .split-btn-wrap { display: none; margin-top: 10px; text-align: center; }
+  .film-drop.has-file ~ .split-btn-wrap { display: block; }
+  .split-btn { background: #d97706; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; }
+  .split-btn:hover { background: #b45309; }
+
+  /* Split modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: white; border-radius: 8px; max-width: 620px; width: 100%; max-height: 90vh; overflow: auto; }
+  .modal .head { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+  .modal .head h3 { margin: 0; font-size: 15px; color: var(--accent); }
+  .modal .body { padding: 16px; }
+  .modal .body label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 3px; color: var(--ink); }
+  .modal .foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; }
+
+  .split-progress { padding: 24px; text-align: center; }
+  .split-progress .big-spinner { border: 3px solid rgba(0,0,0,.1); border-top-color: var(--accent); width: 36px; height: 36px; border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 14px; }
+  .split-progress .status-text { font-size: 14px; margin-bottom: 12px; color: var(--ink); }
+  .progress-bar-bg { background: #e0e0e0; border-radius: 4px; overflow: hidden; height: 8px; margin: 8px 0; }
+  .progress-bar-fill { background: var(--accent); height: 100%; width: 0%; transition: width .3s; }
+
+  .parts-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
+  .parts-list .part-item { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .parts-list .part-item:last-child { border-bottom: none; }
+  .parts-list .part-item .part-info b { color: var(--accent); }
+  .parts-list .part-item .part-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: "SF Mono", monospace; direction: ltr; unicode-bidi: isolate; }
+  .parts-list .part-item button { padding: 4px 10px; font-size: 11px; }
+  .parts-list .part-item .use-btn { background: #1565c0; }
+  .parts-list .part-item .use-btn:hover { background: #0d47a1; }
+
   .download-bar { position: sticky; bottom: 0; background: var(--card); border-top: 2px solid var(--accent); padding: 10px 16px; margin: 0 -20px -20px; display: flex; gap: 10px; align-items: center; justify-content: space-between; z-index: 50; }
   @media (max-width: 720px) { .download-bar { padding: 8px 10px; flex-wrap: wrap; } }
 
@@ -222,8 +253,65 @@
       </div>
       <input type="file" id="film-file-input" accept="video/*" hidden>
       <div id="film-meta" class="film-meta-grid" style="display:none"></div>
+      <div class="split-btn-wrap">
+        <button type="button" class="split-btn" id="open-split-btn">✂️ חתוך לחלקים <small style="opacity:.85; font-weight:400">— לסרטים גדולים, או לקטלוג קטעים נפרדים</small></button>
+      </div>
     </div>
   </section>
+
+  <!-- ============================================ -->
+  <!--  Split Film Modal                             -->
+  <!-- ============================================ -->
+  <div class="modal-overlay" id="split-modal">
+    <div class="modal">
+      <div class="head">
+        <h3>✂️ חתוך סרט לחלקים</h3>
+        <button type="button" class="gear" id="split-modal-close">✕</button>
+      </div>
+      <div class="body">
+
+        <div id="split-setup">
+          <p style="margin-top:0; font-size:13px; color:var(--muted)">
+            הסרט הנוכחי: <b id="split-info">—</b>
+          </p>
+
+          <div style="display:grid; grid-template-columns:180px 1fr; gap:10px; align-items:center; margin-bottom:8px">
+            <label>אורך כל חלק (דקות)</label>
+            <input type="number" id="split-minutes" value="5" min="1" max="120" step="1">
+          </div>
+          <div style="display:grid; grid-template-columns:180px 1fr; gap:10px; align-items:center; margin-bottom:8px">
+            <label>מספר חלקים צפוי</label>
+            <input type="text" id="split-part-count" readonly style="background:#f0f0f0">
+          </div>
+
+          <div style="margin-top:14px; padding:10px 14px; background:#fff3cd; border:1px solid #ffe69c; border-radius:6px; font-size:12px; color:#856404">
+            💡 <b>פעם ראשונה:</b> ייטען ffmpeg.wasm (~25MB) מ-CDN. לאחר מכן זה מהיר.
+            <br>💡 <b>חיתוך ללא איבוד איכות</b> (<code style="font-family:monospace; direction:ltr">-c copy</code>) — רק remuxing, ללא re-encode.
+            <br>💡 <b>הזמן הצפוי:</b> ~30 שניות לטעינה ראשונית + ~5–15 שניות לכל חלק.
+          </div>
+        </div>
+
+        <div id="split-progress-box" class="split-progress" style="display:none">
+          <div class="big-spinner"></div>
+          <div id="split-status-text" class="status-text">טוען…</div>
+          <div class="progress-bar-bg"><div id="split-bar-fill" class="progress-bar-fill"></div></div>
+        </div>
+
+        <div id="split-result-box" style="display:none">
+          <h4 style="color:var(--good); margin:0 0 10px">✓ נחתך ל-<span id="split-result-count"></span> חלקים</h4>
+          <p style="font-size:12.5px; color:var(--muted); margin:0 0 8px">
+            לחץ "📥 הורד" כדי לשמור חלק לדיסק, או "📋 קטלג חלק זה" כדי לטעון אותו ישירות לקטלוג.
+          </p>
+          <div id="split-parts-list" class="parts-list"></div>
+        </div>
+
+      </div>
+      <div class="foot">
+        <button type="button" class="ghost" id="split-cancel">סגור</button>
+        <button type="button" id="split-go">✂️ חתוך</button>
+      </div>
+    </div>
+  </div>
 
   <section class="step">
     <div class="head"><span class="num">2</span><span class="title">מידע מוקדם <small>Provided context — דף מוסר, קישורים לארכיון מוצא</small></span></div>
@@ -1060,6 +1148,184 @@ document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function setMini(el, html, kind) { el.innerHTML = html; el.className = 'mini-status' + (kind ? ' ' + kind : ''); }
+
+// =====================================================================
+//  SPLIT FILM (ffmpeg.wasm — lazy-loaded from CDN)
+// =====================================================================
+const splitModal = document.getElementById('split-modal');
+const openSplitBtn = document.getElementById('open-split-btn');
+const splitMinutes = document.getElementById('split-minutes');
+const splitPartCount = document.getElementById('split-part-count');
+const splitInfo = document.getElementById('split-info');
+const splitGoBtn = document.getElementById('split-go');
+const splitCancelBtn = document.getElementById('split-cancel');
+const splitCloseBtn = document.getElementById('split-modal-close');
+const splitSetup = document.getElementById('split-setup');
+const splitProgressBox = document.getElementById('split-progress-box');
+const splitStatusText = document.getElementById('split-status-text');
+const splitBarFill = document.getElementById('split-bar-fill');
+const splitResultBox = document.getElementById('split-result-box');
+const splitResultCount = document.getElementById('split-result-count');
+const splitPartsList = document.getElementById('split-parts-list');
+
+let ffmpegLib = null;     // {ffmpeg, fetchFile}
+let splitParts = [];      // produced parts after split
+
+openSplitBtn.addEventListener('click', () => {
+  if (!state.film) { alert('יש לטעון סרט תחילה'); return; }
+  // Reset to setup view
+  splitSetup.style.display = 'block';
+  splitProgressBox.style.display = 'none';
+  splitResultBox.style.display = 'none';
+  splitGoBtn.style.display = 'inline-block';
+  splitGoBtn.disabled = false;
+  splitGoBtn.textContent = '✂️ חתוך';
+  const m = state.filmMeta;
+  splitInfo.textContent = `${state.film.name} · ${formatDuration(m.duration)} · ${(m.size_bytes/1024/1024).toFixed(1)} MB`;
+  updateExpectedPartCount();
+  splitModal.classList.add('show');
+});
+splitMinutes.addEventListener('input', updateExpectedPartCount);
+function updateExpectedPartCount() {
+  if (!state.filmMeta) { splitPartCount.value = '?'; return; }
+  const segSec = (parseInt(splitMinutes.value) || 5) * 60;
+  const n = Math.ceil(state.filmMeta.duration / segSec);
+  splitPartCount.value = `${n} חלקים (כל חלק ~${splitMinutes.value} דקות)`;
+}
+splitCancelBtn.addEventListener('click', () => splitModal.classList.remove('show'));
+splitCloseBtn.addEventListener('click', () => splitModal.classList.remove('show'));
+
+splitGoBtn.addEventListener('click', async () => {
+  splitSetup.style.display = 'none';
+  splitProgressBox.style.display = 'block';
+  splitResultBox.style.display = 'none';
+  splitGoBtn.style.display = 'none';
+  splitParts = [];
+  try {
+    const segSec = (parseInt(splitMinutes.value) || 5) * 60;
+    splitParts = await splitFilm(state.film, segSec, msg => {
+      splitStatusText.textContent = msg;
+    }, pct => {
+      splitBarFill.style.width = pct + '%';
+    });
+    showSplitResult();
+  } catch (err) {
+    console.error(err);
+    splitStatusText.textContent = '❌ שגיאה: ' + err.message;
+    splitStatusText.style.color = 'var(--soft)';
+    splitGoBtn.style.display = 'inline-block';
+    splitGoBtn.textContent = 'נסה שוב';
+    splitGoBtn.disabled = false;
+  }
+});
+
+function showSplitResult() {
+  splitProgressBox.style.display = 'none';
+  splitResultBox.style.display = 'block';
+  splitResultCount.textContent = splitParts.length;
+  splitPartsList.innerHTML = splitParts.map((p, i) => `
+    <div class="part-item">
+      <div class="part-info">
+        <b>חלק ${i+1}/${splitParts.length}</b> — ${p.name}
+        <div class="part-meta">${formatDuration(p.startSec)} → ${formatDuration(p.endSec)} · ${(p.size/1024/1024).toFixed(1)} MB</div>
+      </div>
+      <button type="button" data-action="download" data-idx="${i}">📥 הורד</button>
+      <button type="button" class="use-btn" data-action="use" data-idx="${i}">📋 קטלג חלק זה</button>
+    </div>
+  `).join('');
+  splitPartsList.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      const idx = parseInt(btn.dataset.idx);
+      const part = splitParts[idx];
+      if (action === 'download') {
+        downloadBlob(part.blob, part.name);
+      } else if (action === 'use') {
+        usePartForCatalog(part);
+      }
+    });
+  });
+}
+
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function usePartForCatalog(part) {
+  // Convert blob to File and load it as the active film
+  const file = new File([part.blob], part.name, { type: part.blob.type || 'video/mp4' });
+  splitModal.classList.remove('show');
+  loadFilm(file);
+  // Smooth-scroll up to the film step
+  document.getElementById('film-drop').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function ensureFFmpegLoaded(onStatus) {
+  if (ffmpegLib) return ffmpegLib;
+  onStatus('טוען ffmpeg.wasm מ-CDN (~25MB) — בפעם הראשונה זה לוקח 10–60 שניות…');
+  const ffmpegModule = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
+  const utilModule = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
+  const ffmpeg = new ffmpegModule.FFmpeg();
+  ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
+  const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+  await ffmpeg.load({
+    coreURL: await utilModule.toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await utilModule.toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+  });
+  ffmpegLib = { ffmpeg, fetchFile: utilModule.fetchFile };
+  return ffmpegLib;
+}
+
+async function splitFilm(file, segmentSeconds, onStatus, onProgress) {
+  const { ffmpeg, fetchFile } = await ensureFFmpegLoaded(onStatus);
+
+  const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
+  const inputName = `input.${ext}`;
+  onStatus(`כותב את הסרט (${(file.size/1024/1024).toFixed(1)} MB) למערכת קבצים וירטואלית של ffmpeg…`);
+  await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+  const duration = state.filmMeta.duration;
+  const partCount = Math.ceil(duration / segmentSeconds);
+  const parts = [];
+
+  for (let i = 0; i < partCount; i++) {
+    const start = i * segmentSeconds;
+    const partLength = Math.min(segmentSeconds, duration - start);
+    const partName = `${file.name.replace(/\.[^.]+$/, '')}_part${String(i+1).padStart(3, '0')}.${ext}`;
+    onStatus(`חותך חלק ${i+1} מתוך ${partCount} (${formatDuration(start)} → ${formatDuration(start + partLength)})…`);
+
+    try {
+      await ffmpeg.exec([
+        '-ss', start.toString(),
+        '-i', inputName,
+        '-t', partLength.toString(),
+        '-c', 'copy',
+        '-avoid_negative_ts', 'make_zero',
+        '-y',
+        partName,
+      ]);
+      const data = await ffmpeg.readFile(partName);
+      const blob = new Blob([data.buffer], { type: file.type || 'video/mp4' });
+      parts.push({
+        name: partName, blob,
+        startSec: start, endSec: start + partLength,
+        size: blob.size,
+      });
+      try { await ffmpeg.deleteFile(partName); } catch {}
+    } catch (e) {
+      console.error('Split error for part', i+1, e);
+      throw new Error(`חיתוך חלק ${i+1} נכשל: ${e.message || e}`);
+    }
+    onProgress(((i + 1) / partCount) * 100);
+  }
+
+  try { await ffmpeg.deleteFile(inputName); } catch {}
+  return parts;
+}
 
 refreshButtons();
 </script>
