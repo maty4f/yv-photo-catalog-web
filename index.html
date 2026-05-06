@@ -89,12 +89,25 @@
     width: 100%; padding: 9px 12px; font-family: inherit; font-size: 14px;
     border: 1px solid var(--line); border-radius: 6px; background: var(--tint);
     color: var(--ink); resize: vertical;
-    direction: rtl; text-align: right; line-height: 1.55;
+    direction: rtl; text-align: right; line-height: 1.55; unicode-bidi: isolate;
   }
-  input[type="text"], input[type="password"] { direction: ltr; text-align: left; unicode-bidi: isolate; font-family: "SF Mono", Menlo, monospace; }
+  /* Password inputs (API keys) — LTR + monospace */
+  input[type="password"] { direction: ltr; text-align: left; font-family: "SF Mono", Menlo, monospace; unicode-bidi: isolate; }
+  /* English-content fields — LTR */
+  input.ltr, textarea.ltr,
+  #r-title-en, #r-places, #r-creation-date, #r-recon-date,
+  #r-donor-en, #r-source-en, #r-photographer,
+  #r-visual-en, #r-context-en, #r-persons-en, #r-objects-en,
+  #r-inscriptions-en, #r-studio-en, #r-bio-en, #r-notes-en,
+  #col-donor-en, #col-source-en, #col-bio-en, #col-story-en, #col-prov-en,
+  #col-id, #col-period, #col-region, #col-photo-count {
+    direction: ltr !important; text-align: left !important;
+    font-family: Georgia, "Times New Roman", serif;
+  }
   textarea { min-height: 110px; }
   textarea.large { min-height: 200px; }
   textarea.code { direction: ltr; text-align: left; font-family: "SF Mono", monospace; font-size: 12px; }
+  #col-form-text { direction: ltr; text-align: left; font-family: "SF Mono", monospace; font-size: 12.5px; min-height: 100px; }
   textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); background: white; }
 
   .label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -212,25 +225,28 @@
   .compact-row.with-copy { grid-template-columns: 180px 1fr auto; }
 
   /* Per-field copy buttons */
-  .input-wrap { position: relative; }
-  .input-wrap input, .input-wrap textarea { padding-inline-end: 42px !important; }
+  .input-wrap { position: relative; display: block; }
+  .input-wrap input, .input-wrap textarea { padding-inline-end: 56px !important; }
   .copy-corner {
     position: absolute;
-    top: 4px;
-    inset-inline-end: 4px;
+    top: 5px;
+    inset-inline-end: 5px;
     background: white;
     border: 1px solid var(--line);
     color: var(--muted);
     border-radius: 3px;
-    padding: 2px 8px;
+    padding: 2px 7px;
     font-size: 11px;
     cursor: pointer;
-    z-index: 2;
+    z-index: 3;
     font-family: inherit;
     font-weight: 600;
-    opacity: 0.65;
+    opacity: 0.85;
     transition: all .15s;
     line-height: 1.3;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    min-width: 30px;
+    text-align: center;
   }
   .copy-corner:hover { opacity: 1; background: var(--accent); color: white; border-color: var(--accent); }
   .copy-corner.copied { background: var(--good) !important; color: white !important; border-color: var(--good) !important; opacity: 1 !important; }
@@ -995,6 +1011,21 @@ async function loadStudios() {
 }
 loadStudios();
 
+// Load thesaurus (top-300 most-used + full)
+state.thesaurus_top = [];   // top 300 condensed: [{he, en}]
+state.thesaurus_full = [];  // full 1070 entries
+async function loadThesaurus() {
+  try {
+    const r1 = await fetch('data/thesaurus_top300.json');
+    if (r1.ok) state.thesaurus_top = await r1.json();
+  } catch (e) { console.warn('thesaurus_top fetch failed', e); }
+  try {
+    const r2 = await fetch('data/thesaurus_photo_archive.json');
+    if (r2.ok) state.thesaurus_full = await r2.json();
+  } catch (e) { console.warn('thesaurus_full fetch failed', e); }
+}
+loadThesaurus();
+
 function saveUserStudios() {
   // The seed is read-only; only user additions persist
   const seedIds = new Set();
@@ -1289,6 +1320,9 @@ ${peopleStr || '  (אין)'}
 `;
   }
 
+  // Build thesaurus brief — top-300 most-used terms in the photo archive
+  const thesaurusBrief = (state.thesaurus_top || []).map(t => `${t.he} | ${t.en}`).join('\n');
+
   return collectionContext + `אתה מקטלג בכיר במדור התצלומים של יד ושם. בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים**:
 
 ## כותר (חובה בפורמט קבוע)
@@ -1299,6 +1333,15 @@ ${peopleStr || '  (אין)'}
 - Brussels, Belgium (לא Brussel Belgien)
 - Linz ≠ Lienz
 - אם רק מדינה ידועה: \`Poland\`, \`France\`
+
+## ארץ ישראל — חוק חובה לכותר האנגלית
+- **לפני 14/05/1948**: \`Mandatory Palestine\` (ולא Israel, ולא Palestine, ולא British Mandate)
+  דוגמה: \`Tel Aviv, Mandatory Palestine, photograph of family at the beach, 1937\`
+  דוגמה: \`Jerusalem, Mandatory Palestine, Jewish wedding, 1942\`
+- **אחרי 14/05/1948**: \`Israel\`
+  דוגמה: \`Tel Aviv, Israel, immigration ceremony, 1949\`
+- בכותר העברית מותר \`ארץ ישראל\` או \`תל אביב, ארץ ישראל\` לפני 1948; \`ישראל\` אחרי 1948.
+- אם התאריך לא ידוע אבל הקונטקסט מצביע על תקופת המנדט (טרום-מדינה) → \`Mandatory Palestine\`.
 
 ## תאריכים
 - מלא: \`DD/MM/YYYY\` (בק-סלאש בלבד)
@@ -1323,8 +1366,22 @@ ${peopleStr || '  (אין)'}
 6. **סטודיו**: זהה חותמת/לוגו של סטודיו צילום (חזית או גב). מאגר סטודיו ידועים:
 ${studiosBrief || '(מאגר ריק — אם זיהית סטודיו, סמן "should_add: true")'}
 
-## נושאים (תזאורוס יד ושם — דוגמאות נפוצות)
-תקופה שלפני המלחמה, תקופה שאחרי המלחמה, נשים, פנים, גטו, ילדים, מדים, בניינים, מחנות, מראה רחוב, נוער, אות קלון, בתי כנסת, בתי קברות, מצבות קבורה, עבודות כפייה, השחרור, מחנות עקורים, גופות, בתי מלאכה, חתונות, תנועות נוער
+## נושאים (תזאורוס יד ושם)
+
+חובה לבחור עד **10 נושאים** הרלוונטיים ביותר לתצלום הזה **רק מהרשימה הסגורה** למטה.
+- כל נושא מסומן בעברית | אנגלית בדיוק כפי שמופיע ברשימה
+- אל תמציא נושאים חדשים שלא ברשימה
+- בחר את הרלוונטיים ביותר — אם תצלום מכיל ילדים יהודים בגטו לפני אקציה: ["גטו", "ילדים", "תקופה שלפני המלחמה", "אות קלון" אם נראה]
+- אם רק נושא אחד מתאים — תן רק אחד; אל תמלא בלא רלוונטיים
+- שלוש קטגוריות:
+  (א) זמן — "תקופה שלפני המלחמה" / "תקופה שאחרי המלחמה" וכו׳
+  (ב) מקום-תיאורי (לא גיאוגרפי) — "מחנות", "גטו", "בתי כנסת", "מראה רחוב"
+  (ג) הקשר — "ילדים", "נשים", "מדים", "אות קלון", "תנועות נוער"
+
+הרשימה הסגורה (top 300, מהשכיחים ביותר בארכיון התצלומים):
+\`\`\`
+${thesaurusBrief}
+\`\`\`
 
 ## מידע מוקדם שנמסר
 ${ctxText || '(אין מידע מוקדם)'}
@@ -1375,6 +1432,7 @@ ${ctxText || '(אין מידע מוקדם)'}
   ],
   "subjects_he": ["תקופה שלפני המלחמה", "ילדים"],
   "subjects_en": ["Prewar period", "Children"],
+  // עד 10 נושאים מהתזאורוס בלבד. מערכים תואמים-זוגות (HE[i] = EN[i]).
   "studio_id": {
     "found": true,
     "studio_db_id": "foto-forbert-warsaw",
