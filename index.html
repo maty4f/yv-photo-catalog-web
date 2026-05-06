@@ -375,8 +375,8 @@
   <!--  COLLECTION BAR — shown when a collection is active     -->
   <!-- ====================================================== -->
   <div class="collection-bar" id="collection-bar">
-    <b>אוסף <span id="cb-id"></span></b>
-    <span class="counter">תצלום <b id="cb-counter">1</b> מתוך <b id="cb-total">?</b></span>
+    <b id="cb-mode-label">אוסף <span id="cb-id"></span></b>
+    <span class="counter" id="cb-counter-wrap">תצלום <b id="cb-counter">1</b> מתוך <b id="cb-total">?</b></span>
     <div class="actions-inline">
       <button class="ghost" type="button" id="cb-back-btn">↑ חזרה לאוסף</button>
       <button class="secondary" type="button" id="cb-final-btn">📊 דוח סופי</button>
@@ -434,6 +434,7 @@
       <div class="actions">
         <button id="identify-collection-btn" class="primary" disabled>🔍 זהה את האוסף (AI)</button>
         <button id="manual-collection-btn" type="button" class="ghost">✎ או הזן ידנית</button>
+        <button id="skip-collection-btn" type="button" class="ghost" style="margin-inline-start:auto; color:var(--muted); border-color:var(--muted);">🎯 דלג — תצלום בודד ללא אוסף</button>
       </div>
       <div id="collection-status" class="status-msg"></div>
 
@@ -1730,10 +1731,16 @@ downloadBtn.addEventListener('click', () => {
   showStatus(`✓ הורד: ${fname}`, 'ok');
 });
 
-// Save & next photo
+// Save & next photo (works with or without active collection)
 const saveNextBtn = document.getElementById('save-next-btn');
 saveNextBtn.addEventListener('click', () => {
-  if (!state.collection) { alert('אין אוסף פעיל. הגדר אוסף תחילה.'); return; }
+  // In single-photo mode (no collection), just download + reset
+  if (!state.collection) {
+    downloadCurrentPhotoHTML();
+    resetPhotoForm();
+    document.getElementById('photo-workflow').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
   // Capture the catalog data from the form
   const get = id => document.getElementById(id).value;
   const idRows = [...document.querySelectorAll('#r-id-tbody tr')].map(tr => {
@@ -2094,11 +2101,13 @@ async function extractIntakeForm(file) {
       }
       const looksScanned = !text.trim() || text.includes('[לא ניתן לחלץ טקסט');
       if (looksScanned) {
-        colFormText.value = '⚠ ה-PDF נראה סרוק (אין שכבת טקסט).\n\nכשתלחץ "🔍 זהה את האוסף" — ה-AI יקבל את ה-PDF ישירות ויבצע OCR אוטומטי\n(כולל עברית, אנגלית, גרמנית, יידיש, פולנית, רוסית — לפי הצורך).\n\nגודל קובץ: ' + sizeMB.toFixed(1) + ' MB · ' + (meta.page_count || '?') + ' עמודים\n\n— אפשר גם להדביק כאן ידנית טקסט אם יש לך —';
-        setMini(colFormStatus, '<span class="dot"></span>📷 PDF סרוק — ה-AI יבצע OCR ישירות <span class="meta">' + (meta.page_count || '?') + ' עמ׳ · ' + sizeMB.toFixed(1) + ' MB</span>', 'info');
+        const provName = state.provider === 'gemini' ? 'Gemini' : 'Claude';
+        colFormText.value = '⚠ ה-PDF נראה סרוק (אין שכבת טקסט).\n\nכשתלחץ "🔍 זהה את האוסף" — ' + provName + ' (הספק שבחרת ב-⚙ הגדרות) יקבל את ה-PDF ישירות ויבצע OCR אוטומטי\n(כולל עברית, אנגלית, גרמנית, יידיש, פולנית, רוסית — לפי הצורך).\n\nגודל קובץ: ' + sizeMB.toFixed(1) + ' MB · ' + (meta.page_count || '?') + ' עמודים\n\n— אפשר גם להדביק כאן ידנית טקסט אם יש לך —';
+        setMini(colFormStatus, '<span class="dot"></span>📷 PDF סרוק — ' + provName + ' יבצע OCR <span class="meta">' + (meta.page_count || '?') + ' עמ׳ · ' + sizeMB.toFixed(1) + ' MB</span>', 'info');
       } else {
         colFormText.value = text;
-        setMini(colFormStatus, '<span class="dot"></span>✓ PDF עם טקסט: ' + meta.page_count + ' עמ׳ · ' + text.length.toLocaleString() + ' תווים <span class="meta">PDF יישלח ישירות ל-AI לאישור</span>', 'ok');
+        const provName = state.provider === 'gemini' ? 'Gemini' : 'Claude';
+        setMini(colFormStatus, '<span class="dot"></span>✓ PDF עם טקסט: ' + meta.page_count + ' עמ׳ · ' + text.length.toLocaleString() + ' תווים <span class="meta">' + provName + ' יקבל גם PDF</span>', 'ok');
       }
     } else if (ext === '.docx') {
       ({ text, meta } = await extractDOCX(file));
@@ -2369,9 +2378,24 @@ function showPhotoWorkflow() {
   stepCollection.style.display = 'none';
   photoWorkflow.classList.remove('locked');
   collectionBar.classList.add('show');
-  document.getElementById('cb-id').textContent = state.collection.id;
-  document.getElementById('cb-counter').textContent = state.current_photo_index;
-  document.getElementById('cb-total').textContent = state.collection.profile.expected_photo_count || (state.collection.photos.length + 1);
+  const modeLabel = document.getElementById('cb-mode-label');
+  const counterWrap = document.getElementById('cb-counter-wrap');
+  const finalBtn = document.getElementById('cb-final-btn');
+  const backBtn = document.getElementById('cb-back-btn');
+  if (state.collection) {
+    modeLabel.innerHTML = 'אוסף <span id="cb-id">' + esc(state.collection.id) + '</span>';
+    counterWrap.style.display = 'inline-block';
+    document.getElementById('cb-counter').textContent = state.current_photo_index;
+    document.getElementById('cb-total').textContent = state.collection.profile.expected_photo_count || (state.collection.photos.length + 1);
+    finalBtn.style.display = 'inline-block';
+    backBtn.textContent = '↑ חזרה לאוסף';
+  } else {
+    // Single-photo mode (no collection)
+    modeLabel.innerHTML = '🎯 תצלום בודד <small style="font-weight:400; color:var(--muted); margin-inline-start:6px">ללא אוסף</small>';
+    counterWrap.style.display = 'none';
+    finalBtn.style.display = 'none';
+    backBtn.textContent = '↑ פתח אוסף';
+  }
   document.getElementById('photo-workflow').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -2383,6 +2407,13 @@ function showCollectionSetup() {
 }
 
 document.getElementById('cb-back-btn').addEventListener('click', showCollectionSetup);
+
+// "Skip" button — single-photo mode (no collection)
+document.getElementById('skip-collection-btn').addEventListener('click', () => {
+  state.collection = null;
+  state.current_photo_index = 1;
+  showPhotoWorkflow();
+});
 
 // Saved collections dropdown
 const savedSel = document.getElementById('saved-collections-select');
