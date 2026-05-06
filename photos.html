@@ -101,7 +101,7 @@
   #r-inscriptions-en, #r-studio-en, #r-bio-en, #r-notes-en,
   #col-donor-en, #col-source-en, #col-bio-en, #col-story-en, #col-prov-en,
   #col-id, #col-period, #col-region, #col-photo-count {
-    direction: ltr !important; text-align: left !important;
+    direction: ltr !important; text-align: right !important;
     font-family: Georgia, "Times New Roman", serif;
   }
   textarea { min-height: 110px; }
@@ -224,13 +224,13 @@
   /* Compact row with 3 columns (label + input + copy) */
   .compact-row.with-copy { grid-template-columns: 180px 1fr auto; }
 
-  /* Per-field copy buttons */
+  /* Per-field copy buttons — ALWAYS on the LEFT (Hebrew RTL convention) */
   .input-wrap { position: relative; display: block; }
-  .input-wrap input, .input-wrap textarea { padding-inline-end: 56px !important; }
+  .input-wrap input, .input-wrap textarea { padding-left: 50px !important; padding-right: 12px !important; }
   .copy-corner {
     position: absolute;
     top: 5px;
-    inset-inline-end: 5px;
+    left: 5px;
     background: white;
     border: 1px solid var(--line);
     color: var(--muted);
@@ -2460,6 +2460,8 @@ renderSavedCollectionsDropdown();
 //  PER-FIELD COPY BUTTONS — small "📋" button at the corner of each
 //  result-form input/textarea.
 // =====================================================================
+// Per-field copy buttons — copy ALWAYS on the LEFT, value ALWAYS on the RIGHT
+// (matches the RTL flow of the Hebrew interface)
 function wrapFieldsWithCopyButtons() {
   const fields = document.querySelectorAll(
     '#results input[type="text"][id^="r-"], #results textarea[id^="r-"]'
@@ -2468,11 +2470,6 @@ function wrapFieldsWithCopyButtons() {
     if (el.parentElement?.classList.contains('input-wrap')) return;
     const wrap = document.createElement('div');
     wrap.className = 'input-wrap';
-    // Match wrap direction to the input's actual direction so inset-inline-end
-    // resolves to the visual END of the text (right for LTR, left for RTL).
-    // Otherwise the button covers the START of the value.
-    const dir = window.getComputedStyle(el).direction;
-    if (dir === 'ltr') wrap.style.direction = 'ltr';
     el.parentNode.insertBefore(wrap, el);
     wrap.appendChild(el);
     const btn = document.createElement('button');

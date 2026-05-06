@@ -71,7 +71,7 @@
   #r-title-en, #r-summary-en, #r-original-title, #r-duration, #r-creation-date,
   #r-receive-date, #r-register-date, #r-source-en, #r-donor-en,
   #r-original-id, #r-intake-num, #r-archive-id, #r-persons-en, #r-inscriptions-en {
-    direction: ltr !important; text-align: left !important; font-family: Georgia, serif;
+    direction: ltr !important; text-align: right !important; font-family: Georgia, serif;
   }
   textarea { min-height: 110px; }
   textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); background: white; }
@@ -115,9 +115,10 @@
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-inline-end: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Per-field copy buttons — ALWAYS on the LEFT (Hebrew RTL convention) */
   .input-wrap { position: relative; display: block; }
-  .input-wrap input, .input-wrap textarea { padding-inline-end: 56px !important; }
-  .copy-corner { position: absolute; top: 5px; inset-inline-end: 5px; background: white; border: 1px solid var(--line); color: var(--muted); border-radius: 3px; padding: 2px 7px; font-size: 11px; cursor: pointer; z-index: 3; font-family: inherit; font-weight: 600; opacity: 0.85; line-height: 1.3; box-shadow: 0 1px 3px rgba(0,0,0,.12); min-width: 30px; text-align: center; }
+  .input-wrap input, .input-wrap textarea { padding-left: 50px !important; padding-right: 12px !important; }
+  .copy-corner { position: absolute; top: 5px; left: 5px; background: white; border: 1px solid var(--line); color: var(--muted); border-radius: 3px; padding: 2px 7px; font-size: 11px; cursor: pointer; z-index: 3; font-family: inherit; font-weight: 600; opacity: 0.85; line-height: 1.3; box-shadow: 0 1px 3px rgba(0,0,0,.12); min-width: 30px; text-align: center; }
   .copy-corner:hover { opacity: 1; background: var(--accent); color: white; border-color: var(--accent); }
   .copy-corner.copied { background: var(--good) !important; color: white !important; border-color: var(--good) !important; }
 
@@ -956,18 +957,15 @@ subjectsAdd.addEventListener('keydown', e => {
   }
 });
 
-// Per-field copy buttons
+// Per-field copy buttons.
+// Convention: copy button ALWAYS on the LEFT, value ALWAYS on the RIGHT
+// (matches the RTL flow of the Hebrew interface).
 function wrapFieldsWithCopyButtons() {
   const fields = document.querySelectorAll('#results input[type="text"][id^="r-"], #results textarea[id^="r-"]');
   fields.forEach(el => {
     if (el.parentElement?.classList.contains('input-wrap')) return;
     const wrap = document.createElement('div');
     wrap.className = 'input-wrap';
-    // Match wrap direction to the input's actual direction so inset-inline-end
-    // resolves to the visual END of the text (right for LTR, left for RTL).
-    // Otherwise the button covers the START of the value.
-    const dir = window.getComputedStyle(el).direction;
-    if (dir === 'ltr') wrap.style.direction = 'ltr';
     el.parentNode.insertBefore(wrap, el);
     wrap.appendChild(el);
     const btn = document.createElement('button');
