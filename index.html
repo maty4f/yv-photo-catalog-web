@@ -10,6 +10,7 @@
     --line: #d8d4cc; --accent: #6b5b3e; --accent-2: #8a7758;
     --photos-tint: #fbf3e3; --photos-border: #c19b2e;
     --films-tint: #e8eef5;  --films-border: #2c5d8a;
+    --docs-tint: #ebf3ed;   --docs-border: #2e7d4e;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -32,11 +33,12 @@
 
   .cards {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 18px;
     margin-top: 30px;
   }
-  @media (max-width: 760px) { .cards { grid-template-columns: 1fr; } }
+  @media (max-width: 980px) { .cards { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 600px) { .cards { grid-template-columns: 1fr; } }
 
   .card {
     background: var(--card);
@@ -55,10 +57,13 @@
   .card.photos:hover { border-color: #a8801c; }
   .card.films  { border-color: var(--films-border);  background: linear-gradient(180deg, var(--card), var(--films-tint)); }
   .card.films:hover  { border-color: #1d4666; }
+  .card.docs   { border-color: var(--docs-border);   background: linear-gradient(180deg, var(--card), var(--docs-tint)); }
+  .card.docs:hover   { border-color: #1f5c38; }
   .card .icon { font-size: 52px; margin-bottom: 12px; }
   .card h2 { margin: 0 0 8px 0; font-size: 22px; color: var(--accent); }
   .card.films h2 { color: var(--films-border); }
   .card.photos h2 { color: #6b4f0f; }
+  .card.docs h2 { color: var(--docs-border); }
   .card .desc { font-size: 14px; color: var(--muted); line-height: 1.6; min-height: 60px; }
   .card .features {
     margin-top: 16px;
@@ -141,6 +146,23 @@
           <li>תיאור סצנות, אישים, חפצים, סביבה</li>
           <li>פיענוח כותרות ביניים וכתובות</li>
           <li>זיהוי שפה, ז'אנר, איכות, צבעוניות</li>
+        </ul>
+      </div>
+    </a>
+
+    <a href="documents.html" class="card docs">
+      <div class="icon">📄</div>
+      <h2>קטלוג מסמכים</h2>
+      <div class="desc">
+        פיענוח מסמכים היסטוריים — מודפסים וכתב יד — בשפות שונות, עם תרגום לעברית ואנגלית.
+      </div>
+      <div class="features">
+        <ul>
+          <li>גרמנית (כולל Fraktur), יידיש, פולנית, רוסית, צ'כית</li>
+          <li>כתב יד (Sütterlin, יידי) ומכונת כתיבה</li>
+          <li>תעתיק + תרגום עברית + אנגלית</li>
+          <li>זיהוי שולח, נמען, תאריך, מקום</li>
+          <li>קונטקסט היסטורי + נושאים מתזאורוס</li>
         </ul>
       </div>
     </a>
