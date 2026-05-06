@@ -200,8 +200,11 @@
       </select>
     </div>
     <div class="hint">
-      📍 <b>חשוב:</b> Gemini תומך בווידאו ישירות. ל-Claude אין תמיכה בווידאו — נחלץ פריימים בדפדפן ונשלח כתמונות (30 פריימים).
-      <br>📍 <b>Gemini Flash</b> חינמי כעת לסרטים עד 50MB.
+      📍 <b>Gemini</b> תומך בווידאו ישירות:
+      <br>· עד <b>~18MB</b>: inline (מהיר, בקשה אחת)
+      <br>· <b>18MB–2GB</b>: Files API — העלאה אוטומטית עם progress bar
+      <br>· מעל 2GB: יש לדחוס/לחתוך מראש (HandBrake)
+      <br>📍 <b>Claude</b> לא תומך בווידאו — מחלץ 30 פריימים בדפדפן (כל גודל סרט).
     </div>
   </div>
 
@@ -213,7 +216,7 @@
         <video id="film-preview" controls></video>
         <span class="placeholder">
           🎞 גרור לכאן את הסרט, או לחץ לבחירה
-          <span class="hint">MP4 / MOV / WebM / AVI · עד 50MB ל-Gemini · עד ~30MB ל-Claude עם פריימים</span>
+          <span class="hint">MP4 / MOV / WebM / AVI · Gemini תומך עד 2GB · Claude מחלץ פריימים מכל גודל</span>
         </span>
         <span id="film-filename" class="filename" style="display:none"></span>
       </div>
@@ -456,11 +459,18 @@ function renderFilmMeta() {
   if (!state.filmMeta) { filmMetaBox.style.display = 'none'; return; }
   const m = state.filmMeta;
   const dur = formatDuration(m.duration);
-  const sizeMB = (m.size_bytes / 1024 / 1024).toFixed(1);
-  const warn = m.size_bytes > 50 * 1024 * 1024 ? ` <span style="color:var(--soft);">⚠ &gt;50MB</span>` : '';
-  filmMetaBox.innerHTML = `<div class="item"><b>משך:</b> <code>${dur}</code></div><div class="item"><b>רזולוציה:</b> <code>${m.width}×${m.height}</code></div><div class="item"><b>גודל:</b> <code>${sizeMB} MB</code>${warn}</div><div class="item"><b>פורמט:</b> <code>${m.mime}</code></div>`;
+  const sizeMB = m.size_bytes / 1024 / 1024;
+  const sizeMBStr = sizeMB.toFixed(1);
+  let badge = '';
+  if (sizeMB <= 18) {
+    badge = ` <span style="color:var(--good); font-size:10px;">inline</span>`;
+  } else if (sizeMB <= 2048) {
+    badge = ` <span style="color:var(--warn); font-size:10px;">Files API</span>`;
+  } else {
+    badge = ` <span style="color:var(--soft); font-size:10px;">⚠ &gt;2GB</span>`;
+  }
+  filmMetaBox.innerHTML = `<div class="item"><b>משך:</b> <code>${dur}</code></div><div class="item"><b>רזולוציה:</b> <code>${m.width}×${m.height}</code></div><div class="item"><b>גודל:</b> <code>${sizeMBStr} MB</code>${badge}</div><div class="item"><b>פורמט:</b> <code>${m.mime}</code></div>`;
   filmMetaBox.style.display = 'grid';
-  // Auto-fill duration in result form when AI hasn't run yet
   if (!document.getElementById('r-duration').value) document.getElementById('r-duration').value = dur;
 }
 function formatDuration(seconds) {
@@ -641,14 +651,37 @@ ${thesaurusBrief}
 async function callGemini() {
   if (!state.film) throw new Error('אין סרט');
   const sizeMB = state.film.size / 1024 / 1024;
-  if (sizeMB > 50) throw new Error(`סרט גדול מדי (${sizeMB.toFixed(1)}MB) — Gemini inline_data תומך עד 50MB.`);
-  const videoB64 = await fileToBase64(state.film);
+  const INLINE_THRESHOLD_MB = 18;  // inline_data total request limit ~20MB; reserve room for prompt
+  const FILES_API_LIMIT_MB = 2048; // Gemini Files API: up to 2GB per file
+  if (sizeMB > FILES_API_LIMIT_MB) {
+    throw new Error(`סרט גדול מ-2GB (${sizeMB.toFixed(0)}MB) — חרג ממגבלת Files API. דחס/חתוך את הסרט (HandBrake) או השתמש ב-Claude (חילוץ פריימים).`);
+  }
+
+  let videoPart;
+  if (sizeMB <= INLINE_THRESHOLD_MB) {
+    // Small files — inline_data (single request)
+    showStatus(`מקודד את הסרט (${sizeMB.toFixed(1)}MB) ל-base64…`, 'info');
+    const videoB64 = await fileToBase64(state.film);
+    videoPart = { inline_data: { mime_type: state.film.type || 'video/mp4', data: videoB64 } };
+  } else {
+    // Larger files — Gemini Files API (resumable upload)
+    showStatus(`מעלה סרט גדול (${sizeMB.toFixed(1)}MB) ל-Gemini Files API…`, 'info');
+    const uploadedFile = await uploadToGeminiFiles(state.film, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      showStatus(`מעלה ל-Gemini Files API: ${pct}% (${(loaded/1024/1024).toFixed(1)} / ${(total/1024/1024).toFixed(1)} MB)…`, 'info');
+    });
+    showStatus(`הסרט הועלה. ממתין ש-Gemini יעבד אותו (Active state)…`, 'info');
+    await waitForFileActive(uploadedFile.name);
+    showStatus(`הסרט מוכן. שולח לניתוח (זה עשוי לקחת 1–2 דקות לסרטים ארוכים)…`, 'info');
+    videoPart = { file_data: { file_uri: uploadedFile.uri, mime_type: uploadedFile.mimeType || state.film.type || 'video/mp4' } };
+  }
+
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: state.film.type || 'video/mp4', data: videoB64 } }, { text: buildFilmPrompt() }] }],
+      contents: [{ role: 'user', parts: [videoPart, { text: buildFilmPrompt() }] }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 16000, responseMimeType: 'application/json' }
     })
   });
@@ -657,6 +690,72 @@ async function callGemini() {
   const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
   if (!text) throw new Error('Gemini תגובה ריקה');
   return parseJson(text, 'Gemini');
+}
+
+// Resumable upload to Gemini Files API.
+// Returns the file metadata: { name: 'files/abc123', uri: 'https://...', mimeType, sizeBytes, state }
+async function uploadToGeminiFiles(file, onProgress) {
+  const apiKey = getActiveApiKey();
+
+  // Step 1: Initiate resumable upload — get the upload URL
+  const startRes = await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': file.size.toString(),
+      'X-Goog-Upload-Header-Content-Type': file.type || 'video/mp4',
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({ file: { display_name: file.name } }),
+  });
+  if (!startRes.ok) {
+    const err = await startRes.json().catch(() => ({}));
+    throw new Error(`Files API התחלה נכשלה: ${err.error?.message || startRes.status}`);
+  }
+  const uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
+  if (!uploadUrl) throw new Error('Files API לא החזיר URL להעלאה');
+
+  // Step 2: Upload via XHR to track progress
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', uploadUrl);
+    xhr.setRequestHeader('Content-Length', file.size.toString());
+    xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
+    xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+    });
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          resolve(data.file);
+        } catch { reject(new Error('Files API החזיר תגובה לא תקנית')); }
+      } else {
+        reject(new Error(`Files API העלאה נכשלה: HTTP ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Files API: שגיאת רשת בהעלאה'));
+    xhr.send(file);
+  });
+}
+
+// Wait until the uploaded file is in ACTIVE state (Gemini processes video — takes seconds to ~minute)
+async function waitForFileActive(fileName, maxAttempts = 60) {
+  const apiKey = getActiveApiKey();
+  for (let i = 0; i < maxAttempts; i++) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
+      headers: { 'x-goog-api-key': apiKey },
+    });
+    if (!res.ok) throw new Error(`בדיקת סטטוס נכשלה: ${res.status}`);
+    const data = await res.json();
+    if (data.state === 'ACTIVE') return data;
+    if (data.state === 'FAILED') throw new Error('Gemini נכשל בעיבוד הסרט: ' + (data.error?.message || 'ללא פרטים'));
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  throw new Error('Timeout — Gemini לא סיים לעבד את הסרט (>2 דקות). נסה שוב, או חתוך לסגמנטים קטנים יותר.');
 }
 
 async function callAnthropic() {
