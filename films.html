@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>קטלוג סרטים — יד ושם</title>
+
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+
+<style>
+  :root {
+    --bg: #f7f5f0; --card: #fff; --ink: #1a1a1a; --muted: #5a5a5a;
+    --line: #d8d4cc; --accent: #2c5d8a; --accent-2: #1d4666;
+    --good: #2e7d32; --warn: #b07000; --soft: #b22222;
+    --tint: #f3f6fb; --drop: #e8eef5; --drop-active: #c5d4e7;
+    --he-tint: #fbf9f3; --en-tint: #f3f6fb;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    font-family: "SBL Hebrew","Frank Ruhl Libre","David","Helvetica Neue",sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.55;
+    direction: rtl; text-align: right;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  header.doc { border-bottom: 2px solid var(--accent); padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+  header.doc h1 { font-size: 22px; margin: 0 0 4px 0; color: var(--accent); }
+  header.doc .sub { font-size: 13px; color: var(--muted); }
+  header.doc .actions-top { display: flex; gap: 8px; align-items: center; }
+
+  section.step { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+  section.step > .head { padding: 11px 16px; background: linear-gradient(180deg,#fbfaf6,#f3efe6); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  section.step > .head .num { background: var(--accent); color: white; border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
+  section.step > .head .title { font-weight: 700; color: var(--accent); font-size: 15px; }
+  section.step > .head .title small { color: var(--muted); font-weight: 400; margin-inline-start: 8px; font-size: 12px; }
+  section.step > .body { padding: 16px; }
+
+  .film-drop {
+    border: 2px dashed var(--accent); background: var(--drop);
+    border-radius: 8px; padding: 36px 22px; text-align: center;
+    cursor: pointer; transition: background .15s, border-color .15s;
+    user-select: none; color: var(--accent);
+    font-size: 15px; font-weight: 600;
+    min-height: 140px;
+    display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px;
+    position: relative;
+  }
+  .film-drop:hover, .film-drop.dragover { background: var(--drop-active); border-color: var(--accent-2); }
+  .film-drop.has-file { background: white; border-style: solid; padding: 14px; }
+  .film-drop .hint { font-size: 12.5px; color: var(--muted); font-weight: normal; }
+  .film-drop video { max-width: 100%; max-height: 260px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.1); display: none; }
+  .film-drop.has-file video { display: block; }
+  .film-drop.has-file .placeholder { display: none; }
+  .filename { font-size: 13px; color: var(--ink); font-weight: 500; direction: ltr; unicode-bidi: isolate; word-break: break-all; margin-top: 6px; }
+  .film-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; font-size: 12px; }
+  .film-meta-grid .item { background: var(--tint); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; direction: rtl; text-align: right; unicode-bidi: isolate; }
+  .film-meta-grid .item b { color: var(--accent); font-weight: 600; }
+  .film-meta-grid .item code { font-family: "SF Mono", Menlo, monospace; font-size: 11px; color: var(--ink); direction: ltr; unicode-bidi: isolate; }
+  .delete-film-btn { position: absolute; top: 8px; left: 8px; background: rgba(178,34,34,.92); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; display: none; z-index: 2; }
+  .film-drop.has-file .delete-film-btn { display: block; }
+  .delete-film-btn:hover { background: var(--soft); }
+
+  textarea, input[type="text"], input[type="password"], select {
+    width: 100%; padding: 9px 12px; font-family: inherit; font-size: 14px;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--tint);
+    color: var(--ink); resize: vertical;
+    direction: rtl; text-align: right; line-height: 1.55; unicode-bidi: isolate;
+  }
+  input[type="password"] { direction: ltr; text-align: left; font-family: "SF Mono", monospace; unicode-bidi: isolate; }
+  #r-title-en, #r-summary-en, #r-original-title, #r-duration, #r-creation-date,
+  #r-receive-date, #r-register-date, #r-source-en, #r-donor-en,
+  #r-original-id, #r-intake-num, #r-archive-id, #r-persons-en, #r-inscriptions-en {
+    direction: ltr !important; text-align: left !important; font-family: Georgia, serif;
+  }
+  textarea { min-height: 110px; }
+  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); background: white; }
+
+  .label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .label small { color: var(--muted); font-weight: 400; margin-inline-start: 6px; }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  button { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-family: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; transition: background .15s; }
+  button:hover:not(:disabled) { background: var(--accent-2); }
+  button:disabled { background: #b8b3a8; cursor: not-allowed; opacity: .7; }
+  button.big { padding: 14px 28px; font-size: 16px; }
+  button.primary { background: #1565c0; }
+  button.primary:hover:not(:disabled) { background: #0d47a1; }
+  button.ghost { background: transparent; color: var(--accent); padding: 8px 14px; border: 1px dashed var(--accent); }
+  button.ghost:hover { background: rgba(44,93,138,.08); }
+  button.gear { background: transparent; color: var(--muted); padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+  button.gear:hover { background: var(--tint); border-color: var(--accent); color: var(--accent); }
+
+  .settings-panel { display: none; background: #fffbeb; border: 1px solid #f1d96e; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .settings-panel.open { display: block; }
+  .settings-panel .row { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .settings-panel .row label { font-size: 13px; font-weight: 600; color: #6b4f0f; }
+  .settings-panel .hint { font-size: 11.5px; color: #8a7140; margin-top: 6px; }
+  .settings-panel .hint a { color: #6b4f0f; }
+
+  .status-msg { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; }
+  .status-msg.show { display: block; }
+  .status-msg.ok { background: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
+  .status-msg.err { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; }
+  .status-msg.info{ background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
+  .status-msg.warn{ background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
+
+  .mini-status { font-size: 12px; color: var(--muted); }
+  .mini-status.working { color: var(--accent); }
+  .mini-status.ok { color: var(--good); }
+  .mini-status.err { color: var(--soft); }
+  .mini-status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-inline-end: 5px; background: currentColor; vertical-align: middle; }
+  .mini-status .meta { display: inline-block; background: var(--tint); border: 1px solid var(--line); border-radius: 4px; padding: 1px 7px; font-size: 11px; color: var(--muted); margin-inline-start: 6px; font-family: monospace; direction: ltr; unicode-bidi: isolate; }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-inline-end: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .input-wrap { position: relative; display: block; }
+  .input-wrap input, .input-wrap textarea { padding-inline-end: 56px !important; }
+  .copy-corner { position: absolute; top: 5px; inset-inline-end: 5px; background: white; border: 1px solid var(--line); color: var(--muted); border-radius: 3px; padding: 2px 7px; font-size: 11px; cursor: pointer; z-index: 3; font-family: inherit; font-weight: 600; opacity: 0.85; line-height: 1.3; box-shadow: 0 1px 3px rgba(0,0,0,.12); min-width: 30px; text-align: center; }
+  .copy-corner:hover { opacity: 1; background: var(--accent); color: white; border-color: var(--accent); }
+  .copy-corner.copied { background: var(--good) !important; color: white !important; border-color: var(--good) !important; }
+
+  .results { display: none; }
+  .results.show { display: block; }
+  .results .field-group { margin-bottom: 14px; }
+  .results .field-group h4 { margin: 0 0 6px 0; color: var(--accent); font-size: 13.5px; font-weight: 700; }
+  .results .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+  @media (max-width: 720px) { .results .field-row { grid-template-columns: 1fr; } }
+  .results .field-row .lang-tag { font-size: 11px; color: var(--muted); margin-bottom: 3px; display: block; }
+  .results .field-row textarea { min-height: 60px; font-size: 13px; }
+  .results .compact-row { display: grid; grid-template-columns: 180px 1fr; gap: 10px; align-items: center; margin-bottom: 6px; }
+  .results .compact-row label { font-size: 12.5px; color: var(--muted); }
+  .results .compact-row input, .results .compact-row select { font-size: 13px; padding: 6px 10px; }
+  .results .subject-chips { padding: 8px; background: var(--tint); border: 1px solid var(--line); border-radius: 4px; min-height: 38px; }
+  .results .chip { display: inline-block; background: #cee0f3; color: #1d4666; padding: 3px 9px; margin: 2px; border-radius: 12px; font-size: 12px; border: 1px solid #a1bbd9; }
+  .results .chip .x { cursor: pointer; margin-inline-start: 5px; color: #1d4666; font-weight: bold; }
+  .results .chip .x:hover { color: var(--soft); }
+
+  .timeline-editor { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  .timeline-editor th, .timeline-editor td { border: 1px solid var(--line); padding: 5px 8px; vertical-align: top; }
+  .timeline-editor th { background: var(--tint); font-weight: 700; color: var(--accent); }
+  .timeline-editor input, .timeline-editor textarea { width: 100%; border: none; background: transparent; padding: 4px 6px; font-size: 12.5px; resize: vertical; }
+  .timeline-editor textarea { min-height: 50px; }
+  .timeline-editor .tc-cell { font-family: "SF Mono", monospace; direction: ltr; text-align: center; min-width: 80px; }
+  .timeline-editor .tc-cell input { text-align: center; direction: ltr; font-family: "SF Mono", monospace; }
+  .timeline-editor .del-cell { width: 30px; text-align: center; }
+
+  .download-bar { position: sticky; bottom: 0; background: var(--card); border-top: 2px solid var(--accent); padding: 10px 16px; margin: 0 -20px -20px; display: flex; gap: 10px; align-items: center; justify-content: space-between; z-index: 50; }
+  @media (max-width: 720px) { .download-bar { padding: 8px 10px; flex-wrap: wrap; } }
+
+  .footer-hint { margin-top: 24px; padding: 12px 14px; background: #fef9e7; border: 1px solid #e6d28a; border-inline-start: 5px solid #c19b2e; border-radius: 8px; font-size: 12.5px; color: #6b4f0f; }
+  footer.bottom { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
+  footer.bottom a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc">
+    <div>
+      <h1>🎞 קטלוג סרטים — יד ושם <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small></h1>
+      <div class="sub">העלאת סרט, ניתוח אוטומטי של טיימליין, סצנות וכיתובים — הכל בדפדפן</div>
+    </div>
+    <div class="actions-top">
+      <a href="index.html" style="text-decoration:none"><button class="gear" type="button">← דף הבית</button></a>
+      <button class="gear" id="settings-toggle" type="button">⚙ הגדרות API</button>
+    </div>
+  </header>
+
+  <div class="settings-panel" id="settings-panel">
+    <div class="row">
+      <label>ספק API</label>
+      <select id="api-provider">
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="gemini" selected>Google (Gemini — מומלץ לסרטים)</option>
+      </select>
+    </div>
+    <div class="row provider-row" data-provider="anthropic">
+      <label>מפתח Anthropic</label>
+      <input type="password" id="api-key-anthropic" placeholder="sk-ant-…" autocomplete="off">
+    </div>
+    <div class="row provider-row" data-provider="anthropic">
+      <label>מודל Claude</label>
+      <select id="api-model-anthropic">
+        <option value="claude-sonnet-4-5-20250929" selected>Claude Sonnet 4.5</option>
+        <option value="claude-opus-4-1-20250805">Claude Opus 4.1</option>
+      </select>
+    </div>
+    <div class="row provider-row" data-provider="gemini">
+      <label>מפתח Gemini</label>
+      <input type="password" id="api-key-gemini" placeholder="AIza…" autocomplete="off">
+    </div>
+    <div class="row provider-row" data-provider="gemini">
+      <label>מודל Gemini</label>
+      <select id="api-model-gemini">
+        <option value="gemini-2.5-pro">Gemini 2.5 Pro (מדויק)</option>
+        <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (מומלץ — תומך וידאו)</option>
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+      </select>
+    </div>
+    <div class="hint">
+      📍 <b>חשוב:</b> Gemini תומך בווידאו ישירות. ל-Claude אין תמיכה בווידאו — נחלץ פריימים בדפדפן ונשלח כתמונות (30 פריימים).
+      <br>📍 <b>Gemini Flash</b> חינמי כעת לסרטים עד 50MB.
+    </div>
+  </div>
+
+  <section class="step">
+    <div class="head"><span class="num">1</span><span class="title">סרט <small>Film file — סליל סרוק / וידאו / דיגיטלי (MP4/MOV/WebM/AVI)</small></span></div>
+    <div class="body">
+      <div id="film-drop" class="film-drop" tabindex="0">
+        <button type="button" class="delete-film-btn" id="delete-film-btn" title="הסר סרט">✕</button>
+        <video id="film-preview" controls></video>
+        <span class="placeholder">
+          🎞 גרור לכאן את הסרט, או לחץ לבחירה
+          <span class="hint">MP4 / MOV / WebM / AVI · עד 50MB ל-Gemini · עד ~30MB ל-Claude עם פריימים</span>
+        </span>
+        <span id="film-filename" class="filename" style="display:none"></span>
+      </div>
+      <input type="file" id="film-file-input" accept="video/*" hidden>
+      <div id="film-meta" class="film-meta-grid" style="display:none"></div>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="head"><span class="num">2</span><span class="title">מידע מוקדם <small>Provided context — דף מוסר, קישורים לארכיון מוצא</small></span></div>
+    <div class="body">
+      <textarea id="context-input" placeholder="מה ידוע על הסרט: מקור, מוסר, תאריך, שפה, סוג סליל, אירועים…"></textarea>
+      <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap: wrap;">
+        <button type="button" class="ghost" id="ctx-file-btn">📎 העלה מקובץ <small>PDF / Word / TXT</small></button>
+        <input type="file" id="ctx-file-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
+        <span id="ctx-file-status" class="mini-status"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="head"><span class="num">3</span><span class="title">זיהוי הסרט <small>Identify film — ניתוח טיימליין אוטומטי</small></span></div>
+    <div class="body">
+      <p style="margin-top:0; font-size:13.5px; color:var(--muted)">
+        ה-AI יקרא את הסרט ויפיק: כותר, תקציר, טיימליין סצנה-אחר-סצנה, אישים, כיתובים. <b>30–120 שניות.</b>
+      </p>
+      <div class="actions">
+        <button id="identify-btn" class="big primary" disabled>🔍 זהה את הסרט</button>
+      </div>
+      <div id="identify-status" class="status-msg"></div>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="head"><span class="num">4</span><span class="title">תוצאות <small>Results — ניתן לערוך</small></span></div>
+    <div class="body">
+      <div id="results" class="results">
+
+        <div class="field-group">
+          <h4>כותר / Title</h4>
+          <div class="field-row">
+            <div><span class="lang-tag">עברית — [City], [Country], [תיאור], [תאריך]</span><textarea id="r-title-he" rows="2"></textarea></div>
+            <div><span class="lang-tag">English — same format</span><textarea id="r-title-en" rows="2"></textarea></div>
+          </div>
+          <div style="margin-top:8px"><span class="lang-tag">כותר מקורי <small>Original title</small></span></div>
+          <input type="text" id="r-original-title">
+        </div>
+
+        <div class="field-group">
+          <h4>שדות טכניים / Sapir technical</h4>
+          <div class="compact-row"><label>סוג חומר</label><input type="text" id="r-material-type" value="ארכיון הסרטים - תצסרט"></div>
+          <div class="compact-row"><label>קוד רישום 1</label>
+            <select id="r-media-code">
+              <option value="S">S — סרטי סליל (פילם)</option>
+              <option value="V">V — קלטות וידאו</option>
+              <option value="D" selected>D — קובץ דיגיטלי</option>
+            </select>
+          </div>
+          <div class="compact-row"><label>קוד רישום 2 (מספר ארכיוני)</label><input type="text" id="r-archive-id"></div>
+          <div class="compact-row"><label>מספר נכנסות</label><input type="text" id="r-intake-num"></div>
+          <div class="compact-row"><label>סימול מקורי</label><input type="text" id="r-original-id"></div>
+          <div class="compact-row"><label>זאנר / Genre</label><input type="text" id="r-genre"></div>
+          <div class="compact-row"><label>משך (HH:MM:SS)</label><input type="text" id="r-duration"></div>
+          <div class="compact-row"><label>איכות החומר</label><input type="text" id="r-quality"></div>
+          <div class="compact-row"><label>צבעוניות</label>
+            <select id="r-color"><option value="שחור-לבן">שחור-לבן</option><option value="צבעוני">צבעוני</option></select>
+          </div>
+          <div class="compact-row"><label>שפה</label><input type="text" id="r-language" placeholder="אילם / גרמנית / יידיש / וכו׳"></div>
+          <div class="compact-row"><label>שיטת הקלטה</label><input type="text" id="r-recording-method"></div>
+          <div class="compact-row"><label>תאריך יצירה</label><input type="text" id="r-creation-date"></div>
+          <div class="compact-row"><label>תאריך קבלה</label><input type="text" id="r-receive-date"></div>
+          <div class="compact-row"><label>תאריך רישום</label><input type="text" id="r-register-date"></div>
+          <div class="compact-row"><label>בעל זכויות</label><input type="text" id="r-rights" value="לא ידוע"></div>
+          <div class="compact-row"><label>הצגה Internet</label>
+            <select id="r-internet"><option value="Y" selected>Y</option><option value="N">N</option></select>
+          </div>
+          <div class="compact-row"><label>הצגה Intra-net</label>
+            <select id="r-intranet"><option value="Y" selected>Y</option><option value="N">N</option></select>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>מוסר ומקור / Donor & source</h4>
+          <div class="field-row">
+            <div><span class="lang-tag">שם מוסר (HE)</span><input type="text" id="r-donor-he"></div>
+            <div><span class="lang-tag">Donor (EN)</span><input type="text" id="r-donor-en"></div>
+          </div>
+          <div class="field-row">
+            <div><span class="lang-tag">מקור (HE)</span><input type="text" id="r-source-he"></div>
+            <div><span class="lang-tag">Source (EN)</span><input type="text" id="r-source-en"></div>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>תקציר / Summary <small>(4-5 שורות)</small></h4>
+          <div class="field-row">
+            <textarea id="r-summary-he" rows="4"></textarea>
+            <textarea id="r-summary-en" rows="4"></textarea>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>טיימליין / Timeline <small>(סצנה-אחר-סצנה — מ-AI)</small></h4>
+          <table class="timeline-editor">
+            <thead><tr>
+              <th style="width:80px">החל</th>
+              <th style="width:80px">עד</th>
+              <th>תיאור עברית</th>
+              <th>Description English</th>
+              <th class="del-cell"></th>
+            </tr></thead>
+            <tbody id="r-timeline-tbody">
+              <tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:14px">לחץ "זהה את הסרט" לטיימליין אוטומטי</td></tr>
+            </tbody>
+          </table>
+          <button type="button" class="ghost" id="timeline-add-row" style="margin-top:6px; font-size:12px; padding:5px 10px;">+ הוסף שורה</button>
+        </div>
+
+        <div class="field-group">
+          <h4>זיהוי אישים / Persons</h4>
+          <div class="field-row">
+            <textarea id="r-persons-he" rows="3"></textarea>
+            <textarea id="r-persons-en" rows="3"></textarea>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>שלטים וכתובות / Inscriptions <small>(כותרות ביניים, שלטים — מקור + תרגום)</small></h4>
+          <div class="field-row">
+            <textarea id="r-inscriptions-he" rows="4"></textarea>
+            <textarea id="r-inscriptions-en" rows="4"></textarea>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>הערות אדמיניסטרציה / Admin notes</h4>
+          <textarea id="r-admin-notes" rows="2"></textarea>
+        </div>
+
+        <div class="field-group">
+          <h4>נושאים / Subjects <small>(עד 10 מהתזאורוס)</small></h4>
+          <div class="subject-chips" id="r-subjects-chips"></div>
+          <input type="text" id="r-subjects-add" placeholder="הקלד נושא ולחץ Enter" style="margin-top:6px;">
+        </div>
+
+      </div>
+
+      <div id="no-results" style="text-align:center; padding:30px; color:var(--muted); font-style:italic;">
+        עדיין אין תוצאות — לחץ "זהה את הסרט".
+      </div>
+    </div>
+  </section>
+
+  <div class="download-bar" id="download-bar" style="display:none;">
+    <span style="font-size:13px; color:var(--muted)">דוח מוכן:</span>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button id="preview-btn" class="ghost" type="button">👁 תצוגה מקדימה</button>
+      <button id="download-final-btn">⬇ הורד HTML</button>
+    </div>
+  </div>
+
+  <div class="footer-hint">
+    <strong>💡 פרטיות:</strong> כל העיבוד בדפדפן. הסרט נשלח ישירות ל-API שבחרת — ללא שרת ביניים.
+  </div>
+
+  <footer class="bottom">
+    yv-photo-catalog · films · client-side · <a href="https://github.com/maty4f/yv-photo-catalog-web" target="_blank">GitHub</a>
+  </footer>
+
+</div>
+
+<script type="module">
+const state = {
+  film: null, filmMeta: null, identification: null,
+  provider: localStorage.getItem('yv_api_provider') || 'gemini',
+  apiKeys: {
+    anthropic: localStorage.getItem('yv_api_key_anthropic') || '',
+    gemini: localStorage.getItem('yv_api_key_gemini') || '',
+  },
+  thesaurus_top: [],
+};
+
+const settingsToggle = document.getElementById('settings-toggle');
+const settingsPanel = document.getElementById('settings-panel');
+const providerSel = document.getElementById('api-provider');
+const apiKeyAnthropic = document.getElementById('api-key-anthropic');
+const apiKeyGemini = document.getElementById('api-key-gemini');
+const modelSelAnthropic = document.getElementById('api-model-anthropic');
+const modelSelGemini = document.getElementById('api-model-gemini');
+
+apiKeyAnthropic.value = state.apiKeys.anthropic;
+apiKeyGemini.value = state.apiKeys.gemini;
+providerSel.value = state.provider;
+syncProviderRows();
+
+providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
+apiKeyAnthropic.addEventListener('input', () => { state.apiKeys.anthropic = apiKeyAnthropic.value.trim(); localStorage.setItem('yv_api_key_anthropic', state.apiKeys.anthropic); refreshButtons(); });
+apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
+function syncProviderRows() { document.querySelectorAll('.provider-row').forEach(row => { row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none'; }); }
+function getActiveApiKey() { return state.apiKeys[state.provider] || ''; }
+function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
+settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('open'));
+
+// Thesaurus
+async function loadThesaurus() {
+  try { const r = await fetch('data/thesaurus_top300.json'); if (r.ok) state.thesaurus_top = await r.json(); }
+  catch (e) { console.warn('thesaurus fetch failed', e); }
+}
+loadThesaurus();
+
+// Film upload
+const filmDrop = document.getElementById('film-drop');
+const fileInput = document.getElementById('film-file-input');
+const filmPreview = document.getElementById('film-preview');
+const filmFilename = document.getElementById('film-filename');
+const filmMetaBox = document.getElementById('film-meta');
+const delFilmBtn = document.getElementById('delete-film-btn');
+
+filmDrop.addEventListener('click', () => fileInput.click());
+['dragenter', 'dragover'].forEach(evt => filmDrop.addEventListener(evt, e => { e.preventDefault(); filmDrop.classList.add('dragover'); }));
+['dragleave', 'drop'].forEach(evt => filmDrop.addEventListener(evt, e => { e.preventDefault(); filmDrop.classList.remove('dragover'); }));
+filmDrop.addEventListener('drop', e => { const f = e.dataTransfer.files?.[0]; if (f && f.type.startsWith('video/')) loadFilm(f); });
+fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) loadFilm(f); });
+delFilmBtn.addEventListener('click', e => { e.stopPropagation(); clearFilm(); });
+
+function loadFilm(file) {
+  state.film = file;
+  filmFilename.textContent = `${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+  filmFilename.style.display = 'block';
+  const url = URL.createObjectURL(file);
+  filmPreview.src = url;
+  filmPreview.onloadedmetadata = () => {
+    state.filmMeta = { duration: filmPreview.duration, width: filmPreview.videoWidth, height: filmPreview.videoHeight, mime: file.type || 'video/mp4', size_bytes: file.size };
+    renderFilmMeta();
+    refreshButtons();
+  };
+  filmDrop.classList.add('has-file');
+}
+function renderFilmMeta() {
+  if (!state.filmMeta) { filmMetaBox.style.display = 'none'; return; }
+  const m = state.filmMeta;
+  const dur = formatDuration(m.duration);
+  const sizeMB = (m.size_bytes / 1024 / 1024).toFixed(1);
+  const warn = m.size_bytes > 50 * 1024 * 1024 ? ` <span style="color:var(--soft);">⚠ &gt;50MB</span>` : '';
+  filmMetaBox.innerHTML = `<div class="item"><b>משך:</b> <code>${dur}</code></div><div class="item"><b>רזולוציה:</b> <code>${m.width}×${m.height}</code></div><div class="item"><b>גודל:</b> <code>${sizeMB} MB</code>${warn}</div><div class="item"><b>פורמט:</b> <code>${m.mime}</code></div>`;
+  filmMetaBox.style.display = 'grid';
+  // Auto-fill duration in result form when AI hasn't run yet
+  if (!document.getElementById('r-duration').value) document.getElementById('r-duration').value = dur;
+}
+function formatDuration(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function clearFilm() {
+  state.film = null; state.filmMeta = null;
+  filmPreview.src = '';
+  filmDrop.classList.remove('has-file');
+  filmFilename.style.display = 'none';
+  filmMetaBox.style.display = 'none';
+  fileInput.value = '';
+  refreshButtons();
+}
+
+// Context
+const contextEl = document.getElementById('context-input');
+const ctxBtn = document.getElementById('ctx-file-btn');
+const ctxInput = document.getElementById('ctx-file-input');
+const ctxStatus = document.getElementById('ctx-file-status');
+ctxBtn.addEventListener('click', () => ctxInput.click());
+ctxInput.addEventListener('change', () => { const f = ctxInput.files?.[0]; if (f) extractContext(f); });
+
+async function extractContext(file) {
+  const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+  setMini(ctxStatus, '<span class="dot"></span>מחלץ ' + esc(file.name) + '…', 'working');
+  try {
+    let text = '', meta = {};
+    if (ext === '.pdf') ({ text, meta } = await extractPDF(file));
+    else if (ext === '.docx') ({ text, meta } = await extractDOCX(file));
+    else if (['.txt','.md','.markdown','.rtf','.log'].includes(ext)) { text = await file.text(); meta = { format: ext.slice(1) }; }
+    else throw new Error('סוג לא נתמך: ' + ext);
+    const existing = contextEl.value.trim();
+    contextEl.value = (existing ? existing + '\n\n――――――――――――――――\n\nמקור: ' + file.name + '\n\n' : 'מקור: ' + file.name + '\n\n') + text;
+    setMini(ctxStatus, '<span class="dot"></span>✓ נטען <span class="meta">' + (meta.page_count ? meta.page_count + ' עמ׳ · ' : '') + text.length.toLocaleString() + ' תווים</span>', 'ok');
+  } catch (err) { setMini(ctxStatus, '<span class="dot"></span>שגיאה: ' + err.message, 'err'); }
+}
+async function extractPDF(file) {
+  const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs';
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    const txt = tc.items.map(it => it.str).join(' ').trim();
+    if (txt) pages.push(`━━ עמוד ${i} ━━\n${txt}`);
+  }
+  return { text: pages.join('\n\n') || '[לא ניתן לחלץ — ייתכן ש-PDF סרוק]', meta: { format: 'pdf', page_count: pdf.numPages } };
+}
+async function extractDOCX(file) {
+  const r = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+  return { text: r.value.trim(), meta: { format: 'docx' } };
+}
+
+// Identify
+const identifyBtn = document.getElementById('identify-btn');
+const identifyStatus = document.getElementById('identify-status');
+
+function refreshButtons() {
+  const hasFilm = !!state.film;
+  const hasKey = !!getActiveApiKey();
+  identifyBtn.disabled = !(hasFilm && hasKey);
+  identifyBtn.title = !hasFilm ? 'יש להעלות סרט' : !hasKey ? 'יש להגדיר API key' : '';
+}
+
+identifyBtn.addEventListener('click', async () => {
+  identifyBtn.disabled = true;
+  const providerLabel = state.provider === 'gemini' ? 'Gemini' : 'Claude';
+  identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel + '…';
+  showStatus('שולח את הסרט ל-' + providerLabel + ' (30-120 שניות)…', 'info');
+  try {
+    const result = state.provider === 'gemini' ? await callGemini() : await callAnthropic();
+    state.identification = result;
+    fillResults(result);
+    document.getElementById('results').classList.add('show');
+    document.getElementById('no-results').style.display = 'none';
+    document.getElementById('download-bar').style.display = 'flex';
+    showStatus('✓ הזיהוי הושלם.', 'ok');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    console.error(err);
+    showStatus('שגיאה: ' + err.message, 'err');
+  } finally {
+    identifyBtn.disabled = false;
+    identifyBtn.innerHTML = '🔍 זהה את הסרט';
+    refreshButtons();
+  }
+});
+
+function showStatus(msg, kind) { identifyStatus.textContent = msg; identifyStatus.className = 'status-msg show ' + (kind || ''); }
+
+const fileToBase64 = file => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result.split(',')[1]);
+  r.onerror = reject; r.readAsDataURL(file);
+});
+
+function buildFilmPrompt() {
+  const ctx = contextEl.value.trim();
+  const m = state.filmMeta || {};
+  const dur = formatDuration(m.duration || 0);
+  const thesaurusBrief = (state.thesaurus_top || []).map(t => `${t.he} | ${t.en}`).join('\n');
+  return `אתה מקטלג בכיר במדור התיעוד הוויזואלי של יד ושם. נשלח אליך סרט ארכיוני (משך: ${dur}, רזולוציה: ${m.width}×${m.height}). בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים** והחזר JSON תקין בלבד.
+
+## כותר (פורמט קבוע)
+\`[City in English], [Country in English], [תוכן], [תאריך]\`
+- \`Brussels, Belgium, חיילים בלגים בפעילויות אזרחיות וצבאיות, 1935\`
+- שמות מקומות באנגלית בלבד (Brussels לא Brussel), גבולות 01/09/1939
+- ארץ ישראל לפני 14/05/1948 → \`Mandatory Palestine\`; אחרי → \`Israel\`
+
+## תאריכים
+- מלא: \`DD/MM/YYYY\` (בק-סלאש בלבד)
+- חלקי: \`1948\` / \`מאי 1941\` / \`Tammuz (June–July) 1937\` / \`לפני המלחמה\`
+
+## סימוני ודאות (חובה)
+- ✓ Confirmed | ~ Probable | ? Tentative
+- אסור לנחש מקום/אישיות/יחידה ללא ראיה ברורה
+
+## טיימליין — הליבה
+פרק את הסרט לסצנות. לכל סצנה: timecode התחלה→סיום (HH:MM:SS), תיאור עברית של פעולה/אישים/סביבה, ותיאור אנגלית. סצנות 5-90 שניות.
+לכל סצנה: מה רואים, מה הם עושים, כיתובי ביניים/שלטים נראים (תעתק מקור + תרגם), אישים מזוהים אם רלוונטי.
+
+## כיתובים
+תעתק כל טקסט בסרט (גרמנית/יידיש/פולנית/רוסית/וכו׳) + תרגם לעברית ולאנגלית. ציין timecode.
+
+## מידע מוקדם
+${ctx || '(אין)'}
+
+## נושאים מתזאורוס
+בחר עד 10 נושאים רלוונטיים **רק מהרשימה הסגורה**:
+\`\`\`
+${thesaurusBrief}
+\`\`\`
+
+## פלט — JSON בלבד:
+\`\`\`json
+{
+  "title_he": "כותר עברית",
+  "title_en": "Title English",
+  "original_title": "",
+  "media_code": "S | V | D",
+  "archive_id": "",
+  "intake_num": "",
+  "original_id": "",
+  "genre": "תיעודי / תעמולה / משפחתי / חדשות / הסברה / ביתי",
+  "duration": "${dur}",
+  "quality": "טובה / בינונית / ירודה",
+  "color": "שחור-לבן | צבעוני",
+  "language": "אילם / גרמנית / וכו׳",
+  "recording_method": "35mm / 16mm / 8mm / Beta / VHS / DV / digital born",
+  "creation_date": "DD/MM/YYYY",
+  "rights": "לא ידוע",
+  "donor_he": "",
+  "donor_en": "",
+  "source_he": "",
+  "source_en": "",
+  "summary_he": "תקציר 4-5 שורות בעברית",
+  "summary_en": "Summary 4-5 lines in English",
+  "timeline": [
+    { "start": "00:00:00", "end": "00:01:30", "description_he": "תיאור בעברית", "description_en": "Description in English" }
+  ],
+  "persons_he": "תיאור אישים עם רמת ודאות ו-timecode",
+  "persons_en": "Same in English",
+  "inscriptions_he": "כיתובים — תעתיק + שפה + תרגום + timecode",
+  "inscriptions_en": "Same in English",
+  "subjects_he": ["נושא1"],
+  "subjects_en": ["Subject1"],
+  "admin_notes": "הערות פנים-ארכיוניות"
+}
+\`\`\`
+החזר JSON בלבד, ללא code fence.`;
+}
+
+async function callGemini() {
+  if (!state.film) throw new Error('אין סרט');
+  const sizeMB = state.film.size / 1024 / 1024;
+  if (sizeMB > 50) throw new Error(`סרט גדול מדי (${sizeMB.toFixed(1)}MB) — Gemini inline_data תומך עד 50MB.`);
+  const videoB64 = await fileToBase64(state.film);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: state.film.type || 'video/mp4', data: videoB64 } }, { text: buildFilmPrompt() }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 16000, responseMimeType: 'application/json' }
+    })
+  });
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  if (!text) throw new Error('Gemini תגובה ריקה');
+  return parseJson(text, 'Gemini');
+}
+
+async function callAnthropic() {
+  showStatus('מחלץ פריימים מהסרט (30 נקודות)…', 'info');
+  const frames = await extractKeyframes(state.film, 30);
+  showStatus('שולח 30 פריימים ל-Claude…', 'info');
+  const content = [{ type: 'text', text: 'הסרט מצורף כ-30 פריימים שחילצתי במרווחים שווים. כל פריים מסומן ב-timecode (HH:MM:SS). נתח את הסרט לפי הפריימים ובנה טיימליין על-בסיס ה-timecodes.' }];
+  for (const f of frames) {
+    content.push({ type: 'text', text: `--- ${f.tc} ---` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.b64 } });
+  }
+  content.push({ type: 'text', text: buildFilmPrompt() });
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': getActiveApiKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model: getActiveModel(), max_tokens: 16000, messages: [{ role: 'user', content }] })
+  });
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`); }
+  const data = await res.json();
+  return parseJson(data.content?.[0]?.text || '', 'Claude');
+}
+
+async function extractKeyframes(file, count) {
+  const video = document.createElement('video');
+  video.src = URL.createObjectURL(file);
+  video.muted = true;
+  await new Promise(r => video.addEventListener('loadedmetadata', r, { once: true }));
+  const duration = video.duration;
+  const interval = duration / (count + 1);
+  const canvas = document.createElement('canvas');
+  const targetWidth = 800;
+  canvas.width = targetWidth;
+  canvas.height = Math.round(targetWidth * video.videoHeight / video.videoWidth);
+  const ctx = canvas.getContext('2d');
+  const frames = [];
+  for (let i = 1; i <= count; i++) {
+    const t = i * interval;
+    video.currentTime = t;
+    await new Promise(r => video.addEventListener('seeked', r, { once: true }));
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    frames.push({ tc: formatDuration(t), t, b64: dataUrl.split(',')[1] });
+  }
+  URL.revokeObjectURL(video.src);
+  return frames;
+}
+
+function parseJson(text, label) {
+  let s = text.trim();
+  const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) s = fenceMatch[1].trim();
+  if (!s.startsWith('{')) { const m = s.match(/\{[\s\S]*\}/); if (m) s = m[0]; }
+  try { return JSON.parse(s); }
+  catch (e) { console.error(`${label} raw response:`, text); throw new Error(`${label} החזיר תגובה לא JSON`); }
+}
+
+function fillResults(d) {
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  setVal('r-title-he', d.title_he); setVal('r-title-en', d.title_en); setVal('r-original-title', d.original_title);
+  setVal('r-archive-id', d.archive_id); setVal('r-intake-num', d.intake_num); setVal('r-original-id', d.original_id);
+  setVal('r-genre', d.genre); setVal('r-duration', d.duration); setVal('r-quality', d.quality);
+  setVal('r-language', d.language); setVal('r-recording-method', d.recording_method); setVal('r-creation-date', d.creation_date);
+  setVal('r-rights', d.rights || 'לא ידוע');
+  setVal('r-donor-he', d.donor_he); setVal('r-donor-en', d.donor_en);
+  setVal('r-source-he', d.source_he); setVal('r-source-en', d.source_en);
+  setVal('r-summary-he', d.summary_he); setVal('r-summary-en', d.summary_en);
+  setVal('r-persons-he', d.persons_he); setVal('r-persons-en', d.persons_en);
+  setVal('r-inscriptions-he', d.inscriptions_he); setVal('r-inscriptions-en', d.inscriptions_en);
+  setVal('r-admin-notes', d.admin_notes);
+  document.getElementById('r-media-code').value = d.media_code || 'D';
+  document.getElementById('r-color').value = d.color || 'שחור-לבן';
+
+  const tbody = document.getElementById('r-timeline-tbody');
+  tbody.innerHTML = '';
+  (d.timeline || []).forEach(scene => addTimelineRow(scene));
+  if (!(d.timeline || []).length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:14px">אין סצנות. הוסף ידנית.</td></tr>';
+  }
+  const subjects = (d.subjects_he || []).map((he, i) => ({ he, en: (d.subjects_en || [])[i] || '' }));
+  renderSubjects(subjects);
+}
+
+function addTimelineRow(scene) {
+  const tbody = document.getElementById('r-timeline-tbody');
+  if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td class="tc-cell"><input type="text" value="${esc(scene?.start || '00:00:00')}"></td><td class="tc-cell"><input type="text" value="${esc(scene?.end || '00:00:00')}"></td><td><textarea rows="2">${esc(scene?.description_he || '')}</textarea></td><td><textarea rows="2" style="direction:ltr; text-align:left; font-family:Georgia,serif">${esc(scene?.description_en || '')}</textarea></td><td class="del-cell"><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tbody.appendChild(tr);
+}
+document.getElementById('timeline-add-row').addEventListener('click', () => addTimelineRow());
+
+let activeSubjects = [];
+function renderSubjects(items) {
+  activeSubjects = items;
+  const chips = document.getElementById('r-subjects-chips');
+  if (!items.length) { chips.innerHTML = '<span style="color:var(--muted); font-size:12px; font-style:italic">— אין נושאים —</span>'; return; }
+  chips.innerHTML = items.map((s, i) => `<span class="chip">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}<span class="x" data-idx="${i}">✕</span></span>`).join('');
+  chips.querySelectorAll('.x').forEach(x => x.addEventListener('click', () => { activeSubjects.splice(parseInt(x.dataset.idx), 1); renderSubjects(activeSubjects); }));
+}
+const subjectsAdd = document.getElementById('r-subjects-add');
+subjectsAdd.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const v = subjectsAdd.value.trim();
+    if (v) {
+      const found = state.thesaurus_top.find(t => t.he === v || t.en === v);
+      activeSubjects.push(found ? { he: found.he, en: found.en } : { he: v, en: '' });
+      renderSubjects(activeSubjects); subjectsAdd.value = '';
+    }
+  }
+});
+
+// Per-field copy buttons
+function wrapFieldsWithCopyButtons() {
+  const fields = document.querySelectorAll('#results input[type="text"][id^="r-"], #results textarea[id^="r-"]');
+  fields.forEach(el => {
+    if (el.parentElement?.classList.contains('input-wrap')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'input-wrap';
+    el.parentNode.insertBefore(wrap, el);
+    wrap.appendChild(el);
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'copy-corner'; btn.textContent = '📋';
+    btn.title = 'העתק / Copy'; btn.dataset.copyTarget = el.id;
+    wrap.appendChild(btn);
+  });
+}
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.copy-corner');
+  if (!btn) return;
+  const target = document.getElementById(btn.dataset.copyTarget);
+  if (!target) return;
+  const value = (target.value ?? target.innerText ?? '').trim();
+  try { await navigator.clipboard.writeText(value); }
+  catch { const ta = document.createElement('textarea'); ta.value = value; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  const orig = btn.textContent;
+  btn.textContent = '✓'; btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1100);
+});
+wrapFieldsWithCopyButtons();
+
+// Download HTML
+function buildFilmHTML() {
+  const get = id => document.getElementById(id).value;
+  const timelineRows = [...document.querySelectorAll('#r-timeline-tbody tr')].map(tr => {
+    const inputs = [...tr.querySelectorAll('input, textarea')];
+    if (inputs.length < 4) return null;
+    return { start: inputs[0].value, end: inputs[1].value, he: inputs[2].value, en: inputs[3].value };
+  }).filter(s => s && s.he);
+  const tlHE = timelineRows.length
+    ? `<table class="tl"><thead><tr><th>החל</th><th>עד</th><th>תיאור</th></tr></thead><tbody>${timelineRows.map(s => `<tr><td class="tc">${esc(s.start)}</td><td class="tc">${esc(s.end)}</td><td>${esc(s.he).replace(/\n/g, '<br>')}</td></tr>`).join('')}</tbody></table>`
+    : '<div style="color:#888; font-style:italic">— אין סצנות —</div>';
+  const tlEN = timelineRows.length
+    ? `<table class="tl"><thead><tr><th>Start</th><th>End</th><th>Description</th></tr></thead><tbody>${timelineRows.map(s => `<tr><td class="tc">${esc(s.start)}</td><td class="tc">${esc(s.end)}</td><td>${esc(s.en).replace(/\n/g, '<br>')}</td></tr>`).join('')}</tbody></table>`
+    : '<div style="color:#888; font-style:italic">— No scenes —</div>';
+  const chipsHTML = activeSubjects.map(s => `<span style="display:inline-block; background:#cee0f3; color:#1d4666; padding:3px 10px; margin:2px; border-radius:12px; font-size:12.5px; border:1px solid #a1bbd9;">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}</span>`).join('');
+  return FILM_TEMPLATE
+    .replace(/\{\{TITLE_HE\}\}/g, esc(get('r-title-he')))
+    .replace(/\{\{TITLE_EN\}\}/g, esc(get('r-title-en')))
+    .replace(/\{\{ORIGINAL_TITLE\}\}/g, esc(get('r-original-title')))
+    .replace(/\{\{MEDIA_CODE\}\}/g, esc(get('r-media-code')))
+    .replace(/\{\{ARCHIVE_ID\}\}/g, esc(get('r-archive-id')))
+    .replace(/\{\{INTAKE_NUM\}\}/g, esc(get('r-intake-num')))
+    .replace(/\{\{ORIGINAL_ID\}\}/g, esc(get('r-original-id')))
+    .replace(/\{\{GENRE\}\}/g, esc(get('r-genre')))
+    .replace(/\{\{DURATION\}\}/g, esc(get('r-duration')))
+    .replace(/\{\{QUALITY\}\}/g, esc(get('r-quality')))
+    .replace(/\{\{COLOR\}\}/g, esc(get('r-color')))
+    .replace(/\{\{LANGUAGE\}\}/g, esc(get('r-language')))
+    .replace(/\{\{RECORDING_METHOD\}\}/g, esc(get('r-recording-method')))
+    .replace(/\{\{CREATION_DATE\}\}/g, esc(get('r-creation-date')))
+    .replace(/\{\{RIGHTS\}\}/g, esc(get('r-rights')))
+    .replace(/\{\{DONOR_HE\}\}/g, esc(get('r-donor-he')))
+    .replace(/\{\{DONOR_EN\}\}/g, esc(get('r-donor-en')))
+    .replace(/\{\{SOURCE_HE\}\}/g, esc(get('r-source-he')))
+    .replace(/\{\{SOURCE_EN\}\}/g, esc(get('r-source-en')))
+    .replace(/\{\{SUMMARY_HE\}\}/g, esc(get('r-summary-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{SUMMARY_EN\}\}/g, esc(get('r-summary-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{TIMELINE_HE\}\}/g, tlHE)
+    .replace(/\{\{TIMELINE_EN\}\}/g, tlEN)
+    .replace(/\{\{PERSONS_HE\}\}/g, esc(get('r-persons-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{PERSONS_EN\}\}/g, esc(get('r-persons-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INSCRIPTIONS_HE\}\}/g, esc(get('r-inscriptions-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INSCRIPTIONS_EN\}\}/g, esc(get('r-inscriptions-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{ADMIN_NOTES\}\}/g, esc(get('r-admin-notes')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INTERNET\}\}/g, esc(get('r-internet')))
+    .replace(/\{\{INTRANET\}\}/g, esc(get('r-intranet')))
+    .replace(/\{\{SUBJECTS\}\}/g, chipsHTML)
+    .replace(/\{\{ANALYSIS_DATE\}\}/g, new Date().toLocaleDateString('he-IL'))
+    .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.film?.name || ''));
+}
+
+document.getElementById('download-final-btn').addEventListener('click', () => {
+  const html = buildFilmHTML();
+  const stem = (state.film?.name || 'film').replace(/\.[^.]+$/, '').replace(/[^\w֐-׿.-]/g, '_');
+  const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
+  const fname = `film_${stem}_${today}.html`;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showStatus(`✓ הורד: ${fname}`, 'ok');
+});
+document.getElementById('preview-btn').addEventListener('click', () => {
+  const blob = new Blob([buildFilmHTML()], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+});
+
+const FILM_TEMPLATE = `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="UTF-8"><title>{{TITLE_HE}}</title>
+<style>
+  body{margin:0;font-family:"SBL Hebrew","David",serif;background:#f7f5f0;color:#1a1a1a;line-height:1.55;direction:rtl;text-align:right}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px}
+  header{border-bottom:2px solid #2c5d8a;padding-bottom:14px;margin-bottom:22px}
+  header h1{color:#2c5d8a;font-size:22px;margin:0 0 4px}
+  header .sub{font-size:13px;color:#5a5a5a}
+  .section-bar{background:#2c5d8a;color:#fff;padding:8px 14px;border-radius:4px;font-weight:700;font-size:14px;margin:24px 0 12px;direction:rtl;unicode-bidi:isolate}
+  .field{background:#fff;border:1px solid #d8d4cc;border-radius:8px;margin-bottom:14px;overflow:hidden}
+  .field>.head{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:linear-gradient(180deg,#fbfaf6,#f3efe6);border-bottom:1px solid #d8d4cc;direction:rtl}
+  .field>.head .label{font-weight:700;color:#2c5d8a;font-size:14.5px}
+  .field>.head .label small{color:#5a5a5a;font-weight:400;margin-inline-start:8px;font-size:12px}
+  .copy-btn{background:#2c5d8a;color:#fff;border:none;border-radius:4px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+  .copy-btn:hover{background:#1d4666}.copy-btn.copied{background:#2e7d32}.copy-btn.alt{background:#4a5568}
+  .single{padding:12px 16px;font-size:15px}
+  .single.he{direction:rtl;text-align:right;background:#fbf9f3;unicode-bidi:isolate}
+  .single.en{direction:ltr;text-align:left;background:#f3f6fb;font-family:Georgia,serif}
+  .compact{padding:10px 14px;background:#f0f4ee;font-size:14px;direction:rtl;text-align:right;unicode-bidi:isolate}
+  .bilingual{display:grid;grid-template-columns:1fr 1fr}
+  .bilingual .lang{padding:12px 16px;font-size:14.5px;white-space:pre-wrap}
+  .bilingual .he{background:#fbf9f3;direction:rtl;text-align:right;border-inline-end:1px solid #d8d4cc;unicode-bidi:isolate}
+  .bilingual .en{background:#f3f6fb;direction:ltr;text-align:left;font-family:Georgia,serif}
+  table.tl{width:100%;border-collapse:collapse;font-size:13px;margin:0}
+  table.tl th,table.tl td{border:1px solid #d8d4cc;padding:6px 10px;vertical-align:top;text-align:right}
+  table.tl th{background:#cee0f3;color:#1d4666;font-weight:700}
+  table.tl .tc{font-family:"SF Mono",monospace;direction:ltr;text-align:center;color:#1d4666;font-weight:600;width:80px}
+  .toast{position:fixed;bottom:24px;inset-inline-start:50%;transform:translateX(-50%);background:#2e7d32;color:#fff;padding:8px 16px;border-radius:4px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:1000}
+  .toast.show{opacity:1}
+  @media(max-width:760px){.bilingual{grid-template-columns:1fr}}
+  @media print{.copy-btn,.toast{display:none}body{background:#fff}.field{break-inside:avoid}}
+</style></head><body><div class="wrap">
+
+<header><h1>🎞 קטלוג סרט — מערכת ספיר / Yad Vashem Sapir Film Catalog</h1><div class="sub">{{ANALYSIS_DATE}} · קובץ: {{SOURCE_FILENAME}}</div></header>
+
+<div class="section-bar">כותר <small>Title</small></div>
+<div class="field"><div class="head"><span class="label">כותר HE</span><button class="copy-btn" data-copy="title-he">העתק</button></div><div id="title-he" class="single he">{{TITLE_HE}}</div></div>
+<div class="field"><div class="head"><span class="label">Title EN</span><button class="copy-btn" data-copy="title-en">Copy</button></div><div id="title-en" class="single en">{{TITLE_EN}}</div></div>
+<div class="field"><div class="head"><span class="label">כותר מקורי</span><button class="copy-btn" data-copy="orig-title">העתק</button></div><div id="orig-title" class="compact">{{ORIGINAL_TITLE}}</div></div>
+
+<div class="section-bar">שדות טכניים</div>
+<div class="field"><div class="head"><span class="label">קוד רישום 1</span><button class="copy-btn" data-copy="media">העתק</button></div><div id="media" class="compact">{{MEDIA_CODE}}</div></div>
+<div class="field"><div class="head"><span class="label">קוד רישום 2</span><button class="copy-btn" data-copy="aid">העתק</button></div><div id="aid" class="compact">{{ARCHIVE_ID}}</div></div>
+<div class="field"><div class="head"><span class="label">מספר נכנסות</span><button class="copy-btn" data-copy="iid">העתק</button></div><div id="iid" class="compact">{{INTAKE_NUM}}</div></div>
+<div class="field"><div class="head"><span class="label">סימול מקורי</span><button class="copy-btn" data-copy="orig-id">העתק</button></div><div id="orig-id" class="compact">{{ORIGINAL_ID}}</div></div>
+<div class="field"><div class="head"><span class="label">זאנר</span><button class="copy-btn" data-copy="genre">העתק</button></div><div id="genre" class="compact">{{GENRE}}</div></div>
+<div class="field"><div class="head"><span class="label">משך (HH:MM:SS)</span><button class="copy-btn" data-copy="dur">העתק</button></div><div id="dur" class="compact">{{DURATION}}</div></div>
+<div class="field"><div class="head"><span class="label">איכות חומר</span><button class="copy-btn" data-copy="qual">העתק</button></div><div id="qual" class="compact">{{QUALITY}}</div></div>
+<div class="field"><div class="head"><span class="label">צבעוניות</span><button class="copy-btn" data-copy="color">העתק</button></div><div id="color" class="compact">{{COLOR}}</div></div>
+<div class="field"><div class="head"><span class="label">שפה</span><button class="copy-btn" data-copy="lang">העתק</button></div><div id="lang" class="compact">{{LANGUAGE}}</div></div>
+<div class="field"><div class="head"><span class="label">שיטת הקלטה</span><button class="copy-btn" data-copy="rec">העתק</button></div><div id="rec" class="compact">{{RECORDING_METHOD}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך יצירה</span><button class="copy-btn" data-copy="cdate">העתק</button></div><div id="cdate" class="compact">{{CREATION_DATE}}</div></div>
+<div class="field"><div class="head"><span class="label">בעל זכויות</span><button class="copy-btn" data-copy="rights">העתק</button></div><div id="rights" class="compact">{{RIGHTS}}</div></div>
+<div class="field"><div class="head"><span class="label">הצגה Internet/Intranet</span><button class="copy-btn" data-copy="show">העתק</button></div><div id="show" class="compact">{{INTERNET}} / {{INTRANET}}</div></div>
+
+<div class="section-bar">מוסר ומקור</div>
+<div class="field"><div class="head"><span class="label">שם מוסר</span><button class="copy-btn" data-copy="donor-he">HE</button><button class="copy-btn alt" data-copy="donor-en">EN</button></div><div class="bilingual"><div id="donor-he" class="lang he">{{DONOR_HE}}</div><div id="donor-en" class="lang en">{{DONOR_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">מקור</span><button class="copy-btn" data-copy="src-he">HE</button><button class="copy-btn alt" data-copy="src-en">EN</button></div><div class="bilingual"><div id="src-he" class="lang he">{{SOURCE_HE}}</div><div id="src-en" class="lang en">{{SOURCE_EN}}</div></div></div>
+
+<div class="section-bar">תקציר</div>
+<div class="field"><div class="head"><span class="label">תקציר</span><button class="copy-btn" data-copy="sum-he">HE</button><button class="copy-btn alt" data-copy="sum-en">EN</button></div><div class="bilingual"><div id="sum-he" class="lang he">{{SUMMARY_HE}}</div><div id="sum-en" class="lang en">{{SUMMARY_EN}}</div></div></div>
+
+<div class="section-bar">טיימליין מפורט</div>
+<div class="field"><div class="head"><span class="label">טיימליין HE / EN</span></div><div class="bilingual"><div class="lang he" style="padding:0">{{TIMELINE_HE}}</div><div class="lang en" style="padding:0">{{TIMELINE_EN}}</div></div></div>
+
+<div class="section-bar">זיהוי אישים</div>
+<div class="field"><div class="head"><span class="label">אישים</span><button class="copy-btn" data-copy="per-he">HE</button><button class="copy-btn alt" data-copy="per-en">EN</button></div><div class="bilingual"><div id="per-he" class="lang he">{{PERSONS_HE}}</div><div id="per-en" class="lang en">{{PERSONS_EN}}</div></div></div>
+
+<div class="section-bar">שלטים וכתובות</div>
+<div class="field"><div class="head"><span class="label">כיתובים</span><button class="copy-btn" data-copy="ins-he">HE</button><button class="copy-btn alt" data-copy="ins-en">EN</button></div><div class="bilingual"><div id="ins-he" class="lang he">{{INSCRIPTIONS_HE}}</div><div id="ins-en" class="lang en">{{INSCRIPTIONS_EN}}</div></div></div>
+
+<div class="section-bar">נושאים</div>
+<div class="field"><div class="head"><span class="label">נושאים מתזאורוס</span></div><div style="padding:10px 14px; background:#fbf9f3; direction:rtl; text-align:right; unicode-bidi:isolate;">{{SUBJECTS}}</div></div>
+
+<div class="section-bar">הערות אדמיניסטרציה</div>
+<div class="field"><div class="head"><span class="label">הערות פנים-ארכיוניות</span></div><div class="single he">{{ADMIN_NOTES}}</div></div>
+
+</div>
+<div id="toast" class="toast">הועתק / Copied</div>
+<script>
+document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
+  b.addEventListener('click',async()=>{
+    const el=document.getElementById(b.getAttribute('data-copy'));if(!el)return;
+    try{await navigator.clipboard.writeText(el.innerText.trim());const o=b.textContent;b.classList.add('copied');b.textContent='✓';document.getElementById('toast').classList.add('show');setTimeout(()=>{b.classList.remove('copied');b.textContent=o;document.getElementById('toast').classList.remove('show');},1100);}catch(e){const t=document.createElement('textarea');t.value=el.innerText.trim();document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
+  });
+});
+<\/script>
+</body></html>`;
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function setMini(el, html, kind) { el.innerHTML = html; el.className = 'mini-status' + (kind ? ' ' + kind : ''); }
+
+refreshButtons();
+</script>
+</body>
+</html>
