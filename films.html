@@ -963,6 +963,11 @@ function wrapFieldsWithCopyButtons() {
     if (el.parentElement?.classList.contains('input-wrap')) return;
     const wrap = document.createElement('div');
     wrap.className = 'input-wrap';
+    // Match wrap direction to the input's actual direction so inset-inline-end
+    // resolves to the visual END of the text (right for LTR, left for RTL).
+    // Otherwise the button covers the START of the value.
+    const dir = window.getComputedStyle(el).direction;
+    if (dir === 'ltr') wrap.style.direction = 'ltr';
     el.parentNode.insertBefore(wrap, el);
     wrap.appendChild(el);
     const btn = document.createElement('button');
