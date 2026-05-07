@@ -124,6 +124,46 @@
   .copy-corner:hover { opacity: 1; background: var(--accent); color: white; border-color: var(--accent); }
   .copy-corner.copied { background: var(--good) !important; color: white !important; border-color: var(--good) !important; }
 
+  /* Confidence badges */
+  .conf-badge {
+    display: inline-block;
+    margin-inline-start: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 10px;
+    vertical-align: middle;
+    direction: rtl;
+    unicode-bidi: isolate;
+  }
+  .conf-badge.high   { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+  .conf-badge.medium { background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
+  .conf-badge.low    { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+  .conf-badge.empty  { background: #e9ecef; color: #6c757d; border: 1px solid #ced4da; }
+
+  /* Field background color hints (subtle) */
+  .results .field-row textarea[data-conf="✓"] { background: #f4faf6; }
+  .results .field-row textarea[data-conf="~"] { background: #fffaeb; }
+  .results .field-row textarea[data-conf="?"] { background: #fef0f1; }
+  .results .compact-row input[data-conf="✓"]  { background: #f4faf6; }
+  .results .compact-row input[data-conf="~"]  { background: #fffaeb; }
+  .results .compact-row input[data-conf="?"]  { background: #fef0f1; }
+
+  /* Overall readability banner shown above results */
+  #overall-readability {
+    display: none;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  #overall-readability.show { display: block; }
+  #overall-readability.r-good   { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+  #overall-readability.r-fair   { background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
+  #overall-readability.r-poor   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+  #overall-readability.r-bad    { background: #2d2d2d; color: #ffd1d1; border: 1px solid #444; }
+
   .results { display: none; }
   .results.show { display: block; }
   .results .field-group { margin-bottom: 14px; }
@@ -264,6 +304,9 @@
     <div class="head"><span class="num">4</span><span class="title">תוצאות <small>Results — ניתן לערוך</small></span></div>
     <div class="body">
       <div id="results" class="results">
+
+        <!-- Overall readability indicator from AI -->
+        <div id="overall-readability"></div>
 
         <div class="field-group">
           <h4>כותר ופרטי קטלוג / Title & metadata</h4>
@@ -612,29 +655,57 @@ function buildDocPrompt() {
   const writingTypeMap = { auto: 'זיהוי אוטומטי', typewritten: 'מכונת כתיבה', handwritten: 'כתב יד', mixed: 'מעורב', printed: 'דפוס' };
   const thesaurusBrief = (state.thesaurus_top || []).map(t => `${t.he} | ${t.en}`).join('\n');
 
-  return `אתה מקטלג בכיר במדור המסמכים של ארכיון יד ושם, מומחה לפיענוח מסמכים היסטוריים מהתקופה 1900–1948 (בייחוד התקופה הנאצית והשואה).
+  return `אתה מקטלג בכיר במדור המסמכים של ארכיון יד ושם, מומחה לפיענוח מסמכים היסטוריים מהתקופה 1900–1948.
 
-🚨🚨🚨 **חוק קריטי — איסור הזיה (במיוחד חמור ב-OCR)** 🚨🚨🚨
+═══════════════════════════════════════════════════════════════
+🛑🛑🛑 **חוק עליון — אפס סובלנות להזיות** 🛑🛑🛑
+═══════════════════════════════════════════════════════════════
 
-**חובה מוחלטת**: כל מילה שאתה כותב בשדה "טקסט מקורי" חייבת להיות מילה שאתה **רואה בפועל** במסמך.
+תפקידך **היחיד והבלעדי**: לקרוא מה שכתוב בבירור במסמך. לא יותר, לא פחות.
 
-❌ **אסור בתכלית האיסור**:
-- "להשלים" מילים שאינן ברורות לפי הקשר
-- להמציא משפטים שלא מופיעים
-- לנחש מילים מטושטשות — סמן \`[?]\` או \`[לא קריא]\`
-- להמציא שמות, תאריכים, מקומות שלא נכתבים במסמך
-- להוסיף "תוכן צפוי" של מסמך מהתקופה
-- בקטלוג: לנחש שולח/נמען/תאריך שלא מצוין
+**אם אינך קורא משהו בוודאות מוחלטת — אסור לכתוב אותו.**
 
-✅ **חובה לעשות**:
-- לסמן \`[?]\` למילים לא ברורות
-- לסמן \`[לא קריא — XX מילים]\` לחלקים שלמים שלא ניתן לקרוא
-- להחזיר שדה ריק כשהמידע לא קיים במסמך
-- בתרגום — לא לתרגם מילים שלא קראת. לסמן \`[חסר]\`.
+דמיין: ארכיונאי מנוסה לידך אומר: "תקרא לי מה כתוב בדיוק. אם אתה לא בטוח — תגיד 'לא ברור' או 'לא קריא'. אסור לנחש." זאת המשימה.
 
-**עקרון יסוד**: שדה ריק או \`[?]\` עדיפים על המצאה. עדיף תרגום חלקי עם פערים מאשר תרגום מלא עם המצאות.
+═══════════════════════════════════════════════════════════════
+📊 **רמת ודאות — חובה לכל שדה**
+═══════════════════════════════════════════════════════════════
 
-## משימה: OCR מלא + תרגום + קטלוג
+לכל שדה שאתה ממלא, החזר גם רמת ודאות:
+- \`"✓"\` — **ודאי**: אתה רואה כל אות/ספרה בבירור גמור
+- \`"~"\` — **סביר**: רוב הטקסט קריא, חלק קטן לא ברור (סמן \`[?]\` במקום הבעייתי)
+- \`"?"\` — **השערה**: אתה מנחש בהתבסס על קונטקסט/חלק חלקי
+- \`""\` (ריק) — **לא ידוע / לא קיים**: השדה לא במסמך או לא קריא בכלל
+
+**אם רמת הודאות תהיה "?" — תחשוב שוב: האם באמת ראית את זה? אם לא — מחק והשאר ריק.**
+
+═══════════════════════════════════════════════════════════════
+❌ **רשימת איסורים מוחלטים**
+═══════════════════════════════════════════════════════════════
+
+1. **אסור** "להשלים" מילים שלא רואים — אפילו אם ההקשר ברור
+2. **אסור** להמציא שמות אישים שלא כתובים במפורש
+3. **אסור** לנחש תאריכים — אם רואים רק "194?" כתוב "194?" ואל תכתוב "1942"
+4. **אסור** לנחש שולח/נמען מתוכן המכתב
+5. **אסור** לתרגם מילים שלא קראת (השאר \`[חסר]\`)
+6. **אסור** להוסיף "תוכן צפוי" של מסמך מהתקופה
+7. **אסור** ל"שיפור" טקסט פגום — תעתיק כפי שהוא, פגום
+8. **אסור** להמציא ביוגרפיה / קונטקסט בלי שיש בסיס במסמך
+9. **אסור** להחזיר שדה מלא עם confidence "?" — או שיש בסיס מ-OCR (✓/~), או שריק
+
+═══════════════════════════════════════════════════════════════
+✅ **מה כן לעשות**
+═══════════════════════════════════════════════════════════════
+
+- כל שדה קצר → או בודק כל אות (✓), או סבור (~), או ריק
+- בטקסט הארוך → סמן \`[?]\` בתוך המילים הלא ברורות, \`[לא קריא — N מילים]\` לחלקים שלמים
+- בתרגום → \`[חסר]\` במקום מילים לא קראות
+- בשדות מטא-דאטה (שולח/נמען/תאריך/מקום) → רק אם **כתוב במפורש** במסמך
+- אם המסמך כל-כך פגום שאתה לא קורא כלום — החזר רוב השדות ריקים. **זאת תוצאה לגיטימית.**
+
+═══════════════════════════════════════════════════════════════
+
+## משימה: OCR + תרגום + קטלוג
 
 ### א. שפות צפויות (לפי הרמז)
 ${langHints || 'אין רמז — זהה אוטומטית. שפות אפשריות: גרמנית (כולל Fraktur/Sütterlin), יידיש, פולנית, רוסית (כולל פרה-מהפכנית — ѣ, ъ בסוף מילים), אוקראינית, צ\'כית, סלובקית, הונגרית, רומנית, יוונית, ליטאית, לטבית, אסטונית, עברית, אנגלית, צרפתית, איטלקית, ספרדית, הולנדית, נורווגית.'}
@@ -681,46 +752,56 @@ ${ctx || '(אין מידע מוקדם)'}
 ${thesaurusBrief}
 \`\`\`
 
-## פלט נדרש — JSON תקין בלבד (ללא code fences):
+## פלט נדרש — JSON תקין בלבד (ללא code fences)
+
+לכל שדה תוכן (כותר, מטא-דאטה, תקציר, וכו׳) — תחזיר זוג: הערך + רמת ודאות.
 
 \`\`\`json
 {
-  "title_he": "כותר עברית — סוג מסמך, מי, איפה, מתי",
-  "title_en": "Title English — same",
-  "doc_type": "מכתב / גלויה / תעודה / רשימה / הצהרה",
-  "archive_id": "",
-  "intake_num": "",
-  "doc_date": "DD/MM/YYYY או חלקי",
-  "languages": "גרמנית, יידיש (רשימה מופרדת בפסיקים)",
-  "writing_type": "מכונת כתיבה / כתב יד / מעורב",
-  "pages_count": "1",
-  "sender_he": "שם השולח בעברית",
-  "sender_en": "Sender name in English",
-  "recipient_he": "שם הנמען",
-  "recipient_en": "Recipient",
-  "place_he": "מקום (HE)",
-  "place_en": "Place (EN)",
-  "summary_he": "תקציר 3-5 שורות",
-  "summary_en": "Summary 3-5 lines",
-  "original_text": "כל הטקסט בשפת המקור, עם סימוני שפה אם מעורב. שמירה מלאה על אורתוגרפיה.",
-  "transliteration": "תעתיק לאותיות לטיניות אם הטקסט בכתב לא-לטיני. השאר ריק אם לא רלוונטי.",
-  "translation_he": "תרגום מלא לעברית מודרנית",
-  "translation_en": "Full English translation",
-  "persons_he": "אישים מוזכרים בעברית עם רמת ודאות (✓/~/?)",
-  "persons_en": "Persons mentioned in English",
-  "context_he": "קונטקסט היסטורי בעברית — מה התקופה, מי האנשים, מה האירוע, מה המשמעות",
-  "context_en": "Historical context in English",
-  "decipher_notes": "הערות פיענוח: מקומות לא ברורים, קריאות חלופיות, שלבי המסמך, מצב פיזי",
-  "subjects_he": ["נושא1", "נושא2"],
-  "subjects_en": ["Subject1", "Subject2"]
+  "title_he":            "...",   "title_he_conf":           "✓ | ~ | ? | \"\"",
+  "title_en":            "...",   "title_en_conf":           "...",
+  "doc_type":            "...",   "doc_type_conf":           "...",
+  "archive_id":          "",      "archive_id_conf":         "...",
+  "intake_num":          "",      "intake_num_conf":         "...",
+  "doc_date":            "",      "doc_date_conf":           "...",
+  "languages":           "",      "languages_conf":          "...",
+  "writing_type":        "",      "writing_type_conf":       "...",
+  "pages_count":         "",      "pages_count_conf":        "...",
+  "sender_he":           "",      "sender_he_conf":          "...",
+  "sender_en":           "",      "sender_en_conf":          "...",
+  "recipient_he":        "",      "recipient_he_conf":       "...",
+  "recipient_en":        "",      "recipient_en_conf":       "...",
+  "place_he":            "",      "place_he_conf":           "...",
+  "place_en":            "",      "place_en_conf":           "...",
+  "summary_he":          "",      "summary_he_conf":         "...",
+  "summary_en":          "",      "summary_en_conf":         "...",
+  "original_text":       "",      "original_text_conf":      "...",
+  "transliteration":     "",      "transliteration_conf":    "...",
+  "translation_he":      "",      "translation_he_conf":     "...",
+  "translation_en":      "",      "translation_en_conf":     "...",
+  "persons_he":          "",      "persons_he_conf":         "...",
+  "persons_en":          "",      "persons_en_conf":         "...",
+  "context_he":          "",      "context_en_conf":         "...",
+  "context_en":          "",      "context_he_conf":         "...",
+  "decipher_notes":      "",
+  "subjects_he":         [],
+  "subjects_en":         [],
+  "overall_readability": "✓ ברור | ~ חלקי קריא | ? קריא חלקית מאוד | × לא קריא כמעט",
+  "unreadable_count":    0
 }
 \`\`\`
 
-חוקים:
-- אם משהו לא ברור — \`[?]\` בטקסט המקורי, ובדק \`decipher_notes\` להערה
-- subjects: עד 10, רק מהתזאורוס למעלה
-- אישים לא מזוהים → ✓ רק עם ראיה בתעודה (כיתוב חתום)
-- החזר JSON בלבד, ללא טקסט נוסף`;
+**חוקי קריטיים לפלט**:
+- אם הטקסט המקורי כולל \`[?]\` → confidence הוא לא יותר מ-\`~\`
+- אם הטקסט המקורי כולל \`[לא קריא]\` → confidence הוא לא יותר מ-\`~\`
+- אם בכלל לא קראת מילה → השדה ריק, \`_conf: ""\`
+- שדה עם confidence \`"?"\` חייב להיות בסיסי-ביותר. אם אתה לא יכול להצדיק את זה → תחזיר ריק
+- \`overall_readability\` הוא הערכה כללית של איכות הסריקה
+- \`unreadable_count\` הוא מספר משוער של מילים שלא הצלחת לקרוא בכלל
+
+**עיקרון אחרון**: אם אתה לא בטוח אם להחזיר ערך — **אל תחזיר.** ארכיונאי אנושי יראה את התוצאה ויחליט אם להוסיף ידע מקצועי. אסור שתחליט במקומו על בסיס ניחוש.
+
+החזר JSON בלבד.`;
 }
 
 async function callGemini() {
@@ -737,7 +818,7 @@ async function callGemini() {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [part, { text: buildDocPrompt() }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 32000, responseMimeType: 'application/json' }
+      generationConfig: { temperature: 0, maxOutputTokens: 32000, responseMimeType: 'application/json' }
     })
   });
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
@@ -805,6 +886,90 @@ function parseJson(text, label) {
   }
 }
 
+// Map confidence symbol to badge class + label
+function confInfo(c) {
+  switch ((c || '').trim()) {
+    case '✓': return { cls: 'high',   label: '✓ ודאי' };
+    case '~': return { cls: 'medium', label: '~ סביר' };
+    case '?': return { cls: 'low',    label: '? השערה' };
+    default:  return { cls: 'empty',  label: '— ריק' };
+  }
+}
+
+// Map field id → confidence key in JSON
+const FIELD_CONF_MAP = {
+  'r-title-he':       'title_he_conf',
+  'r-title-en':       'title_en_conf',
+  'r-doc-type':       'doc_type_conf',
+  'r-archive-id':     'archive_id_conf',
+  'r-intake-num':     'intake_num_conf',
+  'r-doc-date':       'doc_date_conf',
+  'r-languages':      'languages_conf',
+  'r-writing-type':   'writing_type_conf',
+  'r-pages-count':    'pages_count_conf',
+  'r-sender-he':      'sender_he_conf',
+  'r-sender-en':      'sender_en_conf',
+  'r-recipient-he':   'recipient_he_conf',
+  'r-recipient-en':   'recipient_en_conf',
+  'r-place-he':       'place_he_conf',
+  'r-place-en':       'place_en_conf',
+  'r-summary-he':     'summary_he_conf',
+  'r-summary-en':     'summary_en_conf',
+  'r-original-text':  'original_text_conf',
+  'r-transliteration':'transliteration_conf',
+  'r-translation-he': 'translation_he_conf',
+  'r-translation-en': 'translation_en_conf',
+  'r-persons-he':     'persons_he_conf',
+  'r-persons-en':     'persons_en_conf',
+  'r-context-he':     'context_he_conf',
+  'r-context-en':     'context_en_conf',
+};
+
+function paintConfidenceFor(id, conf) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  // Only mark if there's a value (otherwise no badge needed)
+  el.dataset.conf = el.value.trim() ? (conf || '') : '';
+
+  // Find the label/header for this field — look up the chain
+  // Look for nearest .compact-row label (preferred) or .lang-tag (preferred for bilingual rows)
+  let labelEl = null;
+  if (el.parentElement?.parentElement?.classList.contains('compact-row')) {
+    labelEl = el.parentElement.parentElement.querySelector('label');
+  }
+  if (!labelEl) {
+    // Look for a sibling lang-tag (for bilingual rows)
+    let parent = el.parentElement;
+    while (parent && !parent.querySelector('.lang-tag')) parent = parent.parentElement;
+    if (parent) labelEl = parent.querySelector('.lang-tag');
+  }
+  if (!labelEl) {
+    // Look for h4 ancestor
+    let p = el.parentElement;
+    while (p && !p.querySelector('h4')) p = p.parentElement;
+    if (p) labelEl = p.querySelector('h4');
+  }
+  if (!labelEl) return;
+
+  // Remove old badge for THIS field if any
+  const oldBadge = labelEl.querySelector('.conf-badge[data-for="' + id + '"]');
+  if (oldBadge) oldBadge.remove();
+
+  // Don't add a badge for empty fields with empty conf
+  if (!el.value.trim() && (!conf || conf === '')) return;
+
+  const info = confInfo(conf);
+  const badge = document.createElement('span');
+  badge.className = 'conf-badge ' + info.cls;
+  badge.textContent = info.label;
+  badge.dataset.for = id;
+  badge.title = info.cls === 'high' ? 'AI סימן: ראיתי כל אות בבירור' :
+                info.cls === 'medium' ? 'AI סימן: רוב הטקסט קריא, חלק קטן לא ברור' :
+                info.cls === 'low' ? 'AI סימן: השערה — מומלץ לוודא ידנית' :
+                'AI סימן: לא קיים או לא קריא במסמך';
+  labelEl.appendChild(badge);
+}
+
 function fillResults(d) {
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
   setVal('r-title-he', d.title_he); setVal('r-title-en', d.title_en);
@@ -822,6 +987,29 @@ function fillResults(d) {
   setVal('r-persons-he', d.persons_he); setVal('r-persons-en', d.persons_en);
   setVal('r-context-he', d.context_he); setVal('r-context-en', d.context_en);
   setVal('r-notes', d.decipher_notes);
+
+  // Apply confidence badges to all known fields
+  for (const [id, key] of Object.entries(FIELD_CONF_MAP)) {
+    paintConfidenceFor(id, d[key] || '');
+  }
+
+  // Overall readability banner
+  const banner = document.getElementById('overall-readability');
+  if (d.overall_readability) {
+    let cls = 'r-good';
+    if (d.overall_readability.includes('×') || d.overall_readability.includes('לא קריא כמעט')) cls = 'r-bad';
+    else if (d.overall_readability.includes('?') || d.overall_readability.includes('חלקית מאוד')) cls = 'r-poor';
+    else if (d.overall_readability.includes('~') || d.overall_readability.includes('חלקי')) cls = 'r-fair';
+    banner.className = 'show ' + cls;
+    const unread = d.unreadable_count != null && d.unreadable_count > 0
+      ? ` · כ-${d.unreadable_count} מילים לא קריאות`
+      : '';
+    banner.textContent = `איכות פיענוח כוללת: ${d.overall_readability}${unread}`;
+  } else {
+    banner.className = '';
+    banner.textContent = '';
+  }
+
   const subjects = (d.subjects_he || []).map((he, i) => ({ he, en: (d.subjects_en || [])[i] || '' }));
   renderSubjects(subjects);
 }
