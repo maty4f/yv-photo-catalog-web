@@ -505,6 +505,27 @@
           <button type="button" class="ghost" id="col-people-add" style="margin-top:6px; font-size:12px; padding:5px 10px;">+ הוסף אדם</button>
         </div>
 
+        <!-- INTAKE ITEMS — list of items from intake form, classified as photo/doc -->
+        <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line)">
+          <label class="label">📋 פריטים מטופס איסוף <small style="color:var(--muted); font-weight:400">— תצלום או מסמך, לפי סדר ההופעה. ניתן לערוך אם ה-AI טעה.</small></label>
+          <table class="id-table-edit">
+            <thead><tr>
+              <th style="width:60px">#</th>
+              <th style="width:90px">סוג</th>
+              <th style="width:80px">מס׳ תצלום</th>
+              <th>תיאור עברית</th>
+              <th>Description English</th>
+              <th style="width:30px"></th>
+            </tr></thead>
+            <tbody id="col-items-tbody"><tr><td colspan="6" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">— לא נמצאה רשימת פריטים ממוספרת בטופס —</td></tr></tbody>
+          </table>
+          <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap">
+            <button type="button" class="ghost" id="col-items-add" style="font-size:12px; padding:5px 10px;">+ הוסף פריט</button>
+            <button type="button" class="ghost" id="col-items-renumber" style="font-size:12px; padding:5px 10px;">🔄 רענן מספור תצלומים</button>
+            <span id="col-items-count" style="font-size:11.5px; color:var(--muted)"></span>
+          </div>
+        </div>
+
         <div class="actions">
           <button id="save-collection-btn">💾 שמור פרופיל ועבור לתצלומים →</button>
         </div>
@@ -1335,6 +1356,35 @@ function buildSystemRules(ctxText, studiosBrief) {
     const peopleStr = (p.key_people || []).map(person =>
       `  - ${person.name} (${person.dates || '?'}) — ${person.relation || ''} — ${person.fate || ''}`
     ).join('\n');
+
+    // Find the per-item description from the intake form for THIS photo
+    const currentItem = getIntakeItemForCurrent();
+    let itemBlock = '';
+    if (currentItem) {
+      itemBlock = `
+
+## 🎯 תיאור פריט מטופס איסוף — קריטי!
+
+תצלום זה הוא תצלום מס׳ ${currentItem.photo_seq} באוסף. בטופס האיסוף הוא מופיע תחת **פריט #${currentItem.intake_num}**.
+
+**תיאור מהמוסר (עברית)**: ${currentItem.description_he || '(לא ניתן)'}
+**תיאור מהמוסר (אנגלית)**: ${currentItem.description_en || '(לא ניתן)'}
+
+**הוראות שימוש בתיאור הזה**:
+1. השתמש בו כקונטקסט עיקרי — מי, איפה, מתי, מה.
+2. **בדוק תאימות ויזואלית** — האם מה שאתה רואה תואם לתיאור?
+3. **אם יש סתירה ויזואלי-טופס** (למשל המוסר ציין 1937 אבל המדים מ-1942) — **חובה להתריע** ב-notes_he/notes_en עם הניסוח: "סתירה: המוסר ציין X, אך הויזואלי מצביע על Y. נדרש בירור."
+4. אם הויזואלי תואם — סמן את האישים/המקום/התאריך כ-✓ Confirmed (קונטקסט סמכותי + תאימות ויזואלית).
+5. **אסור להמציא מעבר למה שכתוב בתיאור** — אם המוסר לא ציין שמות, אל תוסיף שמות.
+`;
+    } else if (state.collection.profile.intake_items?.length) {
+      itemBlock = `
+
+## ⚠ תצלום ${state.current_photo_index} לא מצא תיאור פריט תואם בטופס איסוף
+המספור בטופס איסוף לא מכיל פריט עם photo_seq=${state.current_photo_index}. ייתכן שזהו תצלום שנוסף לאחר הטופס. השתמש רק בקונטקסט הכללי של האוסף.
+`;
+    }
+
     collectionContext = `## פרופיל האוסף — חל על כל תצלום באוסף
 
 מספר אוסף: ${state.collection.id}
@@ -1358,9 +1408,9 @@ Provenance (EN): ${p.provenance_en || ''}
 
 אישים מרכזיים באוסף:
 ${peopleStr || '  (אין)'}
-
+${itemBlock}
 **שים לב:** כל תצלום באוסף יורש מהפרופיל הזה את המוסר/מקור/ביוגרפיה. בקטלוג של תצלום ספציפי:
-- כותר ייבנה מהמיקום הויזואלי, התאריך הספציפי (אם ידוע), וההקשר מהאוסף
+- כותר ייבנה מהתיאור (אם יש) + מיקום ויזואלי + תאריך ספציפי + הקשר מהאוסף
 - "מידע נוסף" → "ביוגרפיה ופרובננס" יורש מסיפור האוסף + פרובננס
 - אם זוהו אישים מהמפתח של האוסף — סמן ✓ confirmed
 - מקומות ספציפיים לתצלום הזה (ולא הכלליים של האוסף) יוצגו ב-places_en
@@ -1860,6 +1910,7 @@ saveNextBtn.addEventListener('click', () => {
   state.current_photo_index++;
   resetPhotoForm();
   document.getElementById('cb-counter').textContent = state.current_photo_index;
+  if (typeof showCurrentItemPreview === 'function') showCurrentItemPreview();
   renderSavedCollectionsDropdown();
   // Scroll back to step 1
   document.getElementById('photo-workflow').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2402,6 +2453,48 @@ function buildCollectionPrompt(sources) {
 - אישים מרכזיים → איחוד ממקור 1 ו-3, עם הקדמה למקור 1.
 - אם יש סתירה בין מקורות — סמן בהערות.
 
+## רשימת פריטים בטופס איסוף — קריטי!
+
+טופס האיסוף מכיל **שני סוגי תוכן**:
+1. **תיאור כללי של האוסף** — ביוגרפיה משפחתית, סיפור, פרובננס (פסקאות פרוזה)
+2. **תיאור פריט** — רשימה ממוספרת של פריטים: 1, 2, 3, ... כל פריט הוא או **תצלום** או **מסמך**
+
+**הפריטים לא תמיד תצלומים!** המוסר עשוי להוסיף לרשימה גם:
+- תעודות (לידה, נישואין, תעודת זהות)
+- מכתבים, גלויות
+- מאמרים, דפי עיתון
+- חוזים, מסמכים רשמיים
+
+**משימתך**: עבור על הרשימה הממוספרת, וקבע לכל פריט:
+- \`intake_num\`: המספר בטופס האיסוף (1, 2, 3, ...)
+- \`type\`: "photo" | "document" | "unknown" (אם התיאור עמום)
+- \`photo_seq\`: רק לתצלומים. מספר רץ (1, 2, 3...) שמדלג על מסמכים. הראשון תצלום = 1, השני תצלום = 2.
+- \`description_he\` / \`description_en\`: התיאור מהטופס בלבד (אסור להמציא!)
+- \`confidence\`: "high" אם המוסר כתב במפורש "תצלום" / "תמונה"; "medium" אם מתאר תוכן ויזואלי; "low" אם עמום
+
+**דוגמה:**
+טופס איסוף:
+\`\`\`
+1. תצלום של אבא במדים, ורשה 1939
+2. תעודת לידה של אבא, 1908
+3. תצלום של החתונה
+4. מכתב מהגטו, 1942
+5. תצלום של הילדים בארץ ישראל
+\`\`\`
+
+תוצאה צפויה:
+\`\`\`json
+"intake_items": [
+  { "intake_num": 1, "type": "photo", "photo_seq": 1, "description_he": "תצלום של אבא במדים, ורשה 1939", "description_en": "...", "confidence": "high" },
+  { "intake_num": 2, "type": "document", "photo_seq": null, "description_he": "תעודת לידה של אבא, 1908", "description_en": "...", "confidence": "high" },
+  { "intake_num": 3, "type": "photo", "photo_seq": 2, "description_he": "תצלום של החתונה", "description_en": "...", "confidence": "high" },
+  { "intake_num": 4, "type": "document", "photo_seq": null, "description_he": "מכתב מהגטו, 1942", "description_en": "...", "confidence": "high" },
+  { "intake_num": 5, "type": "photo", "photo_seq": 3, "description_he": "תצלום של הילדים בארץ ישראל", "description_en": "...", "confidence": "high" }
+]
+\`\`\`
+
+**עיקרון אנטי-הזיה גם פה**: אם אין רשימה ממוספרת בטופס → \`intake_items: []\`. אל תמציא פריטים.
+
 🚨🚨🚨 **חוק קריטי — איסור הזיה (anti-hallucination)** 🚨🚨🚨
 
 **חובה מוחלטת**: כל שדה שאתה מחזיר חייב להיות מבוסס על טקסט שמופיע **במפורש** בטופס.
@@ -2448,6 +2541,16 @@ function buildCollectionPrompt(sources) {
   ],
   "photo_list": [
     { "index": 1, "description_he": "תיאור קצר אם מופיע בטופס" }
+  ],
+  "intake_items": [
+    {
+      "intake_num": 1,
+      "type": "photo",
+      "photo_seq": 1,
+      "description_he": "התיאור מהטופס בעברית",
+      "description_en": "Description from form in English",
+      "confidence": "high"
+    }
   ]
 }
 
@@ -2560,6 +2663,16 @@ function fillCollectionProfile(p) {
   if (!(p.key_people || []).length) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">לא הוזנו אישים</td></tr>';
   }
+
+  // Intake items (photo/document classification)
+  const itemsTbody = document.getElementById('col-items-tbody');
+  itemsTbody.innerHTML = '';
+  const items = p.intake_items || [];
+  items.forEach(it => addIntakeItemRow(it));
+  if (!items.length) {
+    itemsTbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">— לא נמצאה רשימת פריטים ממוספרת בטופס —</td></tr>';
+  }
+  renumberPhotoItems();
 }
 
 function addPersonRow(person) {
@@ -2577,6 +2690,74 @@ function addPersonRow(person) {
 }
 document.getElementById('col-people-add').addEventListener('click', () => addPersonRow());
 
+// === Intake items table (photo/document classification from intake form) ===
+function addIntakeItemRow(item) {
+  const tbody = document.getElementById('col-items-tbody');
+  if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+  const intakeNum = item?.intake_num ?? (tbody.children.length + 1);
+  const type = item?.type || 'photo';
+  const photoSeq = item?.photo_seq ?? '';
+  const tr = document.createElement('tr');
+  // Color-code the row by type for at-a-glance review
+  const bg = type === 'photo' ? '#fbf3e3' : type === 'document' ? '#f0eaea' : '#fff';
+  tr.style.background = bg;
+  tr.innerHTML = `
+    <td><input type="text" value="${esc(intakeNum)}" style="text-align:center; width:50px;"></td>
+    <td>
+      <select class="item-type-sel">
+        <option value="photo" ${type==='photo'?'selected':''}>📷 תצלום</option>
+        <option value="document" ${type==='document'?'selected':''}>📄 מסמך</option>
+        <option value="unknown" ${type==='unknown'?'selected':''}>? לא ברור</option>
+      </select>
+    </td>
+    <td><input type="text" value="${esc(photoSeq)}" style="text-align:center; width:55px;" placeholder="—"></td>
+    <td><textarea rows="2" style="font-size:12.5px; min-height:36px;">${esc(item?.description_he || '')}</textarea></td>
+    <td><textarea rows="2" style="direction:ltr; text-align:left; font-family:Georgia,serif; font-size:12.5px; min-height:36px;">${esc(item?.description_en || '')}</textarea></td>
+    <td><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove(); renumberPhotoItems();">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+  // Color/refresh on type change
+  const sel = tr.querySelector('.item-type-sel');
+  sel.addEventListener('change', () => {
+    const v = sel.value;
+    tr.style.background = v === 'photo' ? '#fbf3e3' : v === 'document' ? '#f0eaea' : '#fff';
+    renumberPhotoItems();
+  });
+  return tr;
+}
+
+function renumberPhotoItems() {
+  const tbody = document.getElementById('col-items-tbody');
+  const rows = [...tbody.querySelectorAll('tr')].filter(r => !r.querySelector('td[colspan]'));
+  let seq = 0;
+  let docCount = 0;
+  rows.forEach(tr => {
+    const sel = tr.querySelector('.item-type-sel');
+    const seqInput = tr.querySelectorAll('input[type="text"]')[1];
+    if (!sel || !seqInput) return;
+    if (sel.value === 'photo') {
+      seq++;
+      seqInput.value = seq;
+      seqInput.style.background = '';
+    } else {
+      seqInput.value = '';
+      seqInput.style.background = '#f0eaea';
+      if (sel.value === 'document') docCount++;
+    }
+  });
+  const cnt = document.getElementById('col-items-count');
+  if (cnt) cnt.textContent = `· ${seq} תצלומים, ${docCount} מסמכים, סה״כ ${rows.length} פריטים`;
+}
+
+document.getElementById('col-items-add').addEventListener('click', () => {
+  const tbody = document.getElementById('col-items-tbody');
+  const existing = [...tbody.querySelectorAll('tr')].filter(r => !r.querySelector('td[colspan]'));
+  const nextNum = existing.length + 1;
+  addIntakeItemRow({ intake_num: nextNum, type: 'photo' });
+  renumberPhotoItems();
+});
+document.getElementById('col-items-renumber').addEventListener('click', renumberPhotoItems);
+
 // Read profile back from form
 function readCollectionProfileFromForm() {
   const get = id => document.getElementById(id).value.trim();
@@ -2585,6 +2766,25 @@ function readCollectionProfileFromForm() {
     if (inputs.length < 4) return null;
     return { name: inputs[0].value, dates: inputs[1].value, relation: inputs[2].value, fate: inputs[3].value };
   }).filter(p => p && p.name);
+
+  // Read intake_items
+  const intake_items = [...document.querySelectorAll('#col-items-tbody tr')].map(tr => {
+    if (tr.querySelector('td[colspan]')) return null;
+    const inputs = tr.querySelectorAll('input[type="text"]');
+    const sel = tr.querySelector('.item-type-sel');
+    const textareas = tr.querySelectorAll('textarea');
+    if (!sel || inputs.length < 2 || textareas.length < 2) return null;
+    const type = sel.value;
+    const photoSeq = parseInt(inputs[1].value);
+    return {
+      intake_num: parseInt(inputs[0].value) || null,
+      type,
+      photo_seq: type === 'photo' && !isNaN(photoSeq) ? photoSeq : null,
+      description_he: textareas[0].value.trim(),
+      description_en: textareas[1].value.trim(),
+    };
+  }).filter(it => it && (it.description_he || it.description_en));
+
   return {
     donor_he: get('col-donor-he'),
     donor_en: get('col-donor-en'),
@@ -2601,7 +2801,16 @@ function readCollectionProfileFromForm() {
     provenance_he: get('col-prov-he'),
     provenance_en: get('col-prov-en'),
     key_people: people,
+    intake_items,
   };
+}
+
+// Helper: find intake item for the current photo (by photo_seq)
+function getIntakeItemForCurrent() {
+  if (!state.collection?.profile?.intake_items?.length) return null;
+  return state.collection.profile.intake_items.find(it =>
+    it.type === 'photo' && it.photo_seq === state.current_photo_index
+  );
 }
 
 // Save collection and switch to photo mode
@@ -2625,6 +2834,28 @@ saveCollectionBtn.addEventListener('click', () => {
   renderSavedCollectionsDropdown();
 });
 
+// Show a small panel under the collection-bar with the current photo's
+// intake-form description (so the cataloger sees what to expect)
+function showCurrentItemPreview() {
+  const id = 'current-item-preview';
+  let el = document.getElementById(id);
+  if (!state.collection) { if (el) el.remove(); return; }
+  const item = getIntakeItemForCurrent();
+  if (!item) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    el.style.cssText = 'background:#fef9e7; border:1px solid #e6d28a; border-inline-start:5px solid #c19b2e; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:13px; color:#6b4f0f;';
+    collectionBar.parentElement.insertBefore(el, collectionBar.nextSibling);
+  }
+  el.innerHTML = `
+    <div style="font-weight:700; margin-bottom:4px">📋 תיאור פריט מטופס איסוף</div>
+    <div style="font-size:12px; color:#8a7140; margin-bottom:6px">תצלום ${state.current_photo_index} = פריט #${item.intake_num} בטופס</div>
+    <div>${esc(item.description_he || '')}</div>
+    ${item.description_en ? '<div style="direction:ltr; text-align:left; font-style:italic; color:#5a4500; margin-top:4px;">' + esc(item.description_en) + '</div>' : ''}
+  `;
+}
+
 function showPhotoWorkflow() {
   stepCollection.style.display = 'none';
   photoWorkflow.classList.remove('locked');
@@ -2637,9 +2868,15 @@ function showPhotoWorkflow() {
     modeLabel.innerHTML = 'אוסף <span id="cb-id">' + esc(state.collection.id) + '</span>';
     counterWrap.style.display = 'inline-block';
     document.getElementById('cb-counter').textContent = state.current_photo_index;
-    document.getElementById('cb-total').textContent = state.collection.profile.expected_photo_count || (state.collection.photos.length + 1);
+    // Total = count of photo-type intake items, fallback to expected_photo_count, then to photos.length+1
+    const photoItemsCount = (state.collection.profile.intake_items || []).filter(i => i.type === 'photo').length;
+    document.getElementById('cb-total').textContent =
+      photoItemsCount || state.collection.profile.expected_photo_count || (state.collection.photos.length + 1);
     finalBtn.style.display = 'inline-block';
     backBtn.textContent = '↑ חזרה לאוסף';
+
+    // Show preview of current photo's intake-form description right under the bar
+    showCurrentItemPreview();
   } else {
     // Single-photo mode (no collection)
     modeLabel.innerHTML = '🎯 תצלום בודד <small style="font-weight:400; color:var(--muted); margin-inline-start:6px">ללא אוסף</small>';
