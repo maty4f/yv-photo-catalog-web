@@ -381,6 +381,7 @@
     <div class="actions-inline">
       <button class="ghost" type="button" id="cb-back-btn">↑ חזרה לאוסף</button>
       <button class="secondary" type="button" id="cb-final-btn">📊 דוח סופי</button>
+      <button class="ghost" type="button" id="cb-next-collection-btn" style="border-color: #2e7d4e; color: #2e7d4e;">📁 אוסף הבא →</button>
     </div>
   </div>
 
@@ -2895,6 +2896,89 @@ function showCollectionSetup() {
 }
 
 document.getElementById('cb-back-btn').addEventListener('click', showCollectionSetup);
+
+// "Next collection" — fully reset and start fresh on a new collection
+document.getElementById('cb-next-collection-btn').addEventListener('click', () => {
+  const photosCount = state.collection?.photos?.length || 0;
+  const idLabel = state.collection?.id || '';
+  // Confirm if there are unsaved photos (haven't been "Save & Next"-ed yet)
+  const hasUncommittedPhoto = !!state.photos.front || !!state.identification;
+  let msg = `לעבור לאוסף חדש?`;
+  if (state.collection) {
+    msg += `\n\nהאוסף הנוכחי (${idLabel}) נשמר ב-localStorage עם ${photosCount} תצלומים שעובדו.`;
+    msg += `\nתוכל לחזור אליו דרך "אוספים קודמים" בהמשך.`;
+  }
+  if (hasUncommittedPhoto) {
+    msg += `\n\n⚠ יש תצלום שעדיין לא נשמר באוסף — אם תעבור עכשיו, התצלום הזה יתאבד (אם לא הורדת ידנית).`;
+  }
+  if (!confirm(msg)) return;
+
+  // Save current collection one more time (if exists) before leaving
+  if (state.collection?.id) {
+    state.saved_collections[state.collection.id] = state.collection;
+    try { localStorage.setItem('yv_collections', JSON.stringify(state.saved_collections)); }
+    catch (e) { console.warn('localStorage quota:', e); }
+  }
+
+  // Reset all collection-side state
+  state.collection = null;
+  state.collection_form_file = null;
+  state.collection_form_is_pdf = false;
+  state.collection_sapir_file = null;
+  state.collection_sapir_is_pdf = false;
+  state.collection_extra_file = null;
+  state.collection_extra_is_pdf = false;
+  state.current_photo_index = 1;
+  state.identification = null;
+
+  // Reset photo-side state
+  if (state.photos.front) clearPhoto('front');
+  if (state.photos.back)  clearPhoto('back');
+
+  // Clear Step 0 form fields
+  ['col-id','col-donor-he','col-donor-en','col-donor-relation','col-source-he','col-source-en',
+   'col-period','col-region','col-photo-count','col-bio-he','col-bio-en','col-story-he','col-story-en',
+   'col-prov-he','col-prov-en','col-form-text','col-sapir-text','col-extra-text','context-input']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+  // Reset all 3 file inputs
+  ['col-form-input','col-sapir-input','col-extra-input']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+  // Reset status messages
+  ['col-form-status','col-sapir-status','col-extra-status','collection-status']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.innerHTML = ''; el.className = el.className.replace(/show|ok|err|info|warn|working/g, '').trim(); }
+    });
+
+  // Clear key-people and intake-items tables
+  const peopleTbody = document.getElementById('col-people-tbody');
+  if (peopleTbody) peopleTbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">לא הוזנו אישים</td></tr>';
+  const itemsTbody = document.getElementById('col-items-tbody');
+  if (itemsTbody) itemsTbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted); font-style:italic; padding:10px">— לא נמצאה רשימת פריטים ממוספרת בטופס —</td></tr>';
+  const itemsCount = document.getElementById('col-items-count');
+  if (itemsCount) itemsCount.textContent = '';
+
+  // Hide profile box, results, and the current-item preview
+  collectionProfileBox.style.display = 'none';
+  document.getElementById('results')?.classList.remove('show');
+  document.getElementById('no-results') && (document.getElementById('no-results').style.display = 'block');
+  document.getElementById('download-bar') && (document.getElementById('download-bar').style.display = 'none');
+  document.getElementById('current-item-preview')?.remove();
+
+  // Show Step 0 again, hide collection-bar, lock photo workflow
+  showCollectionSetup();
+  refreshAllButtons();
+  renderSavedCollectionsDropdown();
+  // Reset to first dropdown option
+  const sel = document.getElementById('saved-collections-select');
+  if (sel) sel.value = '';
+  const loadBtn = document.getElementById('load-collection-btn');
+  const delBtn = document.getElementById('delete-collection-btn');
+  if (loadBtn) loadBtn.disabled = true;
+  if (delBtn) delBtn.disabled = true;
+});
 
 // "Skip" button — single-photo mode (no collection)
 document.getElementById('skip-collection-btn').addEventListener('click', () => {
