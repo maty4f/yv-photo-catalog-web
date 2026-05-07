@@ -421,15 +421,41 @@
         <input type="text" id="col-id" placeholder="11522">
       </div>
 
-      <!-- Intake form -->
-      <div style="margin-top:12px">
-        <label class="label">טופס איסוף / רישום ספיר <small>PDF / Word — מכיל את הביוגרפיה, רשימת תצלומים, ומידע נוסף</small></label>
+      <!-- INTAKE FORM (donor side) — biographical info from the donor -->
+      <div style="margin-top:12px; padding:12px 14px; background:#fef9e7; border:1px solid #e6d28a; border-radius:8px;">
+        <label class="label" style="color:#6b4f0f">📋 טופס איסוף <small>Intake form — מידע מהמוסר: ביוגרפיה משפחתית, סיפור האוסף, גורלות, רשימת תצלומים</small></label>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
-          <button type="button" class="ghost" id="col-form-btn">📎 העלה טופס</button>
+          <button type="button" class="ghost" id="col-form-btn" style="border-color:#c19b2e; color:#6b4f0f">📎 העלה טופס איסוף</button>
           <input type="file" id="col-form-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
           <span id="col-form-status" class="mini-status"></span>
         </div>
-        <textarea id="col-form-text" placeholder="(הטקסט מהטופס יופיע כאן אחרי החילוץ — או הדבק ידנית את התוכן)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 100px;"></textarea>
+        <textarea id="col-form-text" placeholder="(הטקסט מהטופס יופיע כאן אחרי החילוץ — או הדבק ידנית)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 80px;"></textarea>
+      </div>
+
+      <!-- SAPIR REGISTRATION FORM (technical side) — official registry record from Sapir -->
+      <div style="margin-top:10px; padding:12px 14px; background:#e8eef5; border:1px solid #a1bbd9; border-radius:8px;">
+        <label class="label" style="color:#1d4666">🗂 טופס רישום אוסף בספיר <small>Sapir registration printout — מידע טכני: מספר אוסף, סוג חומר, מספר נכנסות, תאריכים, וכו׳</small></label>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+          <button type="button" class="ghost" id="col-sapir-btn" style="border-color:#2c5d8a; color:#1d4666">📎 העלה רישום ספיר</button>
+          <input type="file" id="col-sapir-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
+          <span id="col-sapir-status" class="mini-status"></span>
+        </div>
+        <textarea id="col-sapir-text" placeholder="(הטקסט מטופס הרישום יופיע כאן — או הדבק ידנית)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 80px;"></textarea>
+      </div>
+
+      <!-- ADDITIONAL INFO (typed notes — auxiliary identification info) -->
+      <div style="margin-top:10px; padding:12px 14px; background:#ebf3ed; border:1px solid #98be9f; border-radius:8px;">
+        <label class="label" style="color:#1f5c38">📝 מידע נוסף <small>Additional info — מסמכי עזר מוקלדים: מאמרים, תחקיר משפחתי, רישומי גנאלוגיה, מאגרי שמות, וכו׳ — שעוזרים בזיהוי תצלומים</small></label>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+          <button type="button" class="ghost" id="col-extra-btn" style="border-color:#2e7d4e; color:#1f5c38">📎 העלה מידע נוסף</button>
+          <input type="file" id="col-extra-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
+          <span id="col-extra-status" class="mini-status"></span>
+        </div>
+        <textarea id="col-extra-text" placeholder="(הטקסט יופיע כאן — או הדבק/הקלד ידנית מידע עזר)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 80px;"></textarea>
+      </div>
+
+      <div style="margin-top:8px; font-size:11.5px; color:var(--muted); text-align:center">
+        💡 כל השדות אופציונליים — תוכל להעלות אחד, חלק, או את כולם. כל מה שתספק יעזור לזיהוי האוסף.
       </div>
 
       <div class="actions">
@@ -2102,22 +2128,57 @@ const stepCollection = document.getElementById('step-collection');
 const photoWorkflow = document.getElementById('photo-workflow');
 const collectionBar = document.getElementById('collection-bar');
 
-// File handling for the intake form (extracts text using existing extractors)
+// File handling for the three collection-level sources:
+// (1) טופס איסוף — Intake form from the donor (biographical / story / fates)
+// (2) טופס רישום אוסף בספיר — Sapir registration printout (technical metadata)
+// (3) מידע נוסף — Additional auxiliary info (typed: research notes, genealogy)
+const colSapirBtn = document.getElementById('col-sapir-btn');
+const colSapirInput = document.getElementById('col-sapir-input');
+const colSapirStatus = document.getElementById('col-sapir-status');
+const colSapirText = document.getElementById('col-sapir-text');
+const colExtraBtn = document.getElementById('col-extra-btn');
+const colExtraInput = document.getElementById('col-extra-input');
+const colExtraStatus = document.getElementById('col-extra-status');
+const colExtraText = document.getElementById('col-extra-text');
+
 colFormBtn.addEventListener('click', () => colFormInput.click());
 colFormInput.addEventListener('change', () => {
   const f = colFormInput.files?.[0];
-  if (f) extractIntakeForm(f);
+  if (f) extractFormFile(f, 'intake');
 });
-async function extractIntakeForm(file) {
+colSapirBtn.addEventListener('click', () => colSapirInput.click());
+colSapirInput.addEventListener('change', () => {
+  const f = colSapirInput.files?.[0];
+  if (f) extractFormFile(f, 'sapir');
+});
+colExtraBtn.addEventListener('click', () => colExtraInput.click());
+colExtraInput.addEventListener('change', () => {
+  const f = colExtraInput.files?.[0];
+  if (f) extractFormFile(f, 'extra');
+});
+colSapirText.addEventListener('input', refreshCollectionButtons);
+colExtraText.addEventListener('input', refreshCollectionButtons);
+
+// Backwards-compat alias
+async function extractIntakeForm(file) { return extractFormFile(file, 'intake'); }
+
+async function extractFormFile(file, kind) {
+  // kind: 'intake' | 'sapir' | 'extra'
+  const cfg = {
+    intake: { statusEl: colFormStatus,  textEl: colFormText,  stateKey: 'collection_form_file',  isPdfKey: 'collection_form_is_pdf',  label: 'טופס איסוף' },
+    sapir:  { statusEl: colSapirStatus, textEl: colSapirText, stateKey: 'collection_sapir_file', isPdfKey: 'collection_sapir_is_pdf', label: 'טופס רישום ספיר' },
+    extra:  { statusEl: colExtraStatus, textEl: colExtraText, stateKey: 'collection_extra_file', isPdfKey: 'collection_extra_is_pdf', label: 'מידע נוסף' },
+  }[kind];
+  const { statusEl, textEl, stateKey, isPdfKey, label: formLabel } = cfg;
+
   const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
   const sizeMB = file.size / (1024 * 1024);
 
   // Always remember the original file — for PDFs we send it directly to AI
-  // (handles both searchable PDFs and scanned/image-only PDFs via OCR)
-  state.collection_form_file = file;
-  state.collection_form_is_pdf = (ext === '.pdf');
+  state[stateKey] = file;
+  state[isPdfKey] = (ext === '.pdf');
 
-  setMini(colFormStatus, '<span class="dot"></span>טוען ' + esc(file.name) + '…', 'working');
+  setMini(statusEl, '<span class="dot"></span>טוען ' + esc(file.name) + '…', 'working');
 
   // Size warning
   if (sizeMB > 25) {
@@ -2127,7 +2188,6 @@ async function extractIntakeForm(file) {
   try {
     let text = '', meta = {};
     if (ext === '.pdf') {
-      // For PDFs: try text extraction for the user's preview, but the AI will get the PDF directly
       try {
         ({ text, meta } = await extractPDF(file));
       } catch (e) {
@@ -2137,42 +2197,44 @@ async function extractIntakeForm(file) {
       const looksScanned = !text.trim() || text.includes('[לא ניתן לחלץ טקסט');
       if (looksScanned) {
         const provName = state.provider === 'gemini' ? 'Gemini' : 'Claude';
-        colFormText.value = '⚠ ה-PDF נראה סרוק (אין שכבת טקסט).\n\nכשתלחץ "🔍 זהה את האוסף" — ' + provName + ' (הספק שבחרת ב-⚙ הגדרות) יקבל את ה-PDF ישירות ויבצע OCR אוטומטי\n(כולל עברית, אנגלית, גרמנית, יידיש, פולנית, רוסית — לפי הצורך).\n\nגודל קובץ: ' + sizeMB.toFixed(1) + ' MB · ' + (meta.page_count || '?') + ' עמודים\n\n— אפשר גם להדביק כאן ידנית טקסט אם יש לך —';
-        setMini(colFormStatus, '<span class="dot"></span>📷 PDF סרוק — ' + provName + ' יבצע OCR <span class="meta">' + (meta.page_count || '?') + ' עמ׳ · ' + sizeMB.toFixed(1) + ' MB</span>', 'info');
+        textEl.value = '⚠ ה-PDF נראה סרוק. בעת לחיצה "🔍 זהה את האוסף" — ' + provName + ' יקבל את ה-PDF ויעשה OCR.\n\nגודל: ' + sizeMB.toFixed(1) + ' MB · ' + (meta.page_count || '?') + ' עמודים';
+        setMini(statusEl, '<span class="dot"></span>📷 PDF סרוק — ' + provName + ' יבצע OCR <span class="meta">' + (meta.page_count || '?') + ' עמ׳ · ' + sizeMB.toFixed(1) + ' MB</span>', 'info');
       } else {
-        colFormText.value = text;
-        const provName = state.provider === 'gemini' ? 'Gemini' : 'Claude';
-        setMini(colFormStatus, '<span class="dot"></span>✓ PDF עם טקסט: ' + meta.page_count + ' עמ׳ · ' + text.length.toLocaleString() + ' תווים <span class="meta">' + provName + ' יקבל גם PDF</span>', 'ok');
+        textEl.value = text;
+        setMini(statusEl, '<span class="dot"></span>✓ PDF: ' + meta.page_count + ' עמ׳ · ' + text.length.toLocaleString() + ' תווים', 'ok');
       }
     } else if (ext === '.docx') {
       ({ text, meta } = await extractDOCX(file));
-      colFormText.value = text;
-      setMini(colFormStatus, '<span class="dot"></span>✓ נטען DOCX: ' + meta.paragraph_count + ' פסקאות · ' + text.length.toLocaleString() + ' תווים', 'ok');
+      textEl.value = text;
+      setMini(statusEl, '<span class="dot"></span>✓ DOCX: ' + meta.paragraph_count + ' פסקאות · ' + text.length.toLocaleString() + ' תווים', 'ok');
     } else if (['.txt','.md','.markdown','.rtf','.log'].includes(ext)) {
       text = await file.text();
       meta = { format: ext.slice(1) };
-      colFormText.value = text;
-      setMini(colFormStatus, '<span class="dot"></span>✓ נטען טקסט: ' + text.length.toLocaleString() + ' תווים', 'ok');
+      textEl.value = text;
+      setMini(statusEl, '<span class="dot"></span>✓ טקסט: ' + text.length.toLocaleString() + ' תווים', 'ok');
     } else {
       throw new Error('סוג לא נתמך: ' + ext);
     }
     refreshCollectionButtons();
   } catch (err) {
-    setMini(colFormStatus, '<span class="dot"></span>שגיאה: ' + err.message, 'err');
+    setMini(statusEl, '<span class="dot"></span>שגיאה: ' + err.message, 'err');
   }
 }
 
 // Refresh enabled state of buttons in step 0 + show what's missing as visible hint
 function refreshCollectionButtons() {
   const hasId = colIdEl.value.trim().length > 0;
-  const hasForm = colFormText.value.trim().length > 0 || !!state.collection_form_file;
+  const hasIntake = colFormText.value.trim().length > 0 || !!state.collection_form_file;
+  const hasSapir  = colSapirText.value.trim().length > 0 || !!state.collection_sapir_file;
+  const hasExtra  = colExtraText.value.trim().length > 0 || !!state.collection_extra_file;
+  const hasAnySource = hasIntake || hasSapir || hasExtra;
   const hasKey = !!getActiveApiKey();
-  identifyCollectionBtn.disabled = !(hasId && hasForm && hasKey);
+  identifyCollectionBtn.disabled = !(hasId && hasAnySource && hasKey);
 
   // Build a list of missing prerequisites for the visible hint
   const missing = [];
   if (!hasId) missing.push('מספר אוסף');
-  if (!hasForm) missing.push('טופס איסוף (PDF/Word) או טקסט מודבק');
+  if (!hasAnySource) missing.push('לפחות מקור אחד: טופס איסוף / רישום ספיר / מידע נוסף');
   if (!hasKey) missing.push('API key (לחץ "⚙ הגדרות API" למעלה)');
 
   // Show the hint right under the button
@@ -2203,21 +2265,31 @@ manualCollectionBtn.addEventListener('click', () => {
   collectionProfileBox.style.display = 'block';
 });
 
-// Identify collection via AI
+// Identify collection via AI — supports up to 3 source documents:
+// (1) intake form (טופס איסוף) — donor's biographical/family info
+// (2) sapir form (טופס רישום ספיר) — official technical metadata from Sapir
+// (3) extra info (מידע נוסף) — typed auxiliary research notes
 identifyCollectionBtn.addEventListener('click', async () => {
-  const formText = colFormText.value.trim();
-  const hasPdfFile = state.collection_form_is_pdf && !!state.collection_form_file;
-  if (!formText && !hasPdfFile) return;
+  const sources = {
+    intake: { text: colFormText.value.trim(),  pdfFile: state.collection_form_is_pdf  ? state.collection_form_file  : null },
+    sapir:  { text: colSapirText.value.trim(), pdfFile: state.collection_sapir_is_pdf ? state.collection_sapir_file : null },
+    extra:  { text: colExtraText.value.trim(), pdfFile: state.collection_extra_is_pdf ? state.collection_extra_file : null },
+  };
+  const totalPdfs = ['intake','sapir','extra'].filter(k => sources[k].pdfFile).length;
+  const totalText = ['intake','sapir','extra'].filter(k => sources[k].text).length;
+  if (totalPdfs === 0 && totalText === 0) return;
 
   identifyCollectionBtn.disabled = true;
-  const mode = hasPdfFile ? 'מבצע OCR + ניתוח אוסף' : 'מנתח אוסף';
-  identifyCollectionBtn.innerHTML = '<span class="spinner"></span>' + mode + '…';
+  const mode = totalPdfs > 0 ? 'מבצע OCR + ניתוח' : 'מנתח';
+  identifyCollectionBtn.innerHTML = '<span class="spinner"></span>' + mode + ' (' + (totalPdfs + totalText) + ' מקורות)…';
   setMini(colFormStatus, '', '');
-  showCollectionStatus(`שולח ${hasPdfFile ? 'את ה-PDF (כולל OCR)' : 'את הטופס'} ל-${state.provider === 'gemini' ? 'Gemini' : 'Claude'}…`, 'info');
+  setMini(colSapirStatus, '', '');
+  setMini(colExtraStatus, '', '');
+  showCollectionStatus(`שולח ${totalPdfs + totalText} מקור(ות) ל-${state.provider === 'gemini' ? 'Gemini' : 'Claude'}…`, 'info');
   try {
     const profile = state.provider === 'gemini'
-      ? await callGeminiForCollection({ text: formText, pdfFile: hasPdfFile ? state.collection_form_file : null })
-      : await callAnthropicForCollection({ text: formText, pdfFile: hasPdfFile ? state.collection_form_file : null });
+      ? await callGeminiForCollection(sources)
+      : await callAnthropicForCollection(sources);
     fillCollectionProfile(profile);
     collectionProfileBox.style.display = 'block';
     showCollectionStatus('✓ פרופיל אוסף נוצר. סקור וערוך לפי הצורך, ואז שמור.', 'ok');
@@ -2286,11 +2358,49 @@ function showCollectionStatus(msg, kind) {
   collectionStatus.className = 'status-msg show ' + (kind || '');
 }
 
-function buildCollectionPrompt(formText, hasPdf) {
-  const sourceDesc = hasPdf
-    ? 'ה-PDF המצורף הוא טופס איסוף / רישום ספיר של אוסף תצלומים. הוא עשוי להיות סרוק — בצע OCR לכל העמודים אם נדרש (תמיכה בעברית, אנגלית, גרמנית, יידיש, פולנית, רוסית, צ\'כית, הונגרית). אם יש כתב יד — תעתק במידת היכולת.'
-    : 'הטקסט הבא הוא טופס איסוף / רישום ספיר של אוסף תצלומים.';
-  return `אתה מקטלג בכיר במדור התצלומים של יד ושם. ${sourceDesc} הוצא ממנו פרופיל מובנה של האוסף שישמש כהקשר לקטלוג כל תצלום באוסף.
+function buildCollectionPrompt(sources) {
+  // sources: { intake: {text, pdfFile}, sapir: {...}, extra: {...} }
+  const labels = {
+    intake: '📋 טופס איסוף — מידע מהמוסר/משפחה: ביוגרפיה משפחתית, סיפור האוסף, גורלות, אישים, כל מה שמוסר החומר רשם',
+    sapir:  '🗂 טופס רישום אוסף בספיר — תדפיס רשמי מספיר. מטא-דאטה טכני: מספר אוסף, סוג חומר, מספר נכנסות, תאריכים, פורמלית. מקור סמכותי לזיהויים טכניים.',
+    extra:  '📝 מידע נוסף — מסמכי עזר מוקלדים: תחקיר משפחתי, מאמרים, רישומי גנאלוגיה, מאגרי שמות. מידע משלים שעוזר לזיהוי.',
+  };
+  const hasIntakePdf = !!sources.intake.pdfFile;
+  const hasSapirPdf  = !!sources.sapir.pdfFile;
+  const hasExtraPdf  = !!sources.extra.pdfFile;
+  const anyPdf = hasIntakePdf || hasSapirPdf || hasExtraPdf;
+
+  // Build the sources section — text inline, or note that a PDF is attached
+  const sourceBlocks = [];
+  for (const k of ['intake', 'sapir', 'extra']) {
+    const s = sources[k];
+    const hasFile = !!s.pdfFile;
+    const hasText = !!s.text;
+    if (!hasFile && !hasText) continue;
+    let block = `### ${labels[k]}\n`;
+    if (hasFile) block += `\n(קובץ PDF מצורף — ${hasIntakePdf+hasSapirPdf+hasExtraPdf > 1 ? 'אחד מתוך מספר קבצים' : 'בלעדי'}. בצע OCR אם סרוק.)\n`;
+    if (hasText) block += '\n```\n' + s.text + '\n```\n';
+    sourceBlocks.push(block);
+  }
+  const sourcesText = sourceBlocks.join('\n\n');
+
+  return `אתה מקטלג בכיר במדור התצלומים של יד ושם. ${anyPdf ? 'מצורפים PDF(ים) של מקורות מידע על האוסף.' : 'מצורפים מקורות טקסט של מידע על האוסף.'} השתמש בכל המקורות יחד כדי להוציא פרופיל מובנה של האוסף שישמש כהקשר לקטלוג כל תצלום באוסף.
+
+## חלוקת תפקידים בין המקורות (חשוב!)
+
+כל מקור הוא בעל אופי שונה:
+
+1. **טופס איסוף** — מקור עיקרי לביוגרפיה משפחתית, סיפור האוסף, גורלות אישים, פרובננס. בעל אופי סובייקטיבי-נרטיבי.
+2. **טופס רישום ספיר** — **מקור סמכותי** לכל הפרטים הטכניים: מספר אוסף, סוג חומר, מספר נכנסות, תאריך קבלה, מספר תצלומים, ארכיון מוצא, סיווגים. מנצח כשיש סתירה עם מקורות אחרים בנושאים טכניים.
+3. **מידע נוסף** — משלים. תחקיר נוסף, גנאלוגיה, מאגרי שמות. מאשר/משלים מה שכבר נכתב ב-1 ו-2.
+
+## עקרונות איחוד מקורות
+
+- אם מספר אוסף מופיע ב-2 → השתמש בו (מקור סמכותי). אחרת ב-1.
+- אם תאריך קבלה מופיע ב-2 → השתמש בו.
+- ביוגרפיה משפחתית, סיפור, גורלות → קח מ-1 (טופס איסוף). השתמש ב-3 כהשלמה.
+- אישים מרכזיים → איחוד ממקור 1 ו-3, עם הקדמה למקור 1.
+- אם יש סתירה בין מקורות — סמן בהערות.
 
 🚨🚨🚨 **חוק קריטי — איסור הזיה (anti-hallucination)** 🚨🚨🚨
 
@@ -2348,24 +2458,39 @@ function buildCollectionPrompt(formText, hasPdf) {
 - אם אין רשימת תצלומים בטופס — photo_list: [] (לא להמציא תיאורים!)
 - אם אין אישים מזוהים — key_people: [] (לא להמציא אנשים!)
 - expected_photo_count: רק אם מופיע מספר במפורש
-${hasPdf ? '- אם זה PDF סרוק — בצע OCR בעמודים, תעתק רק מה שאתה רואה. אל תשלים מה שלא ברור.' : ''}
+${anyPdf ? '- אם זה PDF סרוק — בצע OCR בעמודים, תעתק רק מה שאתה רואה. אל תשלים מה שלא ברור.' : ''}
 
-${hasPdf ? '(הטופס מצורף כ-PDF — קרא אותו ישירות.)' : 'הטופס:\n```\n' + formText + '\n```'}
+## המקורות לעיון
+
+${sourcesText || '(אין מקורות — אל תמציא תוכן!)'}
 
 החזר JSON בלבד.`;
 }
 
-async function callAnthropicForCollection({ text, pdfFile }) {
-  const content = [];
-  const hasPdf = !!pdfFile;
-  if (hasPdf) {
-    const pdfB64 = await fileToBase64(pdfFile);
-    content.push({
-      type: 'document',
-      source: { type: 'base64', media_type: 'application/pdf', data: pdfB64 }
-    });
+// Helper: build the message-content array (Anthropic) or parts (Gemini-like)
+// for the three collection sources, with each PDF preceded by a label.
+async function buildCollectionContent(sources, format) {
+  // format: 'anthropic' | 'gemini'
+  const labels = { intake: 'טופס איסוף', sapir: 'טופס רישום אוסף בספיר', extra: 'מידע נוסף' };
+  const arr = [];
+  for (const k of ['intake', 'sapir', 'extra']) {
+    const s = sources[k];
+    if (!s.pdfFile) continue;
+    const pdfB64 = await fileToBase64(s.pdfFile);
+    if (format === 'anthropic') {
+      arr.push({ type: 'text', text: `=== ${labels[k]} ===` });
+      arr.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfB64 } });
+    } else {
+      arr.push({ text: `=== ${labels[k]} ===` });
+      arr.push({ inline_data: { mime_type: 'application/pdf', data: pdfB64 } });
+    }
   }
-  content.push({ type: 'text', text: buildCollectionPrompt(text, hasPdf) });
+  return arr;
+}
+
+async function callAnthropicForCollection(sources) {
+  const content = await buildCollectionContent(sources, 'anthropic');
+  content.push({ type: 'text', text: buildCollectionPrompt(sources) });
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -2389,14 +2514,9 @@ async function callAnthropicForCollection({ text, pdfFile }) {
   return parseJsonResponse(data.content?.[0]?.text || '', 'Claude');
 }
 
-async function callGeminiForCollection({ text, pdfFile }) {
-  const parts = [];
-  const hasPdf = !!pdfFile;
-  if (hasPdf) {
-    const pdfB64 = await fileToBase64(pdfFile);
-    parts.push({ inline_data: { mime_type: 'application/pdf', data: pdfB64 } });
-  }
-  parts.push({ text: buildCollectionPrompt(text, hasPdf) });
+async function callGeminiForCollection(sources) {
+  const parts = await buildCollectionContent(sources, 'gemini');
+  parts.push({ text: buildCollectionPrompt(sources) });
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
   const res = await fetch(url, {
