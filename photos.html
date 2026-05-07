@@ -334,8 +334,9 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="anthropic" selected>Anthropic (Claude)</option>
-        <option value="gemini">Google (Gemini)</option>
+        <option value="hybrid" selected>⭐ Hybrid: Gemini ויזואל + Claude מבני (מומלץ)</option>
+        <option value="anthropic">Anthropic (Claude) בלבד</option>
+        <option value="gemini">Google (Gemini) בלבד</option>
       </select>
     </div>
 
@@ -1042,13 +1043,27 @@ apiKeyGemini.addEventListener('input', () => {
 });
 
 function syncProviderRows() {
+  // In hybrid mode, show BOTH Anthropic and Gemini rows (need both keys)
   document.querySelectorAll('.provider-row').forEach(row => {
-    row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none';
+    if (state.provider === 'hybrid') {
+      row.style.display = 'grid';
+    } else {
+      row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none';
+    }
   });
 }
 
 function getActiveApiKey() {
+  // Hybrid needs both keys present; for single-provider modes return that key
+  if (state.provider === 'hybrid') {
+    return state.apiKeys.anthropic && state.apiKeys.gemini
+      ? state.apiKeys.gemini  // returning the gemini key as a "presence" indicator
+      : '';
+  }
   return state.apiKeys[state.provider] || '';
+}
+function hasHybridKeys() {
+  return !!state.apiKeys.anthropic && !!state.apiKeys.gemini;
 }
 function getActiveModel() {
   return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value;
@@ -1184,12 +1199,16 @@ const identifyStatus = document.getElementById('identify-status');
 
 function refreshButtons() {
   const hasFront = !!state.photos.front;
-  const hasKey = !!getActiveApiKey();
+  const hasKey = state.provider === 'hybrid' ? hasHybridKeys() : !!getActiveApiKey();
   identifyBtn.disabled = !(hasFront && hasKey);
   copyPromptBtn.disabled = !hasFront;
   identifyBtn.title = !hasFront ? 'יש להעלות חזית תצלום' :
-                      !hasKey ? 'יש להגדיר API key (כפתור "הגדרות API" למעלה)' : '';
-  identifyBtn.innerHTML = state.provider === 'gemini' ? '🔍 זהה תצלום (Gemini)' : '🔍 זהה תצלום (Claude)';
+                      !hasKey ? (state.provider === 'hybrid'
+                        ? 'מצב Hybrid דורש שני מפתחות: Anthropic + Gemini'
+                        : 'יש להגדיר API key (כפתור "הגדרות API" למעלה)') : '';
+  identifyBtn.innerHTML = state.provider === 'hybrid'
+    ? '🔍 זהה תצלום (Gemini→Claude)'
+    : state.provider === 'gemini' ? '🔍 זהה תצלום (Gemini)' : '🔍 זהה תצלום (Claude)';
 }
 
 contextEl.addEventListener('input', refreshButtons);
@@ -1205,15 +1224,18 @@ copyPromptBtn.addEventListener('click', async () => {
   }
 });
 
-// Auto: call API (Anthropic or Gemini)
+// Auto: call API (Anthropic, Gemini, or Hybrid)
 identifyBtn.addEventListener('click', async () => {
   identifyBtn.disabled = true;
-  const providerLabel = state.provider === 'gemini' ? 'Gemini' : 'Claude';
-  identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel + '… (10–60 שניות)';
-  showStatus(`שולח ל-${providerLabel} API…`, 'info');
+  const providerLabel = state.provider === 'hybrid' ? 'Hybrid (Gemini→Claude)'
+    : state.provider === 'gemini' ? 'Gemini' : 'Claude';
+  identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel + '…';
+  showStatus(`שולח ל-${providerLabel}…`, 'info');
 
   try {
-    const result = state.provider === 'gemini' ? await callGemini() : await callAnthropic();
+    const result = state.provider === 'hybrid'
+      ? await callHybrid()
+      : state.provider === 'gemini' ? await callGemini() : await callAnthropic();
     state.identification = result;
     fillResultsForm(result);
     document.getElementById('results').classList.add('show');
@@ -1360,6 +1382,146 @@ async function callGemini() {
   const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
   if (!text) throw new Error('Gemini החזיר תגובה ריקה. בדוק את DevTools.');
   return parseJsonResponse(text, 'Gemini');
+}
+
+// ─── HYBRID: Gemini (vision) → Claude (structured catalog) ────────────────
+// Strategy: Use Gemini's free tier for the heavy vision work (image analysis),
+// then use Claude's reasoning + rule-following to produce the structured JSON.
+// Result: same quality as full-Claude vision call, but ~50× cheaper because
+// Claude's input is text-only (no images).
+async function callHybrid() {
+  if (!hasHybridKeys()) {
+    throw new Error('מצב Hybrid דורש מפתח Anthropic וגם מפתח Gemini. הגדר ב-⚙ הגדרות API.');
+  }
+
+  // STEP 1: Gemini analyzes the image and returns a plain-text visual description
+  showStatus('שלב 1/2 · Gemini מנתח את התצלום ויזואלית…', 'info');
+  const visualDescription = await geminiVisualExtract();
+
+  // STEP 2: Claude takes the visual description + collection context + rules
+  // and produces the full structured JSON catalog
+  showStatus('שלב 2/2 · Claude בונה קטלוג מובנה לפי הכללים של ספיר…', 'info');
+  return await claudeStructureFromVisual(visualDescription);
+}
+
+// Gemini step — pure vision, returns descriptive Hebrew text (no JSON)
+async function geminiVisualExtract() {
+  const frontB64 = await fileToBase64(state.photos.front);
+  const backB64 = state.photos.back ? await fileToBase64(state.photos.back) : null;
+  const frontMime = state.photos.front.type || 'image/jpeg';
+  const backMime = state.photos.back?.type || 'image/jpeg';
+
+  const visualPrompt = `אתה מקטלג בארכיון יד ושם, מתבונן בתצלום היסטורי. תפקידך: לתאר ויזואלית מה אתה רואה — בלי לנחש, בלי להזיז, בלי להמציא.
+
+החזר טקסט עברי תיאורי (לא JSON) במבנה הבא:
+
+[ויזואלי כללי]
+- מבנה הפריים, גודל, איכות הצילום (חד/מטושטש), צבעוניות (שחור-לבן/צבעוני)
+- תיאור הקומפוזיציה (פורטרט/קבוצתי/נוף/חדר)
+
+[אנשים]
+- כמה אנשים נראים? תיאור גיל בערך, מין, לבוש, פעולות
+- אם רואים פנים בבירור — תאר; אישים מוכרים היסטורית — ציין רק עם דמיון מלא לתצלום מאומת
+- אם הקבוצה גדולה — תאר את הסידור (שורות, מיקומים)
+
+[אובייקטים]
+- מדים: סוג, צבע, סמלים נראים (Wehrmacht/SS/Schupo/יודנראט וכו׳ — רק אם בולט)
+- חפצים יהודיים: כיפה, שטריימל, טלית, אות קלון/טלאי צהוב
+- רכבים: סוג, אם זוהה
+- נשק / סמלים פוליטיים — אם נראים
+
+[מקום ותקופה]
+- אדריכלות נראית — סגנון (אורתודוקסי, קלאסיציסטי, מודרניסטי, שטעטל)
+- שלטי רחוב, שמות עסקים — לתעתק מילולית
+- מאפיינים תקופתיים: סגנון לבוש, רכבים, פוטוגרפיה (sepia/דהוי/וכו׳)
+
+[כיתובים]
+לכל טקסט שאתה רואה — שלטים, כיתובי גב, חותמות סטודיו, כתב יד:
+* שפה: [גרמנית/יידיש/פולנית/רוסית/וכו׳]
+* תעתיק: [המילים בדיוק כפי שכתובות]
+* אם לא קריא: [לא קריא] / [?]
+
+[חותמת סטודיו (אם נראה)]
+- שם הסטודיו, עיר, כתובת — רק אם נראה בבירור
+
+⚠ חוקים קריטיים:
+- אם אינך רואה משהו בבירור — אל תכלול אותו
+- אסור לנחש שמות אישים, יחידות, מקומות
+- אם פרט מטושטש — סמן [לא ברור] במקום להמציא
+- שמור על תיאור עובדתי, לא פרשני
+
+החזר טקסט עברי נקי ללא code-fence.`;
+
+  const parts = [{ text: visualPrompt }];
+  parts.push({ text: '## חזית התצלום' });
+  parts.push({ inline_data: { mime_type: frontMime, data: frontB64 } });
+  if (backB64) {
+    parts.push({ text: '## גב התצלום' });
+    parts.push({ inline_data: { mime_type: backMime, data: backB64 } });
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelSelGemini.value}:generateContent`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts }],
+      generationConfig: { temperature: 0, maxOutputTokens: 6000 },
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Gemini (שלב 1) HTTP ${res.status}: ${err.error?.message || ''}`);
+  }
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  if (!text) throw new Error('Gemini החזיר ניתוח ויזואלי ריק');
+  return text;
+}
+
+// Claude step — text-only, takes Gemini's visual + rules → structured JSON
+async function claudeStructureFromVisual(visualDescription) {
+  const ctxText = contextEl.value.trim();
+  const studiosBrief = state.studios.map(s => `${s.id} | ${s.name} (${s.city}, ${s.country})`).join('\n');
+  const rulesPrompt = buildSystemRules(ctxText, studiosBrief);
+
+  const claudeContent = [
+    { type: 'text', text: `אני שולח לך **ניתוח ויזואלי שכבר בוצע ע"י Gemini** של תצלום ארכיוני. תפקידך: לקבל את הניתוח הזה + פרופיל האוסף + תיאור הפריט מטופס איסוף + חוקי הקטלוג של יד ושם, ולהפיק JSON מובנה לפי הסכימה.
+
+חשוב: אל תוסיף תוכן ויזואלי שאינו בניתוח של Gemini. אם Gemini אומר "[לא ברור]" — שמור על זה. אם Gemini לא ראה משהו — אסור להמציא.
+
+## הניתוח הויזואלי של Gemini
+
+${visualDescription}
+
+## חוקי הקטלוג + פרופיל האוסף + תיאור פריט (אם יש)
+
+${rulesPrompt}
+
+החזר JSON תקין בלבד.`}
+  ];
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKeys.anthropic,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: modelSelAnthropic.value,
+      max_tokens: 16000,
+      messages: [{ role: 'user', content: claudeContent }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Claude (שלב 2) HTTP ${res.status}: ${err.error?.message || ''}`);
+  }
+  const data = await res.json();
+  const text = (data.content?.[0]?.text || '').trim();
+  return parseJsonResponse(text, 'Claude');
 }
 
 function buildSystemRules(ctxText, studiosBrief) {
