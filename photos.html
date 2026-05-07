@@ -1179,15 +1179,23 @@ function parseJsonResponse(text, providerLabel) {
   let s = text.trim();
   const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) s = fenceMatch[1].trim();
-  // Sometimes models wrap in extra text — try to find first {...} block
-  if (!s.startsWith('{')) {
-    const m = s.match(/\{[\s\S]*\}/);
-    if (m) s = m[0];
-  }
-  try { return JSON.parse(s); }
-  catch (e) {
-    console.error(`${providerLabel} raw response:`, text);
-    throw new Error(`${providerLabel} החזיר טקסט שאינו JSON תקין. בדוק את הקונסול (פתח DevTools).`);
+  if (!s.startsWith('{')) { const m = s.match(/\{[\s\S]*\}/); if (m) s = m[0]; }
+  try { return JSON.parse(s); } catch (e1) {
+    // Repair: trailing commas + unbalanced brackets
+    let repaired = s.replace(/,(\s*[}\]])/g, '$1');
+    const openB = (repaired.match(/\{/g) || []).length;
+    const closB = (repaired.match(/\}/g) || []).length;
+    const openS = (repaired.match(/\[/g) || []).length;
+    const closS = (repaired.match(/\]/g) || []).length;
+    let nB = closB, nS = closS;
+    while (nS < openS) { repaired += ']'; nS++; }
+    while (nB < openB) { repaired += '}'; nB++; }
+    try { return JSON.parse(repaired); } catch (e2) {
+      console.error(`${providerLabel} raw response:`, text);
+      const err = new Error(`${providerLabel} החזיר תגובה לא JSON תקין (גם אחרי ניסיון תיקון אוטומטי)`);
+      err.rawText = text; err.parseError = e2.message; err.label = providerLabel;
+      throw err;
+    }
   }
 }
 

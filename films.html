@@ -904,8 +904,22 @@ function parseJson(text, label) {
   const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) s = fenceMatch[1].trim();
   if (!s.startsWith('{')) { const m = s.match(/\{[\s\S]*\}/); if (m) s = m[0]; }
-  try { return JSON.parse(s); }
-  catch (e) { console.error(`${label} raw response:`, text); throw new Error(`${label} החזיר תגובה לא JSON`); }
+  try { return JSON.parse(s); } catch (e1) {
+    let repaired = s.replace(/,(\s*[}\]])/g, '$1');
+    const openB = (repaired.match(/\{/g) || []).length;
+    const closB = (repaired.match(/\}/g) || []).length;
+    const openS = (repaired.match(/\[/g) || []).length;
+    const closS = (repaired.match(/\]/g) || []).length;
+    let nB = closB, nS = closS;
+    while (nS < openS) { repaired += ']'; nS++; }
+    while (nB < openB) { repaired += '}'; nB++; }
+    try { return JSON.parse(repaired); } catch (e2) {
+      console.error(`${label} raw response:`, text);
+      const err = new Error(`${label} החזיר תגובה לא JSON תקין`);
+      err.rawText = text; err.parseError = e2.message; err.label = label;
+      throw err;
+    }
+  }
 }
 
 function fillResults(d) {

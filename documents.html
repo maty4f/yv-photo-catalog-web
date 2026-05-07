@@ -534,13 +534,68 @@ identifyBtn.addEventListener('click', async () => {
     document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
     console.error(err);
-    showStatus('שגיאה: ' + err.message, 'err');
+    if (err.rawText) {
+      showRawResponseError(err);
+    } else {
+      showStatus('שגיאה: ' + err.message, 'err');
+    }
   } finally {
     identifyBtn.disabled = false;
     identifyBtn.innerHTML = '🔍 פענח מסמך';
     refreshButtons();
   }
 });
+
+function showRawResponseError(err) {
+  const status = identifyStatus;
+  const safeRaw = esc(err.rawText || '');
+  const safeParse = esc(err.parseError || '');
+  status.innerHTML = `
+    <div style="font-weight:700; margin-bottom:6px">❌ ${esc(err.message)}</div>
+    <div style="font-size:12px; margin-bottom:10px">פירוט שגיאת JSON: <code style="background:#fff; padding:2px 6px; border-radius:3px; direction:ltr; unicode-bidi:isolate;">${safeParse}</code></div>
+    <details>
+      <summary style="cursor:pointer; font-weight:600; padding:6px 0">▸ הצג את התגובה הגולמית של ${esc(err.label || 'AI')} (להעתקה / תיקון ידני)</summary>
+      <textarea id="raw-response-area" readonly style="width:100%; min-height:240px; margin-top:8px; font-family:'SF Mono',Menlo,monospace; font-size:11.5px; direction:ltr; text-align:left; line-height:1.4;">${safeRaw}</textarea>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+        <button type="button" id="copy-raw-btn" class="ghost" style="padding:5px 12px; font-size:12px">📋 העתק תגובה</button>
+        <button type="button" id="retry-parse-btn" class="ghost" style="padding:5px 12px; font-size:12px">🔧 ערוך ונסה לפענח ידנית</button>
+      </div>
+      <div style="font-size:11px; color:var(--muted); margin-top:6px">💡 אם התגובה חתוכה באמצע — סימן ש-max_tokens נגמר. נסה מסמך קצר יותר או חלק את המסמך.</div>
+    </details>
+  `;
+  status.className = 'status-msg show err';
+  document.getElementById('copy-raw-btn').addEventListener('click', () => {
+    const ta = document.getElementById('raw-response-area');
+    navigator.clipboard.writeText(ta.value).then(() => {
+      const btn = document.getElementById('copy-raw-btn');
+      const orig = btn.textContent;
+      btn.textContent = '✓ הועתק';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    });
+  });
+  document.getElementById('retry-parse-btn').addEventListener('click', () => {
+    const ta = document.getElementById('raw-response-area');
+    ta.removeAttribute('readonly');
+    ta.style.background = '#fffbeb';
+    ta.focus();
+    const btn = document.getElementById('retry-parse-btn');
+    btn.textContent = '✓ פענח את הערוך';
+    btn.onclick = () => {
+      try {
+        const fixed = JSON.parse(ta.value.trim());
+        state.identification = fixed;
+        fillResults(fixed);
+        document.getElementById('results').classList.add('show');
+        document.getElementById('no-results').style.display = 'none';
+        document.getElementById('download-bar').style.display = 'flex';
+        showStatus('✓ נטען מ-JSON הערוך.', 'ok');
+        document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) {
+        alert('JSON עדיין לא תקין: ' + e.message);
+      }
+    };
+  });
+}
 
 function showStatus(msg, kind) { identifyStatus.textContent = msg; identifyStatus.className = 'status-msg show ' + (kind || ''); }
 
@@ -662,7 +717,7 @@ async function callGemini() {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [part, { text: buildDocPrompt() }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 16000, responseMimeType: 'application/json' }
+      generationConfig: { temperature: 0.1, maxOutputTokens: 32000, responseMimeType: 'application/json' }
     })
   });
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
@@ -687,7 +742,7 @@ async function callAnthropic() {
     headers: { 'Content-Type': 'application/json', 'x-api-key': getActiveApiKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
     body: JSON.stringify({
       model: getActiveModel(),
-      max_tokens: 16000,
+      max_tokens: 32000,
       messages: [{ role: 'user', content: [docPart, { type: 'text', text: buildDocPrompt() }] }]
     })
   });
@@ -698,11 +753,36 @@ async function callAnthropic() {
 
 function parseJson(text, label) {
   let s = text.trim();
+  // 1. Strip code fences (```json … ```)
   const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) s = fenceMatch[1].trim();
+  // 2. Find first { ... last }
   if (!s.startsWith('{')) { const m = s.match(/\{[\s\S]*\}/); if (m) s = m[0]; }
-  try { return JSON.parse(s); }
-  catch (e) { console.error(`${label} raw response:`, text); throw new Error(`${label} החזיר תגובה לא JSON`); }
+
+  // 3. First attempt — as-is
+  try { return JSON.parse(s); } catch (e1) {
+    // 4. Repair attempts:
+    //    - trailing commas: , ] or , }
+    //    - unbalanced brackets/braces (truncation)
+    let repaired = s.replace(/,(\s*[}\]])/g, '$1');
+    const openB = (repaired.match(/\{/g) || []).length;
+    const closB = (repaired.match(/\}/g) || []).length;
+    const openS = (repaired.match(/\[/g) || []).length;
+    const closS = (repaired.match(/\]/g) || []).length;
+    let nB = closB, nS = closS;
+    while (nS < openS) { repaired += ']'; nS++; }
+    while (nB < openB) { repaired += '}'; nB++; }
+    try { return JSON.parse(repaired); } catch (e2) {
+      // 5. Failed — preserve raw text in error for UI display
+      console.error(`${label} raw response:`, text);
+      console.error(`${label} parse error:`, e2.message);
+      const err = new Error(`${label} החזיר תגובה לא JSON תקין (גם אחרי ניסיון תיקון אוטומטי)`);
+      err.rawText = text;
+      err.parseError = e2.message;
+      err.label = label;
+      throw err;
+    }
+  }
 }
 
 function fillResults(d) {
