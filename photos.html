@@ -1162,7 +1162,11 @@ identifyBtn.addEventListener('click', async () => {
     document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
     console.error(err);
-    showStatus('שגיאה: ' + err.message, 'err');
+    if (err.rawText) {
+      showRawErrorInline(identifyStatus, err, () => fillResultsForm);
+    } else {
+      showStatus('שגיאה: ' + err.message, 'err');
+    }
   } finally {
     identifyBtn.disabled = false;
     refreshButtons();
@@ -1235,7 +1239,7 @@ async function callAnthropic() {
     },
     body: JSON.stringify({
       model: getActiveModel(),
-      max_tokens: 8000,
+      max_tokens: 16000,
       messages: [{ role: 'user', content }],
     })
   });
@@ -1280,7 +1284,7 @@ async function callGemini() {
       contents: [{ role: 'user', parts }],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 8000,
+        maxOutputTokens: 16000,
         responseMimeType: 'application/json',
       },
     }),
@@ -2207,13 +2211,62 @@ identifyCollectionBtn.addEventListener('click', async () => {
     collectionProfileBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
     console.error(err);
-    showCollectionStatus('שגיאה: ' + err.message, 'err');
+    if (err.rawText) {
+      showRawErrorInline(collectionStatus, err, () => fillCollectionProfile);
+    } else {
+      showCollectionStatus('שגיאה: ' + err.message, 'err');
+    }
   } finally {
     identifyCollectionBtn.disabled = false;
     identifyCollectionBtn.innerHTML = '🔍 זהה את האוסף (AI)';
     refreshCollectionButtons();
   }
 });
+
+// Generic raw-response error UI — used by both collection and photo identify handlers
+// when the AI response can't be parsed as JSON
+function showRawErrorInline(statusEl, err, applyParsedFn) {
+  const rawId = 'raw-resp-' + Math.random().toString(36).slice(2, 8);
+  const safeRaw = esc(err.rawText || '');
+  const safeParse = esc(err.parseError || '');
+  statusEl.innerHTML = `
+    <div style="font-weight:700; margin-bottom:6px">❌ ${esc(err.message)}</div>
+    <div style="font-size:12px; margin-bottom:10px">פירוט: <code style="background:#fff; padding:2px 6px; border-radius:3px; direction:ltr; unicode-bidi:isolate;">${safeParse}</code></div>
+    <details>
+      <summary style="cursor:pointer; font-weight:600; padding:6px 0">▸ הצג את התגובה הגולמית של ${esc(err.label || 'AI')}</summary>
+      <textarea id="${rawId}" style="width:100%; min-height:240px; margin-top:8px; font-family:'SF Mono',Menlo,monospace; font-size:11.5px; direction:ltr; text-align:left; line-height:1.4;">${safeRaw}</textarea>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+        <button type="button" class="raw-copy-btn ghost" style="padding:5px 12px; font-size:12px">📋 העתק תגובה</button>
+        <button type="button" class="raw-retry-btn ghost" style="padding:5px 12px; font-size:12px">🔧 ערוך ונסה לפענח</button>
+      </div>
+      <div style="font-size:11px; color:var(--muted); margin-top:6px">💡 אם התגובה חתוכה באמצע — סימן ש-max_tokens נגמר. נסה מסמך קצר יותר.</div>
+    </details>
+  `;
+  statusEl.className = 'status-msg show err';
+  const ta = document.getElementById(rawId);
+  statusEl.querySelector('.raw-copy-btn').addEventListener('click', e => {
+    navigator.clipboard.writeText(ta.value).then(() => {
+      const b = e.target;
+      const o = b.textContent; b.textContent = '✓ הועתק';
+      setTimeout(() => { b.textContent = o; }, 1200);
+    });
+  });
+  const retryBtn = statusEl.querySelector('.raw-retry-btn');
+  retryBtn.addEventListener('click', () => {
+    ta.style.background = '#fffbeb';
+    ta.focus();
+    retryBtn.textContent = '✓ פענח את הערוך';
+    retryBtn.onclick = () => {
+      try {
+        const fixed = JSON.parse(ta.value.trim());
+        const fn = applyParsedFn();
+        fn(fixed);
+        statusEl.className = 'status-msg show ok';
+        statusEl.textContent = '✓ נטען מ-JSON שערכת.';
+      } catch (e) { alert('JSON עדיין לא תקין: ' + e.message); }
+    };
+  });
+}
 
 function showCollectionStatus(msg, kind) {
   collectionStatus.textContent = msg;
@@ -2286,7 +2339,7 @@ async function callAnthropicForCollection({ text, pdfFile }) {
     },
     body: JSON.stringify({
       model: getActiveModel(),
-      max_tokens: 4000,
+      max_tokens: 16000,
       messages: [{ role: 'user', content }],
     }),
   });
@@ -2313,7 +2366,7 @@ async function callGeminiForCollection({ text, pdfFile }) {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 4000, responseMimeType: 'application/json' },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 16000, responseMimeType: 'application/json' },
     }),
   });
   if (!res.ok) {
