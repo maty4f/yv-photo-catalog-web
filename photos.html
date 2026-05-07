@@ -422,46 +422,59 @@
         <input type="text" id="col-id" placeholder="11522">
       </div>
 
-      <!-- INTAKE FORM (donor side) — biographical info from the donor -->
+      <!-- INTAKE FORM — handwritten by default, treated as reference; AI does NOT OCR it -->
       <div style="margin-top:12px; padding:12px 14px; background:#fef9e7; border:1px solid #e6d28a; border-radius:8px;">
-        <label class="label" style="color:#6b4f0f">📋 טופס איסוף <small>Intake form — מידע מהמוסר: ביוגרפיה משפחתית, סיפור האוסף, גורלות, רשימת תצלומים</small></label>
+        <label class="label" style="color:#6b4f0f">📋 טופס איסוף <small>Intake form — מהמוסר. בדרך כלל בכתב יד.</small></label>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
           <button type="button" class="ghost" id="col-form-btn" style="border-color:#c19b2e; color:#6b4f0f">📎 העלה טופס איסוף</button>
-          <input type="file" id="col-form-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
+          <input type="file" id="col-form-input" accept=".pdf,.docx,.txt,.md,.rtf,image/*" hidden>
           <span id="col-form-status" class="mini-status"></span>
         </div>
-        <textarea id="col-form-text" placeholder="(הטקסט מהטופס יופיע כאן אחרי החילוץ — או הדבק ידנית)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 80px;"></textarea>
+        <div class="form-mode-toggle" style="margin-top:8px;">
+          <label style="font-size:11.5px; color:#6b4f0f"><input type="radio" name="col-form-mode" value="manual" checked> ✋ הזנה ידנית <small>(מומלץ לכתב יד — אפס הזיות)</small></label>
+          <label style="font-size:11.5px; color:#6b4f0f; margin-inline-start:14px"><input type="radio" name="col-form-mode" value="ai"> 🤖 OCR אוטומטי <small>(לטפסים מודפסים בלבד)</small></label>
+        </div>
+        <button type="button" class="ghost" id="col-form-view-btn" style="display:none; margin-top:8px; padding:5px 10px; font-size:12px;">👁 צפה בטופס המקור (במצב מסך מלא)</button>
+        <textarea id="col-form-text" placeholder="(במצב ידני — תוכל להקליד הערות. הטופס המקורי ישמש לתצוגה בלבד.)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 60px;"></textarea>
       </div>
 
-      <!-- SAPIR REGISTRATION FORM (technical side) — official registry record from Sapir -->
+      <!-- SAPIR REGISTRATION FORM (printed/typed by default — AI OCR works well) -->
       <div style="margin-top:10px; padding:12px 14px; background:#e8eef5; border:1px solid #a1bbd9; border-radius:8px;">
-        <label class="label" style="color:#1d4666">🗂 טופס רישום אוסף בספיר <small>Sapir registration printout — מידע טכני: מספר אוסף, סוג חומר, מספר נכנסות, תאריכים, וכו׳</small></label>
+        <label class="label" style="color:#1d4666">🗂 טופס רישום אוסף בספיר <small>Sapir registration printout — מודפס/דיגיטלי. AI יבצע OCR אוטומטי.</small></label>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
           <button type="button" class="ghost" id="col-sapir-btn" style="border-color:#2c5d8a; color:#1d4666">📎 העלה רישום ספיר</button>
           <input type="file" id="col-sapir-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
           <span id="col-sapir-status" class="mini-status"></span>
         </div>
-        <textarea id="col-sapir-text" placeholder="(הטקסט מטופס הרישום יופיע כאן — או הדבק ידנית)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 80px;"></textarea>
+        <div class="form-mode-toggle" style="margin-top:8px;">
+          <label style="font-size:11.5px; color:#1d4666"><input type="radio" name="col-sapir-mode" value="ai" checked> 🤖 OCR אוטומטי <small>(ברירת מחדל — מודפס)</small></label>
+          <label style="font-size:11.5px; color:#1d4666; margin-inline-start:14px"><input type="radio" name="col-sapir-mode" value="manual"> ✋ הזנה ידנית</label>
+        </div>
+        <textarea id="col-sapir-text" placeholder="(הטקסט מטופס הרישום יופיע כאן אחרי החילוץ — או הדבק ידנית)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 60px;"></textarea>
       </div>
 
-      <!-- ADDITIONAL INFO (typed notes — auxiliary identification info) -->
+      <!-- ADDITIONAL INFO (typed notes by default) -->
       <div style="margin-top:10px; padding:12px 14px; background:#ebf3ed; border:1px solid #98be9f; border-radius:8px;">
-        <label class="label" style="color:#1f5c38">📝 מידע נוסף <small>Additional info — מסמכי עזר מוקלדים: מאמרים, תחקיר משפחתי, רישומי גנאלוגיה, מאגרי שמות, וכו׳ — שעוזרים בזיהוי תצלומים</small></label>
+        <label class="label" style="color:#1f5c38">📝 מידע נוסף <small>Additional info — מסמכי עזר. AI יבצע OCR אם מודפס.</small></label>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
           <button type="button" class="ghost" id="col-extra-btn" style="border-color:#2e7d4e; color:#1f5c38">📎 העלה מידע נוסף</button>
           <input type="file" id="col-extra-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
           <span id="col-extra-status" class="mini-status"></span>
         </div>
-        <textarea id="col-extra-text" placeholder="(הטקסט יופיע כאן — או הדבק/הקלד ידנית מידע עזר)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 80px;"></textarea>
+        <div class="form-mode-toggle" style="margin-top:8px;">
+          <label style="font-size:11.5px; color:#1f5c38"><input type="radio" name="col-extra-mode" value="ai" checked> 🤖 OCR אוטומטי</label>
+          <label style="font-size:11.5px; color:#1f5c38; margin-inline-start:14px"><input type="radio" name="col-extra-mode" value="manual"> ✋ הזנה ידנית</label>
+        </div>
+        <textarea id="col-extra-text" placeholder="(הטקסט יופיע כאן — או הדבק/הקלד ידנית מידע עזר)" style="margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 12.5px; min-height: 60px;"></textarea>
       </div>
 
       <div style="margin-top:8px; font-size:11.5px; color:var(--muted); text-align:center">
-        💡 כל השדות אופציונליים — תוכל להעלות אחד, חלק, או את כולם. כל מה שתספק יעזור לזיהוי האוסף.
+        💡 הזנה ידנית = אפס הזיות. AI יעזור אחרי שתמלא — תרגום עברית→אנגלית, זיהוי סוג פריט, וכו׳.
       </div>
 
       <div class="actions">
-        <button id="identify-collection-btn" class="primary" disabled>🔍 זהה את האוסף (AI)</button>
-        <button id="manual-collection-btn" type="button" class="ghost">✎ או הזן ידנית</button>
+        <button id="identify-collection-btn" class="primary" disabled>🔍 הצע מילוי AI מטפסים מודפסים</button>
+        <button id="manual-collection-btn" type="button" class="ghost" style="display:none">✎ או הזן ידנית</button>
         <button id="skip-collection-btn" type="button" class="ghost" style="margin-inline-start:auto; color:var(--muted); border-color:var(--muted);">🎯 דלג — תצלום בודד ללא אוסף</button>
       </div>
       <div id="collection-status" class="status-msg"></div>
@@ -2317,19 +2330,66 @@ manualCollectionBtn.addEventListener('click', () => {
   collectionProfileBox.style.display = 'block';
 });
 
-// Identify collection via AI — supports up to 3 source documents:
-// (1) intake form (טופס איסוף) — donor's biographical/family info
-// (2) sapir form (טופס רישום ספיר) — official technical metadata from Sapir
-// (3) extra info (מידע נוסף) — typed auxiliary research notes
+// Read the AI/manual mode for each form (defaults: intake=manual, others=ai)
+function getFormMode(name) {
+  const checked = document.querySelector(`input[name="col-${name}-mode"]:checked`);
+  return checked ? checked.value : (name === 'form' ? 'manual' : 'ai');
+}
+
+// Refresh button label + state every time mode changes
+function updateIdentifyButton() {
+  const intakeMode = getFormMode('form');
+  const sapirMode  = getFormMode('sapir');
+  const extraMode  = getFormMode('extra');
+  const aiForms = [];
+  if (intakeMode === 'ai' && (state.collection_form_file || colFormText.value.trim())) aiForms.push('טופס איסוף');
+  if (sapirMode === 'ai'  && (state.collection_sapir_file || colSapirText.value.trim())) aiForms.push('רישום ספיר');
+  if (extraMode === 'ai'  && (state.collection_extra_file || colExtraText.value.trim())) aiForms.push('מידע נוסף');
+  identifyCollectionBtn.textContent = aiForms.length
+    ? `🔍 הצע מילוי AI מ-${aiForms.join(', ')}`
+    : '🔍 הצע מילוי AI (אין טפסים במצב OCR)';
+  identifyCollectionBtn.disabled = aiForms.length === 0 || !colIdEl.value.trim() || !getActiveApiKey();
+}
+
+// Listen to mode/text/file changes
+document.querySelectorAll('input[name^="col-"][name$="-mode"]').forEach(r => r.addEventListener('change', () => {
+  updateIdentifyButton();
+  // Show/hide the "view source form" button based on intake mode + file
+  const viewBtn = document.getElementById('col-form-view-btn');
+  if (viewBtn) viewBtn.style.display = getFormMode('form') === 'manual' && state.collection_form_file ? 'inline-block' : 'none';
+}));
+
+// Always-visible profile: open it as soon as user enters a collection ID
+colIdEl.addEventListener('input', () => {
+  if (colIdEl.value.trim()) {
+    collectionProfileBox.style.display = 'block';
+  }
+  updateIdentifyButton();
+});
+colSapirText.addEventListener('input', updateIdentifyButton);
+colExtraText.addEventListener('input', updateIdentifyButton);
+colFormText.addEventListener('input', updateIdentifyButton);
+
+// Identify collection via AI — only forms in 'ai' mode are sent
+// Forms in 'manual' mode are reference-only (catalog fills profile by hand)
 identifyCollectionBtn.addEventListener('click', async () => {
   const sources = {
-    intake: { text: colFormText.value.trim(),  pdfFile: state.collection_form_is_pdf  ? state.collection_form_file  : null },
-    sapir:  { text: colSapirText.value.trim(), pdfFile: state.collection_sapir_is_pdf ? state.collection_sapir_file : null },
-    extra:  { text: colExtraText.value.trim(), pdfFile: state.collection_extra_is_pdf ? state.collection_extra_file : null },
+    intake: getFormMode('form')  === 'ai'
+      ? { text: colFormText.value.trim(),  pdfFile: state.collection_form_is_pdf  ? state.collection_form_file  : null }
+      : { text: '', pdfFile: null },
+    sapir:  getFormMode('sapir') === 'ai'
+      ? { text: colSapirText.value.trim(), pdfFile: state.collection_sapir_is_pdf ? state.collection_sapir_file : null }
+      : { text: '', pdfFile: null },
+    extra:  getFormMode('extra') === 'ai'
+      ? { text: colExtraText.value.trim(), pdfFile: state.collection_extra_is_pdf ? state.collection_extra_file : null }
+      : { text: '', pdfFile: null },
   };
   const totalPdfs = ['intake','sapir','extra'].filter(k => sources[k].pdfFile).length;
   const totalText = ['intake','sapir','extra'].filter(k => sources[k].text).length;
-  if (totalPdfs === 0 && totalText === 0) return;
+  if (totalPdfs === 0 && totalText === 0) {
+    showCollectionStatus('אין טפסים במצב OCR אוטומטי. שנה לפחות אחד למצב 🤖, או מלא ידנית בפרופיל למטה.', 'warn');
+    return;
+  }
 
   identifyCollectionBtn.disabled = true;
   const mode = totalPdfs > 0 ? 'מבצע OCR + ניתוח' : 'מנתח';
@@ -2759,6 +2819,41 @@ document.getElementById('col-items-add').addEventListener('click', () => {
 });
 document.getElementById('col-items-renumber').addEventListener('click', renumberPhotoItems);
 
+// "Auto-detect types for all items" — runs AI on each description and sets type accordingly
+const detectAllBtn = document.createElement('button');
+detectAllBtn.type = 'button';
+detectAllBtn.className = 'ghost';
+detectAllBtn.style.cssText = 'font-size:12px; padding:5px 10px;';
+detectAllBtn.id = 'col-items-detect';
+detectAllBtn.textContent = '🤖 זהה סוג לכל הפריטים (AI)';
+detectAllBtn.addEventListener('click', async () => {
+  if (!getActiveApiKey()) { alert('יש להגדיר API key תחילה (⚙ הגדרות API)'); return; }
+  const tbody = document.getElementById('col-items-tbody');
+  const rows = [...tbody.querySelectorAll('tr')].filter(r => !r.querySelector('td[colspan]'));
+  if (!rows.length) { alert('אין פריטים — הוסף פריטים תחילה'); return; }
+  const orig = detectAllBtn.textContent;
+  detectAllBtn.disabled = true;
+  for (let i = 0; i < rows.length; i++) {
+    const tr = rows[i];
+    const sel = tr.querySelector('.item-type-sel');
+    const desc = tr.querySelectorAll('textarea')[0]?.value.trim();
+    if (!sel || !desc) continue;
+    detectAllBtn.textContent = `⏳ ${i+1}/${rows.length}…`;
+    const t = await detectItemTypeFromDesc(desc);
+    if (t !== 'unknown') {
+      sel.value = t;
+      sel.dispatchEvent(new Event('change'));
+    }
+  }
+  detectAllBtn.textContent = orig;
+  detectAllBtn.disabled = false;
+});
+// Insert after the renumber button
+document.getElementById('col-items-renumber').parentElement.insertBefore(
+  detectAllBtn,
+  document.getElementById('col-items-count')
+);
+
 // Read profile back from form
 function readCollectionProfileFromForm() {
   const get = id => document.getElementById(id).value.trim();
@@ -2813,6 +2908,202 @@ function getIntakeItemForCurrent() {
     it.type === 'photo' && it.photo_seq === state.current_photo_index
   );
 }
+
+// =====================================================================
+//  AI helpers AFTER manual entry — translate, detect type, etc.
+// =====================================================================
+
+// Translate Hebrew text to English using the active AI provider
+async function translateHeToEn(heText) {
+  if (!heText || !heText.trim()) return '';
+  if (!getActiveApiKey()) throw new Error('יש להגדיר API key');
+  const prompt = `תרגם את הטקסט הבא מעברית לאנגלית, כתיב אקדמי-ארכיוני, שומר על שמות בכתיב לטיני (Łódź, Warsaw, וכו׳). החזר רק את התרגום, ללא הקדמה.
+
+טקסט:
+${heText}`;
+
+  if (state.provider === 'gemini') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
+      })
+    });
+    if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
+    const data = await res.json();
+    return (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  } else {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': getActiveApiKey(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: getActiveModel(),
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }]
+      })
+    });
+    if (!res.ok) throw new Error(`Anthropic HTTP ${res.status}`);
+    const data = await res.json();
+    return (data.content?.[0]?.text || '').trim();
+  }
+}
+
+// Add a 🌐 translate button next to a HE field that fills a corresponding EN field
+function attachTranslateButton(heId, enId) {
+  const heEl = document.getElementById(heId);
+  const enEl = document.getElementById(enId);
+  if (!heEl || !enEl) return;
+  // Skip if already attached
+  if (heEl.parentElement?.querySelector('.tr-btn[data-target="' + enId + '"]')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ghost tr-btn';
+  btn.dataset.target = enId;
+  btn.style.cssText = 'padding:3px 8px; font-size:11px; margin-top:4px;';
+  btn.textContent = '🌐 תרגם לאנגלית';
+  btn.addEventListener('click', async () => {
+    const txt = heEl.value.trim();
+    if (!txt) { alert('אין טקסט עברי לתרגום'); return; }
+    const orig = btn.textContent;
+    btn.textContent = '⏳ מתרגם…';
+    btn.disabled = true;
+    try {
+      enEl.value = await translateHeToEn(txt);
+    } catch (e) {
+      alert('שגיאה בתרגום: ' + e.message);
+    } finally {
+      btn.textContent = orig;
+      btn.disabled = false;
+    }
+  });
+  heEl.parentElement.appendChild(btn);
+}
+
+// Attach translate buttons to all HE fields in the collection profile
+function attachAllTranslateButtons() {
+  const pairs = [
+    ['col-donor-he',  'col-donor-en'],
+    ['col-source-he', 'col-source-en'],
+    ['col-bio-he',    'col-bio-en'],
+    ['col-story-he',  'col-story-en'],
+    ['col-prov-he',   'col-prov-en'],
+  ];
+  pairs.forEach(([he, en]) => attachTranslateButton(he, en));
+}
+
+// Detect item type (photo/document) from a description
+async function detectItemTypeFromDesc(descHe) {
+  if (!descHe || !descHe.trim()) return 'unknown';
+  if (!getActiveApiKey()) return 'unknown';
+  const prompt = `בהינתן תיאור פריט מטופס איסוף ארכיוני, החלט אם הפריט הוא תצלום או מסמך. החזר אך ורק אחת המילים: photo / document / unknown.
+
+תיאור: ${descHe}
+
+מהי התשובה?`;
+  try {
+    if (state.provider === 'gemini') {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 30 },
+        })
+      });
+      if (!res.ok) return 'unknown';
+      const data = await res.json();
+      const t = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim().toLowerCase();
+      return t.includes('photo') ? 'photo' : t.includes('document') ? 'document' : 'unknown';
+    } else {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': getActiveApiKey(),
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: getActiveModel(),
+          max_tokens: 30,
+          messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }]
+        })
+      });
+      if (!res.ok) return 'unknown';
+      const data = await res.json();
+      const t = (data.content?.[0]?.text || '').trim().toLowerCase();
+      return t.includes('photo') ? 'photo' : t.includes('document') ? 'document' : 'unknown';
+    }
+  } catch { return 'unknown'; }
+}
+
+// View intake form image in fullscreen modal (reference for handwritten manual entry)
+document.addEventListener('click', async e => {
+  if (e.target?.id !== 'col-form-view-btn') return;
+  if (!state.collection_form_file) { alert('לא נטען טופס איסוף'); return; }
+  const file = state.collection_form_file;
+  let viewerHtml = '';
+  if (file.type.startsWith('image/')) {
+    const url = URL.createObjectURL(file);
+    viewerHtml = `<img src="${url}" style="max-width:100%; max-height:90vh; display:block; margin:0 auto;">`;
+  } else if (file.type === 'application/pdf') {
+    // Render via PDF.js — show all pages
+    try {
+      const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs';
+      const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+      const canvases = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 1.5 });
+        const c = document.createElement('canvas');
+        c.width = viewport.width; c.height = viewport.height;
+        c.style.cssText = 'max-width:100%; display:block; margin:0 auto 20px; box-shadow:0 2px 8px rgba(0,0,0,.2);';
+        await page.render({ canvasContext: c.getContext('2d'), viewport }).promise;
+        canvases.push(c);
+      }
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'background:white; padding:20px; border-radius:8px; max-height:90vh; overflow-y:auto;';
+      canvases.forEach(c => wrapper.appendChild(c));
+      viewerHtml = wrapper.outerHTML;
+    } catch (err) { alert('שגיאה בטעינת PDF: ' + err.message); return; }
+  } else { alert('סוג קובץ לא נתמך לתצוגה'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:10000; display:flex; flex-direction:column; padding:20px; overflow-y:auto;';
+  overlay.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="color:white; margin:0;">📋 טופס איסוף — לתצוגה בלבד</h3>
+      <button type="button" id="close-form-viewer" style="background:white; color:black; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:600;">סגור (Esc)</button>
+    </div>
+    <div style="background:white; border-radius:8px; padding:20px; max-height:calc(100vh - 100px); overflow-y:auto;">
+      ${viewerHtml}
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => { document.body.removeChild(overlay); };
+  document.getElementById('close-form-viewer').addEventListener('click', close);
+  overlay.addEventListener('keydown', ev => { if (ev.key === 'Escape') close(); });
+  overlay.tabIndex = 0; overlay.focus();
+});
+
+// Attach translate buttons every time profile becomes visible
+const profileObserver = new MutationObserver(() => {
+  if (collectionProfileBox.style.display !== 'none') attachAllTranslateButtons();
+});
+profileObserver.observe(collectionProfileBox, { attributes: true, attributeFilter: ['style'] });
+
+// Initial attach (in case the box is already visible)
+if (collectionProfileBox.style.display !== 'none') attachAllTranslateButtons();
 
 // Save collection and switch to photo mode
 saveCollectionBtn.addEventListener('click', () => {
