@@ -955,21 +955,29 @@ apiKeyGemini.value = state.apiKeys.gemini;
 providerSel.value = state.provider;
 syncProviderRows();
 
+// Refresh BOTH the photo identify button AND the collection identify button
+// whenever provider/key changes — otherwise collection button stays disabled
+// even after user enters their API key.
+function refreshAllButtons() {
+  if (typeof refreshButtons === 'function') refreshButtons();
+  if (typeof refreshCollectionButtons === 'function') refreshCollectionButtons();
+}
+
 providerSel.addEventListener('change', () => {
   state.provider = providerSel.value;
   localStorage.setItem('yv_api_provider', state.provider);
   syncProviderRows();
-  refreshButtons();
+  refreshAllButtons();
 });
 apiKeyAnthropic.addEventListener('input', () => {
   state.apiKeys.anthropic = apiKeyAnthropic.value.trim();
   localStorage.setItem('yv_api_key_anthropic', state.apiKeys.anthropic);
-  refreshButtons();
+  refreshAllButtons();
 });
 apiKeyGemini.addEventListener('input', () => {
   state.apiKeys.gemini = apiKeyGemini.value.trim();
   localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini);
-  refreshButtons();
+  refreshAllButtons();
 });
 
 function syncProviderRows() {
@@ -2137,12 +2145,34 @@ async function extractIntakeForm(file) {
   }
 }
 
-// Refresh enabled state of buttons in step 0
+// Refresh enabled state of buttons in step 0 + show what's missing as visible hint
 function refreshCollectionButtons() {
   const hasId = colIdEl.value.trim().length > 0;
   const hasForm = colFormText.value.trim().length > 0 || !!state.collection_form_file;
   const hasKey = !!getActiveApiKey();
   identifyCollectionBtn.disabled = !(hasId && hasForm && hasKey);
+
+  // Build a list of missing prerequisites for the visible hint
+  const missing = [];
+  if (!hasId) missing.push('מספר אוסף');
+  if (!hasForm) missing.push('טופס איסוף (PDF/Word) או טקסט מודבק');
+  if (!hasKey) missing.push('API key (לחץ "⚙ הגדרות API" למעלה)');
+
+  // Show the hint right under the button
+  let hintEl = document.getElementById('collection-missing-hint');
+  if (!hintEl) {
+    hintEl = document.createElement('div');
+    hintEl.id = 'collection-missing-hint';
+    hintEl.style.cssText = 'margin-top:8px; font-size:12.5px; color:var(--muted); padding:8px 12px; background:#fff3cd; border:1px solid #ffe69c; border-radius:6px; display:none;';
+    identifyCollectionBtn.parentElement.parentElement.appendChild(hintEl);
+  }
+  if (missing.length) {
+    hintEl.style.display = 'block';
+    hintEl.innerHTML = '⚠ <b>חסר כדי להמשיך:</b> ' + missing.map(m => '<span style="background:#fff; padding:1px 7px; border-radius:3px; margin:0 3px;">' + m + '</span>').join(' · ');
+  } else {
+    hintEl.style.display = 'none';
+  }
+
   identifyCollectionBtn.title = !hasId ? 'יש להזין מספר אוסף' :
                                 !hasForm ? 'יש להעלות טופס או להדביק טקסט' :
                                 !hasKey ? 'יש להגדיר API key' : '';
