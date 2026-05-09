@@ -11,7 +11,6 @@
     --photos-tint: #fbf3e3; --photos-border: #c19b2e;
     --films-tint: #e8eef5;  --films-border: #2c5d8a;
     --docs-tint: #ebf3ed;   --docs-border: #2e7d4e;
-    --research-tint: #f1edf7; --research-border: #6b4d8c;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -60,14 +59,11 @@
   .card.films:hover  { border-color: #1d4666; }
   .card.docs   { border-color: var(--docs-border);   background: linear-gradient(180deg, var(--card), var(--docs-tint)); }
   .card.docs:hover   { border-color: #1f5c38; }
-  .card.research { border-color: var(--research-border); background: linear-gradient(180deg, var(--card), var(--research-tint)); }
-  .card.research:hover { border-color: #4f3970; }
   .card .icon { font-size: 52px; margin-bottom: 12px; }
   .card h2 { margin: 0 0 8px 0; font-size: 22px; color: var(--accent); }
   .card.films h2 { color: var(--films-border); }
   .card.photos h2 { color: #6b4f0f; }
   .card.docs h2 { color: var(--docs-border); }
-  .card.research h2 { color: var(--research-border); }
   .card .desc { font-size: 14px; color: var(--muted); line-height: 1.6; min-height: 60px; }
   .card .features {
     margin-top: 16px;
@@ -167,23 +163,6 @@
           <li>תעתיק + תרגום עברית + אנגלית</li>
           <li>זיהוי שולח, נמען, תאריך, מקום</li>
           <li>קונטקסט היסטורי + נושאים מתזאורוס</li>
-        </ul>
-      </div>
-    </a>
-
-    <a href="https://ldr.164-90-222-151.sslip.io/" target="_blank" rel="noopener noreferrer" class="card research">
-      <div class="icon">🔎</div>
-      <h2>מחקר עומק</h2>
-      <div class="desc">
-        כלי מחקר רב-שלבי המבוסס על Claude — חיפוש איטרטיבי, אימות מקורות, ודוח מצוטט מלא.
-      </div>
-      <div class="features">
-        <ul>
-          <li>חיפוש מקביל ב-arXiv, PubMed, Wikipedia ועוד</li>
-          <li>סינתזה רב-שלבית עם ביקורת עצמית</li>
-          <li>דוחות מצוטטים בעברית, אנגלית, רוסית</li>
-          <li>נתונים מוצפנים בשרת הפרטי</li>
-          <li>מבוסס Anthropic Claude</li>
         </ul>
       </div>
     </a>
