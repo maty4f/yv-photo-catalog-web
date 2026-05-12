@@ -241,8 +241,31 @@
   </div>
 
   <section class="step">
-    <div class="head"><span class="num">1</span><span class="title">סרט <small>Film file — סליל סרוק / וידאו / דיגיטלי (MP4/MOV/WebM/AVI)</small></span></div>
+    <div class="head">
+      <span class="num">1</span>
+      <span class="title">סרט <small>Film file — אחד או batch (עד 5)</small></span>
+      <div style="margin-inline-start:auto; display:flex; gap:6px;">
+        <button type="button" id="film-batch-add-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📤 העלה batch (עד 5)</button>
+        <input type="file" id="film-batch-input" accept="video/*" multiple hidden>
+      </div>
+    </div>
     <div class="body">
+
+      <!-- Queue panel for films -->
+      <div id="film-queue-panel" style="display:none; margin-bottom:14px; padding:10px 12px; background:#eef4fb; border:1px solid #c5d4e7; border-radius:8px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div style="font-weight:700; color:#1d4666; font-size:13.5px;">
+            🎞 תור סרטים <span id="film-queue-summary" style="font-weight:400; font-size:12px; color:#5a7390; margin-inline-start:6px;"></span>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button type="button" id="film-queue-add-more-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; border-color:var(--accent); color:var(--accent);">+ הוסף עוד</button>
+            <button type="button" id="film-queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:#b22222; border-color:#b22222;">🗑 נקה תור</button>
+          </div>
+        </div>
+        <div id="film-queue-list" style="display:flex; gap:8px; overflow-x:auto; padding:4px; align-items:stretch;"></div>
+        <div id="film-queue-rate-warn" style="display:none; margin-top:6px; padding:6px 10px; background:#fff3cd; border:1px solid #ffe69c; border-radius:4px; font-size:11.5px; color:#856404;"></div>
+      </div>
+
       <div id="film-drop" class="film-drop" tabindex="0">
         <button type="button" class="delete-film-btn" id="delete-film-btn" title="הסר סרט">✕</button>
         <video id="film-preview" controls></video>
@@ -577,6 +600,191 @@ function clearFilm() {
   fileInput.value = '';
   refreshButtons();
 }
+
+// =====================================================================
+//  FILM BATCH QUEUE — up to 5 films at once (heavy; smaller cap than photos)
+// =====================================================================
+state.film_queue = [];
+state.current_film_queue_index = -1;
+state.film_queue_processor_running = false;
+
+const FILM_BATCH_MAX = 5;
+const FILM_QUEUE_STATUSES = {
+  pending:   { icon: '⏳', label: 'ממתין',  color: '#5a7390' },
+  analyzing: { icon: '🔄', label: 'מנתח',   color: '#0d47a1' },
+  ready:     { icon: '✓',  label: 'מוכן',   color: '#2e7d32' },
+  reviewing: { icon: '▶',  label: 'בסקירה', color: '#2c5d8a' },
+  done:      { icon: '💾', label: 'נשמר',   color: '#155724' },
+  error:     { icon: '❌', label: 'שגיאה',  color: '#b22222' },
+};
+
+document.getElementById('film-batch-add-btn').addEventListener('click', () =>
+  document.getElementById('film-batch-input').click());
+document.getElementById('film-queue-add-more-btn').addEventListener('click', () =>
+  document.getElementById('film-batch-input').click());
+document.getElementById('film-batch-input').addEventListener('change', e => {
+  const files = [...e.target.files].filter(f => f.type.startsWith('video/'));
+  e.target.value = '';
+  addFilmsToQueue(files);
+});
+
+function addFilmsToQueue(files) {
+  if (!files.length) return;
+  if (state.film_queue.length + files.length > FILM_BATCH_MAX) {
+    const can = FILM_BATCH_MAX - state.film_queue.length;
+    if (can <= 0) {
+      alert(`התור מלא (${FILM_BATCH_MAX} פריטים). נקה תור או סיים סרטים קיימים.`);
+      return;
+    }
+    if (!confirm(`התור יקבל רק ${can} מתוך ${files.length} (מקסימום ${FILM_BATCH_MAX}). להמשיך?`)) return;
+    files = files.slice(0, can);
+  }
+  const totalMB = files.reduce((s, f) => s + f.size, 0) / 1024 / 1024;
+  if (totalMB > 500) {
+    if (!confirm(`גודל כולל: ${totalMB.toFixed(0)} MB. ייתכן ויאיט את הדפדפן. להמשיך?`)) return;
+  }
+  files.forEach(file => {
+    const id = 'fq' + Date.now() + '_' + state.film_queue.length;
+    state.film_queue.push({
+      id, file, status: 'pending', identification: null, error: null, meta: null,
+    });
+  });
+  document.getElementById('film-queue-panel').style.display = 'block';
+  renderFilmQueuePanel();
+  setTimeout(() => startFilmQueueProcessor(), 100);
+}
+
+function renderFilmQueuePanel() {
+  const list = document.getElementById('film-queue-list');
+  const summary = document.getElementById('film-queue-summary');
+  if (!state.film_queue.length) {
+    document.getElementById('film-queue-panel').style.display = 'none';
+    return;
+  }
+  const counts = { pending: 0, analyzing: 0, ready: 0, reviewing: 0, done: 0, error: 0 };
+  state.film_queue.forEach(it => counts[it.status]++);
+  summary.textContent = `(${state.film_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}`;
+
+  list.innerHTML = state.film_queue.map((it, idx) => {
+    const s = FILM_QUEUE_STATUSES[it.status] || FILM_QUEUE_STATUSES.pending;
+    const isActive = idx === state.current_film_queue_index;
+    const sizeMB = (it.file.size / 1024 / 1024).toFixed(0);
+    const errTooltip = it.error ? ` title="${esc(it.error)}"` : '';
+    return `<div class="film-queue-item" data-idx="${idx}"${errTooltip}
+      style="flex:0 0 auto; width:140px; cursor:pointer; padding:8px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? '#fff' : 'transparent'};">
+      <div style="font-size:11.5px; color:var(--ink); font-weight:600; direction:ltr; unicode-bidi:isolate; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(it.file.name)}</div>
+      <div style="font-size:10.5px; color:var(--muted); text-align:center; margin-top:2px;">${sizeMB} MB</div>
+      <div style="text-align:center; margin-top:6px; font-size:11.5px; color:${s.color}; font-weight:600;">
+        ${s.icon} ${s.label}
+      </div>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.film-queue-item').forEach(el => {
+    el.addEventListener('click', () => {
+      jumpToFilmQueueItem(parseInt(el.dataset.idx));
+    });
+  });
+}
+
+function jumpToFilmQueueItem(idx) {
+  if (idx < 0 || idx >= state.film_queue.length) return;
+  const item = state.film_queue[idx];
+  if (state.current_film_queue_index >= 0 && state.current_film_queue_index !== idx) {
+    const prev = state.film_queue[state.current_film_queue_index];
+    if (prev && prev.status === 'reviewing') prev.status = 'ready';
+  }
+  state.current_film_queue_index = idx;
+  loadFilmQueueItemIntoUI(item);
+  renderFilmQueuePanel();
+}
+
+function loadFilmQueueItemIntoUI(item) {
+  clearFilm();
+  loadFilm(item.file);
+  if (item.status === 'ready' || item.status === 'reviewing') {
+    item.status = 'reviewing';
+    if (item.identification) {
+      fillResults(item.identification);
+      document.getElementById('results').classList.add('show');
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('download-bar').style.display = 'flex';
+    }
+  } else if (item.status === 'error') {
+    showStatus('הסרט נכשל בזיהוי: ' + (item.error || 'שגיאה'), 'err');
+  }
+}
+
+async function startFilmQueueProcessor() {
+  if (state.film_queue_processor_running) return;
+  state.film_queue_processor_running = true;
+  try {
+    while (true) {
+      const next = state.film_queue.find(it => it.status === 'pending');
+      if (!next) break;
+      next.status = 'analyzing';
+      renderFilmQueuePanel();
+      try {
+        const result = await identifyFilmQueueItem(next);
+        next.identification = result;
+        next.status = 'ready';
+        if (state.current_film_queue_index < 0) {
+          state.current_film_queue_index = state.film_queue.indexOf(next);
+          loadFilmQueueItemIntoUI(next);
+        }
+      } catch (err) {
+        next.status = 'error';
+        next.error = err.message;
+        console.error(`Film queue item ${next.id} failed:`, err);
+      }
+      renderFilmQueuePanel();
+      // Longer delay for films (larger payloads, fewer requests/min)
+      await new Promise(r => setTimeout(r, 15000));
+    }
+  } finally {
+    state.film_queue_processor_running = false;
+  }
+}
+
+async function identifyFilmQueueItem(item) {
+  const savedFilm = state.film;
+  const savedMeta = state.filmMeta;
+  state.film = item.file;
+  // Re-extract metadata for this file
+  await new Promise(resolve => {
+    const v = document.createElement('video');
+    v.src = URL.createObjectURL(item.file);
+    v.onloadedmetadata = () => {
+      state.filmMeta = {
+        duration: v.duration,
+        width: v.videoWidth,
+        height: v.videoHeight,
+        mime: item.file.type || 'video/mp4',
+        size_bytes: item.file.size,
+      };
+      URL.revokeObjectURL(v.src);
+      resolve();
+    };
+  });
+  try {
+    if (state.provider === 'gemini') return await callGemini();
+    return await callAnthropic();
+  } finally {
+    state.film = savedFilm;
+    state.filmMeta = savedMeta;
+  }
+}
+
+document.getElementById('film-queue-clear-btn').addEventListener('click', () => {
+  if (!state.film_queue.length) return;
+  const undone = state.film_queue.filter(it => it.status !== 'done').length;
+  const msg = undone > 0
+    ? `יש ${undone} סרטים שעדיין לא נשמרו. למחוק את כל התור?`
+    : 'למחוק את התור כולו?';
+  if (!confirm(msg)) return;
+  state.film_queue = [];
+  state.current_film_queue_index = -1;
+  renderFilmQueuePanel();
+});
 
 // Context
 const contextEl = document.getElementById('context-input');
@@ -1093,6 +1301,52 @@ document.getElementById('download-final-btn').addEventListener('click', () => {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   showStatus(`✓ הורד: ${fname}`, 'ok');
+
+  // If we're in batch queue mode, mark this item done and advance to next ready
+  if (state.current_film_queue_index >= 0) {
+    const cur = state.film_queue[state.current_film_queue_index];
+    if (cur) {
+      cur.status = 'done';
+      renderFilmQueuePanel();
+    }
+    // Find next ready/analyzing/pending item
+    let nextIdx = -1;
+    for (let i = state.current_film_queue_index + 1; i < state.film_queue.length; i++) {
+      const it = state.film_queue[i];
+      if (it.status === 'ready' || it.status === 'analyzing' || it.status === 'pending') { nextIdx = i; break; }
+    }
+    if (nextIdx === -1) {
+      for (let i = 0; i < state.current_film_queue_index; i++) {
+        const it = state.film_queue[i];
+        if (it.status === 'ready' || it.status === 'analyzing' || it.status === 'pending') { nextIdx = i; break; }
+      }
+    }
+    if (nextIdx === -1) {
+      state.current_film_queue_index = -1;
+      showStatus('🎉 כל תור הסרטים הסתיים!', 'ok');
+      return;
+    }
+    state.current_film_queue_index = nextIdx;
+    const nextItem = state.film_queue[nextIdx];
+    if (nextItem.status === 'ready') {
+      loadFilmQueueItemIntoUI(nextItem);
+      showStatus(`▶ סרט ${nextIdx + 1}/${state.film_queue.length} — מוכן לסקירה`, 'info');
+    } else {
+      clearFilm();
+      loadFilm(nextItem.file);
+      showStatus(`⏳ סרט ${nextIdx + 1}/${state.film_queue.length} — עדיין בניתוח...`, 'info');
+      const poll = setInterval(() => {
+        if (nextItem.status === 'ready') {
+          clearInterval(poll);
+          loadFilmQueueItemIntoUI(nextItem);
+          showStatus(`▶ סרט ${nextIdx + 1}/${state.film_queue.length} — מוכן`, 'ok');
+        } else if (nextItem.status === 'error') {
+          clearInterval(poll);
+          showStatus(`❌ סרט ${nextIdx + 1} נכשל: ${nextItem.error}`, 'err');
+        }
+      }, 500);
+    }
+  }
 });
 document.getElementById('preview-btn').addEventListener('click', () => {
   const blob = new Blob([buildFilmHTML()], { type: 'text/html;charset=utf-8' });

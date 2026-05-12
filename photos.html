@@ -554,11 +554,34 @@
   <div id="photo-workflow" class="locked">
 
   <!-- ====================================================== -->
-  <!--  STEP 1: Photos (front + back)                          -->
+  <!--  STEP 1: Photos — Batch upload + Queue                  -->
   <!-- ====================================================== -->
-  <section class="step">
-    <div class="head"><span class="num">1</span><span class="title">תצלום <small>Photograph — חזית + גב (גב הוא אופציונלי, אך מכיל לעיתים מידע יקר ערך)</small></span></div>
+  <section class="step" id="step-photo">
+    <div class="head">
+      <span class="num">1</span>
+      <span class="title">תצלום <small>Photograph — העלאה בודדת או batch (עד 20 בו-זמנית)</small></span>
+      <div style="margin-inline-start:auto; display:flex; gap:6px;">
+        <button type="button" id="batch-add-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📤 העלה batch (עד 20)</button>
+        <input type="file" id="batch-file-input" accept="image/*" multiple hidden>
+      </div>
+    </div>
     <div class="body">
+
+      <!-- Queue panel — shown only when queue has items -->
+      <div id="queue-panel" style="display:none; margin-bottom:14px; padding:10px 12px; background:#fff8ec; border:1px solid #f1d96e; border-radius:8px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div style="font-weight:700; color:#6b4f0f; font-size:13.5px;">
+            🗂 תור תצלומים <span id="queue-summary" style="font-weight:400; font-size:12px; color:#8a7140; margin-inline-start:6px;"></span>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button type="button" id="queue-add-more-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; border-color:#c19b2e; color:#6b4f0f;">+ הוסף עוד</button>
+            <button type="button" id="queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:#b22222; border-color:#b22222;" title="נקה את כל התור">🗑 נקה תור</button>
+          </div>
+        </div>
+        <div id="queue-list" style="display:flex; gap:8px; overflow-x:auto; padding:4px; align-items:stretch;"></div>
+        <div id="queue-rate-warn" style="display:none; margin-top:6px; padding:6px 10px; background:#fff3cd; border:1px solid #ffe69c; border-radius:4px; font-size:11.5px; color:#856404;"></div>
+      </div>
+
       <div class="photo-row">
         <div class="photo-slot" id="slot-front">
           <span class="label-tag">חזית / Front</span>
@@ -916,6 +939,266 @@ function clearPhoto(side) {
   drop.parentElement.querySelector('.file-input').value = '';
   refreshButtons();
 }
+
+// =====================================================================
+//  BATCH QUEUE — multi-photo upload with pre-fetch identification
+//  - User drops up to 20 photos (fronts + backs marked by '#' in name)
+//  - System pairs fronts with backs by basename (e.g. IMG_001.jpg ↔ IMG_001#.jpg)
+//  - First photo identifies immediately; while user reviews it, next runs in
+//    background. By 'Save & Next', next photo is already ready → no waiting.
+//  - Files stay in RAM (50MB+ won't fit in localStorage); only metadata
+//    persists across sessions.
+//  - Rate-limit aware (Gemini Free: 10 RPM Flash, 5 RPM Pro).
+// =====================================================================
+
+state.photo_queue = [];          // [{ id, photo_seq, front, back, status, identification, error, thumb }]
+state.current_queue_index = -1;  // -1 = no active item
+state.queue_processor_running = false;
+
+const BATCH_MAX = 20;
+const QUEUE_STATUSES = {
+  pending:   { icon: '⏳', label: 'ממתין',     color: '#8a7140' },
+  analyzing: { icon: '🔄', label: 'מנתח',      color: '#0d47a1' },
+  ready:     { icon: '✓',  label: 'מוכן',      color: '#2e7d32' },
+  reviewing: { icon: '▶',  label: 'בסקירה',    color: '#6b5b3e' },
+  done:      { icon: '💾', label: 'נשמר',      color: '#155724' },
+  error:     { icon: '❌', label: 'שגיאה',     color: '#b22222' },
+};
+
+// Pair fronts with backs based on '#' convention
+// Examples that pair: IMG_001.jpg ↔ IMG_001#.jpg
+//                     5030_001.jpg ↔ 5030_001#.jpg
+// Files NOT containing # are treated as fronts
+// Files WITH # at end-of-basename are backs that match a front of same basename
+function pairFilesByHash(files) {
+  const fronts = [];
+  const backs = {};  // basename (no #) → back file
+  for (const f of files) {
+    const base = f.name.replace(/\.[^.]+$/, '');     // strip extension
+    if (base.endsWith('#')) {
+      // Back — basename without trailing #
+      const matchBase = base.slice(0, -1);
+      backs[matchBase] = f;
+    } else if (base.endsWith(' #') || base.endsWith('_#')) {
+      const matchBase = base.replace(/[ _]?#$/, '');
+      backs[matchBase] = f;
+    } else {
+      fronts.push({ file: f, base });
+    }
+  }
+  // Build queue items: each front, paired with matching back if exists
+  return fronts.map(({ file, base }) => ({
+    front: file,
+    back: backs[base] || null,
+  }));
+}
+
+async function fileToDataUrl(file) {
+  return new Promise(resolve => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result);
+    r.readAsDataURL(file);
+  });
+}
+
+// Initialize: hook up batch upload button
+document.getElementById('batch-add-btn').addEventListener('click', () =>
+  document.getElementById('batch-file-input').click());
+document.getElementById('queue-add-more-btn').addEventListener('click', () =>
+  document.getElementById('batch-file-input').click());
+document.getElementById('batch-file-input').addEventListener('change', e => {
+  const files = [...e.target.files];
+  e.target.value = ''; // allow re-selecting same files later
+  addFilesToQueue(files);
+});
+
+function addFilesToQueue(files) {
+  if (!files.length) return;
+  const pairs = pairFilesByHash(files);
+  if (state.photo_queue.length + pairs.length > BATCH_MAX) {
+    const can = BATCH_MAX - state.photo_queue.length;
+    if (can <= 0) {
+      alert(`התור מלא (${BATCH_MAX} פריטים). נקה את התור או סיים תצלומים קיימים.`);
+      return;
+    }
+    if (!confirm(`התור יקבל רק ${can} מתוך ${pairs.length} תצלומים שבחרת (מקסימום ${BATCH_MAX}). להמשיך?`)) return;
+    pairs.length = can;
+  }
+  pairs.forEach(async (pair, idx) => {
+    const id = 'q' + Date.now() + '_' + (state.photo_queue.length + idx);
+    const item = {
+      id,
+      photo_seq: null,  // resolved when activated
+      front: pair.front,
+      back: pair.back,
+      status: 'pending',
+      identification: null,
+      error: null,
+      thumb: null,
+    };
+    state.photo_queue.push(item);
+    item.thumb = await fileToDataUrl(pair.front);
+    renderQueuePanel();
+  });
+  document.getElementById('queue-panel').style.display = 'block';
+  renderQueuePanel();
+  // Kick off processor if not running
+  setTimeout(() => startQueueProcessor(), 100);
+}
+
+function renderQueuePanel() {
+  const list = document.getElementById('queue-list');
+  const summary = document.getElementById('queue-summary');
+  if (!state.photo_queue.length) {
+    document.getElementById('queue-panel').style.display = 'none';
+    return;
+  }
+  const counts = { pending: 0, analyzing: 0, ready: 0, reviewing: 0, done: 0, error: 0 };
+  state.photo_queue.forEach(it => counts[it.status]++);
+  summary.textContent = `(${state.photo_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}`;
+
+  list.innerHTML = state.photo_queue.map((it, idx) => {
+    const s = QUEUE_STATUSES[it.status] || QUEUE_STATUSES.pending;
+    const isActive = idx === state.current_queue_index;
+    const photoNum = it.photo_seq || (idx + 1);
+    const hasBackBadge = it.back ? '<span title="כולל גב" style="position:absolute; top:-3px; inset-inline-start:-3px; background:#6b5b3e; color:#fff; border-radius:50%; width:14px; height:14px; font-size:9px; display:flex; align-items:center; justify-content:center;">#</span>' : '';
+    const errTooltip = it.error ? ` title="${esc(it.error)}"` : '';
+    return `<div class="queue-item" data-idx="${idx}"${errTooltip}
+      style="position:relative; flex:0 0 auto; width:92px; cursor:pointer; padding:5px; border:2px solid ${isActive ? '#6b5b3e' : 'transparent'}; border-radius:6px; background:${isActive ? '#fff' : 'transparent'}; transition:all .15s;">
+      ${hasBackBadge}
+      <div style="position:relative; width:80px; height:80px; border-radius:4px; overflow:hidden; background:#e5dfd1; margin:0 auto;">
+        ${it.thumb ? `<img src="${it.thumb}" style="width:100%; height:100%; object-fit:cover;">` : ''}
+        <div style="position:absolute; bottom:0; right:0; left:0; background:rgba(0,0,0,.7); color:#fff; font-size:10px; text-align:center; padding:1px 2px;">#${photoNum}</div>
+      </div>
+      <div style="text-align:center; margin-top:3px; font-size:10.5px; color:${s.color}; font-weight:600;">
+        ${s.icon} ${s.label}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Click → jump to item
+  list.querySelectorAll('.queue-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.idx);
+      jumpToQueueItem(idx);
+    });
+  });
+}
+
+function jumpToQueueItem(idx) {
+  if (idx < 0 || idx >= state.photo_queue.length) return;
+  const item = state.photo_queue[idx];
+  if (item.status === 'analyzing') {
+    showStatus('פריט עדיין בניתוח. רגע…', 'info');
+    return;
+  }
+  if (item.status === 'pending') {
+    // Kick it to the front of queue
+    showStatus('הפריט יזוהה כעת. רגע…', 'info');
+  }
+  // Reset previously reviewing item back to ready
+  if (state.current_queue_index >= 0 && state.current_queue_index !== idx) {
+    const prev = state.photo_queue[state.current_queue_index];
+    if (prev && prev.status === 'reviewing') prev.status = 'ready';
+  }
+  state.current_queue_index = idx;
+  loadQueueItemIntoUI(item);
+  renderQueuePanel();
+}
+
+function loadQueueItemIntoUI(item) {
+  // Clear existing photo zones, load this item's files into them
+  clearPhoto('front');
+  clearPhoto('back');
+  if (item.front) loadPhoto('front', item.front);
+  if (item.back) loadPhoto('back', item.back);
+  if (item.status === 'ready' || item.status === 'reviewing') {
+    item.status = 'reviewing';
+    // Auto-fill the form with the identification result
+    if (item.identification) {
+      fillResults(item.identification);
+      document.getElementById('results').classList.add('show');
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('download-bar').style.display = 'flex';
+    }
+  } else if (item.status === 'error') {
+    showStatus('הפריט נכשל בזיהוי: ' + (item.error || 'שגיאה לא ידועה') + '. לחץ "🔍 זהה תצלום" לניסיון חוזר.', 'err');
+  }
+}
+
+// Sequential queue processor with pre-fetch
+async function startQueueProcessor() {
+  if (state.queue_processor_running) return;
+  state.queue_processor_running = true;
+  try {
+    while (true) {
+      const nextItem = state.photo_queue.find(it => it.status === 'pending');
+      if (!nextItem) break;
+      nextItem.status = 'analyzing';
+      // Update photo_seq if not set (use intake_items mapping or sequential)
+      if (nextItem.photo_seq == null) {
+        const photoIdx = state.photo_queue.filter(it => it !== nextItem).filter(it => it.photo_seq != null).length + 1;
+        const initialSeq = state.current_photo_index || 1;
+        const offset = state.photo_queue.indexOf(nextItem);
+        nextItem.photo_seq = initialSeq + offset;
+      }
+      renderQueuePanel();
+      // If no item is currently being reviewed, make this the active one once ready
+      const isFirst = state.current_queue_index < 0;
+
+      try {
+        const result = await identifyQueueItem(nextItem);
+        nextItem.identification = result;
+        nextItem.status = 'ready';
+        // If user has no active item yet → make this it
+        if (state.current_queue_index < 0) {
+          state.current_queue_index = state.photo_queue.indexOf(nextItem);
+          loadQueueItemIntoUI(nextItem);
+        }
+      } catch (err) {
+        nextItem.status = 'error';
+        nextItem.error = err.message;
+        console.error(`Queue item ${nextItem.id} failed:`, err);
+      }
+      renderQueuePanel();
+
+      // Small pause to avoid rate-limit hits (Gemini Pro Free = 5 RPM)
+      // For Hybrid: 2 API calls per item, double the pause
+      const delay = state.provider === 'hybrid' ? 13000 : (state.provider === 'gemini' ? 6500 : 1500);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  } finally {
+    state.queue_processor_running = false;
+  }
+}
+
+async function identifyQueueItem(item) {
+  // Temporarily swap state.photos to point at this item's files, run identify,
+  // then restore. The existing call* functions read from state.photos.
+  const savedPhotos = { ...state.photos };
+  state.photos = { front: item.front, back: item.back };
+  try {
+    if (state.provider === 'hybrid')   return await callHybrid();
+    if (state.provider === 'gemini')   return await callGemini();
+    return await callAnthropic();
+  } finally {
+    state.photos = savedPhotos;
+  }
+}
+
+// "Clear queue" button
+document.getElementById('queue-clear-btn').addEventListener('click', () => {
+  if (!state.photo_queue.length) return;
+  const undone = state.photo_queue.filter(it => it.status !== 'done').length;
+  const msg = undone > 0
+    ? `יש ${undone} תצלומים שעדיין לא נשמרו. למחוק את כל התור?`
+    : 'למחוק את התור כולו? (התצלומים שכבר ירדו כקובץ HTML נשארים אצלך)';
+  if (!confirm(msg)) return;
+  state.photo_queue = [];
+  state.current_queue_index = -1;
+  renderQueuePanel();
+  showStatus('התור נוקה.', 'info');
+});
 
 // =====================================================================
 //  CONTEXT: text + file extraction (PDF / DOCX / XLSX / CSV / TXT)
@@ -2108,7 +2391,74 @@ saveNextBtn.addEventListener('click', () => {
     }
   }
 
-  // Move to next photo
+  // If we're in batch-queue mode, mark this item done and advance to next ready
+  if (state.current_queue_index >= 0) {
+    const cur = state.photo_queue[state.current_queue_index];
+    if (cur) {
+      cur.status = 'done';
+      renderQueuePanel();
+    }
+    // Find next ready (or analyzing → wait for it) item
+    let nextIdx = -1;
+    for (let i = state.current_queue_index + 1; i < state.photo_queue.length; i++) {
+      const it = state.photo_queue[i];
+      if (it.status === 'ready' || it.status === 'analyzing' || it.status === 'pending') {
+        nextIdx = i; break;
+      }
+    }
+    if (nextIdx === -1) {
+      // Check backwards too — maybe user skipped some
+      for (let i = 0; i < state.current_queue_index; i++) {
+        const it = state.photo_queue[i];
+        if (it.status === 'ready' || it.status === 'analyzing' || it.status === 'pending') {
+          nextIdx = i; break;
+        }
+      }
+    }
+    if (nextIdx === -1) {
+      // No more items
+      state.current_queue_index = -1;
+      state.current_photo_index++;
+      resetPhotoForm();
+      document.getElementById('cb-counter').textContent = state.current_photo_index;
+      if (typeof showCurrentItemPreview === 'function') showCurrentItemPreview();
+      renderSavedCollectionsDropdown();
+      showStatus('🎉 כל התור הסתיים!', 'ok');
+      return;
+    }
+    // Move to next item
+    state.current_queue_index = nextIdx;
+    state.current_photo_index++;
+    document.getElementById('cb-counter').textContent = state.current_photo_index;
+    if (typeof showCurrentItemPreview === 'function') showCurrentItemPreview();
+    renderSavedCollectionsDropdown();
+    const nextItem = state.photo_queue[nextIdx];
+    if (nextItem.status === 'ready') {
+      loadQueueItemIntoUI(nextItem);
+      showStatus(`▶ פריט ${nextIdx + 1}/${state.photo_queue.length} — מוכן לסקירה`, 'info');
+    } else {
+      // Still analyzing — show waiting screen
+      resetPhotoForm();
+      loadPhoto('front', nextItem.front);
+      if (nextItem.back) loadPhoto('back', nextItem.back);
+      showStatus(`⏳ פריט ${nextIdx + 1}/${state.photo_queue.length} — עדיין בניתוח, רגע...`, 'info');
+      // Poll until ready
+      const poll = setInterval(() => {
+        if (nextItem.status === 'ready') {
+          clearInterval(poll);
+          loadQueueItemIntoUI(nextItem);
+          showStatus(`▶ פריט ${nextIdx + 1}/${state.photo_queue.length} — מוכן`, 'ok');
+        } else if (nextItem.status === 'error') {
+          clearInterval(poll);
+          showStatus(`❌ פריט ${nextIdx + 1} נכשל: ${nextItem.error}. עבור לפריט אחר או נסה שוב.`, 'err');
+        }
+      }, 500);
+    }
+    document.getElementById('photo-workflow').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
+  // Single-photo mode (legacy / no batch active)
   state.current_photo_index++;
   resetPhotoForm();
   document.getElementById('cb-counter').textContent = state.current_photo_index;
