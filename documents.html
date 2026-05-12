@@ -206,8 +206,9 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="anthropic">Anthropic (Claude)</option>
-        <option value="gemini" selected>Google (Gemini — מומלץ)</option>
+        <option value="hybrid">⭐ Hybrid: Gemini OCR + Claude קטלוג (מומלץ למסמכים מורכבים)</option>
+        <option value="anthropic">Anthropic (Claude) בלבד</option>
+        <option value="gemini" selected>Google (Gemini) בלבד</option>
       </select>
     </div>
     <div class="row provider-row" data-provider="anthropic">
@@ -233,9 +234,10 @@
       </select>
     </div>
     <div class="hint">
-      📍 <b>למסמכים מודפסים</b>: שני הספקים עובדים מצוין. Gemini Flash זול יותר.
-      <br>📍 <b>לכתב יד מאתגר</b>: Gemini 2.5 Pro או Claude Opus 4.1 — דיוק גבוה יותר.
-      <br>📍 <b>שפות נתמכות</b>: גרמנית (כולל Fraktur/Sütterlin), יידיש, פולנית, רוסית (כולל פרה-מהפכנית), צ'כית, סלובקית, הונגרית, אוקראינית, ליטאית, לטבית, רומנית, יוונית, עברית, אנגלית, צרפתית, איטלקית.
+      📍 <b>⭐ Hybrid (מומלץ)</b>: Gemini עושה OCR (חינמי, איכותי); Claude בונה את שדות הקטלוג לפי חוקי ספיר. דורש שני מפתחות. עלות ~$0.002/דף.
+      <br>📍 <b>למסמכים מודפסים</b>: שני הספקים עובדים מצוין. Gemini Flash הכי זול.
+      <br>📍 <b>לכתב יד מאתגר</b>: Gemini 2.5 Pro או Hybrid — דיוק גבוה יותר.
+      <br>📍 <b>שפות נתמכות</b>: גרמנית (כולל Fraktur/Sütterlin), יידיש, פולנית, רוסית, צ'כית, סלובקית, הונגרית, אוקראינית, ליטאית, לטבית, רומנית, יוונית, עברית, אנגלית, צרפתית, איטלקית.
     </div>
   </div>
 
@@ -654,8 +656,24 @@ syncProviderRows();
 providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
 apiKeyAnthropic.addEventListener('input', () => { state.apiKeys.anthropic = apiKeyAnthropic.value.trim(); localStorage.setItem('yv_api_key_anthropic', state.apiKeys.anthropic); refreshButtons(); });
 apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
-function syncProviderRows() { document.querySelectorAll('.provider-row').forEach(row => { row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none'; }); }
-function getActiveApiKey() { return state.apiKeys[state.provider] || ''; }
+function syncProviderRows() {
+  document.querySelectorAll('.provider-row').forEach(row => {
+    if (state.provider === 'hybrid') {
+      row.style.display = 'grid';   // hybrid needs both keys
+    } else {
+      row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none';
+    }
+  });
+}
+function getActiveApiKey() {
+  if (state.provider === 'hybrid') {
+    return state.apiKeys.anthropic && state.apiKeys.gemini ? state.apiKeys.gemini : '';
+  }
+  return state.apiKeys[state.provider] || '';
+}
+function hasHybridKeys() {
+  return !!state.apiKeys.anthropic && !!state.apiKeys.gemini;
+}
 function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
 settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('open'));
 
@@ -857,6 +875,7 @@ async function identifyDocQueueItem(item) {
   state.document = item.file;
   state.docMeta = { mime: item.file.type, size_bytes: item.file.size, page_count: 1 };
   try {
+    if (state.provider === 'hybrid') return await callHybrid();
     if (state.provider === 'gemini') return await callGemini();
     return await callAnthropic();
   } finally {
@@ -912,24 +931,180 @@ async function extractPDFText(file) {
   return pages.join('\n\n') || '[לא ניתן לחלץ — ייתכן ש-PDF סרוק]';
 }
 
+// =====================================================================
+//  HYBRID: Gemini OCR → Claude structured catalog
+// =====================================================================
+async function callHybrid() {
+  if (!hasHybridKeys()) {
+    throw new Error('מצב Hybrid דורש מפתח Anthropic וגם מפתח Gemini.');
+  }
+
+  // STEP 1: Gemini does the OCR — returns raw text in original language(s)
+  // with [?] for unclear words, [לא קריא] for unreadable sections
+  showStatus('שלב 1/2 · Gemini מבצע OCR על המסמך…', 'info');
+  const ocrResult = await geminiOCROnly();
+
+  // STEP 2: Claude takes the OCR text + cataloging rules → structured JSON
+  showStatus('שלב 2/2 · Claude מבנה את הקטלוג לפי חוקי ספיר…', 'info');
+  return await claudeStructureFromOCR(ocrResult);
+}
+
+async function geminiOCROnly() {
+  if (!state.document) throw new Error('אין מסמך');
+  const sizeMB = state.document.size / 1024 / 1024;
+  if (sizeMB > 50) throw new Error(`מסמך גדול מ-50MB (${sizeMB.toFixed(1)}MB). חתוך לחלקים.`);
+
+  const langs = (document.getElementById('lang-hints').value || 'auto').trim();
+  const writingType = document.getElementById('writing-type').value;
+  const writingTypeMap = { auto: 'זיהוי אוטומטי', typewritten: 'מכונת כתיבה', handwritten: 'כתב יד', mixed: 'מעורב', printed: 'דפוס' };
+
+  const ocrPrompt = `אתה מבצע OCR קפדני של מסמך היסטורי מארכיון יד ושם.
+
+**רמזים מוקדמים**:
+- שפות צפויות: ${langs || 'זיהוי אוטומטי'}
+- סוג כתיבה: ${writingTypeMap[writingType]}
+
+**משימתך הבלעדית**: לקרוא את המסמך מילה במילה. אסור לפרש, לתרגם, להוסיף או להמציא.
+
+**חוקי קריטיים**:
+1. תעתק רק מה שאתה רואה בבירור גמור.
+2. למילה לא ברורה: סמן \`[?]\` במקום המילה.
+3. לקטע לא קריא של מספר מילים: סמן \`[לא קריא — N מילים]\`.
+4. לעמוד פגום מאוד: סמן \`[עמוד לא קריא]\`.
+5. שמור על שורות מקוריות (אל תאחד שורות).
+6. לעמוד חדש: הוסף \`━━ עמוד N ━━\` בין עמודים.
+7. **אם המסמך בכתב לא-לטיני** (עברית, יידיש, רוסית, וכו׳): תעתיק במקור + הוסף תעתיק לטיני אחרי, במבנה הבא:
+   \`\`\`
+   [שורת מקור בעברית/יידיש]
+   ↳ [תעתיק לטיני באותיות לטיניות]
+   \`\`\`
+8. שפות לזיהוי: אם זיהית שפה שונה ממה שצוין ברמז, ציין זאת בראש (לדוגמה: "Language detected: Yiddish in Hebrew script").
+
+**החזר טקסט פשוט, לא JSON, לא code fence.**
+
+מבנה הפלט:
+\`\`\`
+[שפה(ות) שזוהו — בעברית]
+
+━━ עמוד 1 ━━
+[שורה 1 כפי שכתובה במסמך]
+[שורה 2]
+...
+
+━━ עמוד 2 ━━
+...
+\`\`\`
+
+⚠ אסור להוסיף תיאור, סיכום, או פרשנות. **רק הטקסט הגולמי כפי שמופיע במסמך.**
+
+⚠ עדיף שדה ריק / [?] / [לא קריא] על המצאת מילים. **אפס סובלנות להזיות.**`;
+
+  const mime = state.document.type || 'application/octet-stream';
+  const fileToBase64 = file => new Promise(r => {
+    const reader = new FileReader();
+    reader.onload = e => r(e.target.result.split(',')[1]);
+    reader.readAsDataURL(file);
+  });
+  const docB64 = await fileToBase64(state.document);
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelSelGemini.value}:generateContent`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [
+        { inline_data: { mime_type: mime, data: docB64 } },
+        { text: ocrPrompt }
+      ]}],
+      generationConfig: { temperature: 0, maxOutputTokens: 16000 }
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Gemini OCR (שלב 1) HTTP ${res.status}: ${err.error?.message || ''}`);
+  }
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  if (!text) throw new Error('Gemini החזיר OCR ריק');
+  return text;
+}
+
+async function claudeStructureFromOCR(ocrText) {
+  const rulesPrompt = buildDocPrompt();
+  const ctxText = contextEl.value.trim();
+
+  const claudeContent = [
+    { type: 'text', text: `אני שולח לך **OCR שכבר בוצע ע"י Gemini** של מסמך היסטורי מארכיון יד ושם. תפקידך: לקחת את הטקסט הזה + מידע מוקדם + חוקי הקטלוג של ספיר → להפיק JSON מובנה לפי הסכימה.
+
+⚠ חשוב: אינך רואה את המסמך עצמו, רק את ה-OCR. אל תוסיף מידע מעבר למה שמופיע ב-OCR. אם Gemini סימן \`[?]\` או \`[לא קריא]\` — שמור על זה. אסור לנחש או להמציא.
+
+## OCR של Gemini
+
+\`\`\`
+${ocrText}
+\`\`\`
+
+## מידע מוקדם
+
+${ctxText || '(אין)'}
+
+## חוקי קטלוג + סכימת JSON
+
+${rulesPrompt}
+
+⚠ הערה: בשדה \`original_text\` השתמש בטקסט שלמעלה כפי שהוא — אל תשנה, אל תתקן, אל תוסיף.
+
+החזר JSON תקין בלבד.`}
+  ];
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKeys.anthropic,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: modelSelAnthropic.value,
+      max_tokens: 32000,
+      messages: [{ role: 'user', content: claudeContent }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Claude (שלב 2) HTTP ${res.status}: ${err.error?.message || ''}`);
+  }
+  const data = await res.json();
+  const text = (data.content?.[0]?.text || '').trim();
+  return parseJson(text, 'Claude');
+}
+
 // Identify
 const identifyBtn = document.getElementById('identify-btn');
 const identifyStatus = document.getElementById('identify-status');
 
 function refreshButtons() {
   const hasDoc = !!state.document;
-  const hasKey = !!getActiveApiKey();
+  const hasKey = state.provider === 'hybrid' ? hasHybridKeys() : !!getActiveApiKey();
   identifyBtn.disabled = !(hasDoc && hasKey);
-  identifyBtn.title = !hasDoc ? 'יש להעלות מסמך' : !hasKey ? 'יש להגדיר API key' : '';
+  identifyBtn.title = !hasDoc ? 'יש להעלות מסמך' :
+    !hasKey ? (state.provider === 'hybrid'
+      ? 'מצב Hybrid דורש שני מפתחות API: Anthropic וגם Gemini'
+      : 'יש להגדיר API key') : '';
+  identifyBtn.innerHTML = state.provider === 'hybrid'
+    ? '🔍 פענח (Gemini→Claude)'
+    : state.provider === 'gemini' ? '🔍 פענח (Gemini)' : '🔍 פענח (Claude)';
 }
 
 identifyBtn.addEventListener('click', async () => {
   identifyBtn.disabled = true;
-  const providerLabel = state.provider === 'gemini' ? 'Gemini' : 'Claude';
+  const providerLabel = state.provider === 'hybrid' ? 'Gemini+Claude' : state.provider === 'gemini' ? 'Gemini' : 'Claude';
   identifyBtn.innerHTML = '<span class="spinner"></span>מפענח דרך ' + providerLabel + '…';
   showStatus('שולח את המסמך ל-' + providerLabel + ' לפיענוח (30-90 שניות)…', 'info');
   try {
-    const result = state.provider === 'gemini' ? await callGemini() : await callAnthropic();
+    const result = state.provider === 'hybrid' ? await callHybrid()
+      : state.provider === 'gemini' ? await callGemini() : await callAnthropic();
     state.identification = result;
     fillResults(result);
     document.getElementById('results').classList.add('show');
