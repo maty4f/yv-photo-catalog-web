@@ -1572,7 +1572,18 @@ async function geminiOCROnly() {
 
 ⚠ עדיף שדה ריק / [?] / [לא קריא] על המצאת מילים. **אפס סובלנות להזיות.**`;
 
-  const mime = state.document.type || 'application/octet-stream';
+  // Force a valid MIME type — Gemini rejects application/octet-stream for content processing
+  let mime = state.document.type || '';
+  if (!mime || mime === 'application/octet-stream') {
+    const lname = (state.document.name || '').toLowerCase();
+    if (lname.endsWith('.pdf')) mime = 'application/pdf';
+    else if (lname.endsWith('.jpg') || lname.endsWith('.jpeg')) mime = 'image/jpeg';
+    else if (lname.endsWith('.png')) mime = 'image/png';
+    else if (lname.endsWith('.tiff') || lname.endsWith('.tif')) mime = 'image/tiff';
+    else if (lname.endsWith('.webp')) mime = 'image/webp';
+    else mime = 'application/pdf'; // default for unknown — most archive docs are PDFs
+  }
+  console.log('[Gemini OCR] doc MIME:', mime, 'size:', sizeMB.toFixed(1) + 'MB', 'name:', state.document.name);
 
   // Build docPart (inline_data for small, file_data for large via Files API)
   let docPart;
@@ -1604,14 +1615,21 @@ async function geminiOCROnly() {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [ docPart, { text: ocrPrompt } ]}],
-      generationConfig: { temperature: 0, maxOutputTokens: 16000 }
+      generationConfig: { temperature: 0, maxOutputTokens: 8192 }
     })
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    console.error('[Gemini OCR] HTTP', res.status, 'FULL ERROR:', err);
-    const details = err.error?.details ? '\n\nפרטים:\n' + JSON.stringify(err.error.details, null, 2) : '';
-    throw new Error(`Gemini OCR HTTP ${res.status}: ${err.error?.message || 'unknown'}${details}\n\n(פתח DevTools Console לפרטים נוספים)`);
+    const errBody = await res.text();
+    console.error('[Gemini OCR] HTTP', res.status, 'RAW BODY:', errBody);
+    let err = {};
+    try { err = JSON.parse(errBody); } catch {}
+    console.error('[Gemini OCR] PARSED ERROR:', err);
+    const errMsg = err.error?.message || errBody.slice(0, 500);
+    const detailsStr = err.error?.details ? '\n\n=== פרטים מ-Google ===\n' + JSON.stringify(err.error.details, null, 2) : '';
+    const fullErr = `Gemini OCR HTTP ${res.status}: ${errMsg}${detailsStr}\n\n=== הגוף המלא ===\n${errBody.slice(0, 1500)}`;
+    const e = new Error(fullErr);
+    e.rawBody = errBody;
+    throw e;
   }
   const data = await res.json();
   const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
