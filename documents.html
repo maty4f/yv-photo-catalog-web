@@ -239,9 +239,50 @@
     </div>
   </div>
 
-  <section class="step">
-    <div class="head"><span class="num">1</span><span class="title">מסמך <small>Document — PDF / תמונה (סריקה או צילום)</small></span></div>
+  <!-- Type selector: institutional vs private documents -->
+  <section class="step" style="background: linear-gradient(180deg, #fff, #f0f7f2);">
+    <div class="head"><span class="num">0</span><span class="title">סוג רישום <small>Document type — קובע אלו שדות וחוקים יחולו</small></span></div>
     <div class="body">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+        <label style="cursor:pointer; padding:14px; border:2px solid var(--line); border-radius:8px; transition:all .15s; background:white;" id="type-inst-card">
+          <input type="radio" name="doc-type-mode" value="institutional" style="margin-inline-end:8px;">
+          <b style="color:var(--accent);">🏛 מסמך מוסדי</b>
+          <div style="font-size:12px; color:var(--muted); margin-top:6px;">מסמך רשמי מארכיון, מסמכי מנהל, צו רשמי, פרוטוקול. רישום סטנדרטי קצר.</div>
+        </label>
+        <label style="cursor:pointer; padding:14px; border:2px solid var(--line); border-radius:8px; transition:all .15s; background:white;" id="type-priv-card">
+          <input type="radio" name="doc-type-mode" value="private" checked style="margin-inline-end:8px;">
+          <b style="color:var(--accent);">👤 מסמך ממקור פרטי</b>
+          <div style="font-size:12px; color:var(--muted); margin-top:6px;">תיק ממוסר פרטי (משפחה, אספן). רישום מורחב לפי נהלי ספיר — חטיבה, יוצר, מקוריות, פריטים נלווים, סיווג ועוד.</div>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="head">
+      <span class="num">1</span>
+      <span class="title">מסמך <small>Document — PDF / תמונה · בודד או batch (עד 20)</small></span>
+      <div style="margin-inline-start:auto; display:flex; gap:6px;">
+        <button type="button" id="doc-batch-add-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📤 העלה batch (עד 20)</button>
+        <input type="file" id="doc-batch-input" accept="application/pdf,image/*" multiple hidden>
+      </div>
+    </div>
+    <div class="body">
+
+      <!-- Queue panel for documents -->
+      <div id="doc-queue-panel" style="display:none; margin-bottom:14px; padding:10px 12px; background:#ebf3ed; border:1px solid #b8d4c0; border-radius:8px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div style="font-weight:700; color:#1f5c38; font-size:13.5px;">
+            📂 תור מסמכים <span id="doc-queue-summary" style="font-weight:400; font-size:12px; color:#3a7d57; margin-inline-start:6px;"></span>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button type="button" id="doc-queue-add-more-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; border-color:#2e7d4e; color:#1f5c38;">+ הוסף עוד</button>
+            <button type="button" id="doc-queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:#b22222; border-color:#b22222;">🗑 נקה תור</button>
+          </div>
+        </div>
+        <div id="doc-queue-list" style="display:flex; gap:8px; overflow-x:auto; padding:4px; align-items:stretch;"></div>
+      </div>
+
       <div id="doc-drop" class="doc-drop" tabindex="0">
         <button type="button" class="delete-doc-btn" id="delete-doc-btn" title="הסר מסמך">✕</button>
         <img class="preview-mini" alt="">
@@ -395,6 +436,129 @@
           <input type="text" id="r-subjects-add" placeholder="הקלד נושא ולחץ Enter" style="margin-top:6px;">
         </div>
 
+        <!-- ====================================================== -->
+        <!--  PRIVATE-ONLY FIELDS (hidden in institutional mode)     -->
+        <!-- ====================================================== -->
+        <div class="private-only-section" style="margin-top: 22px; padding-top: 16px; border-top: 3px double #2e7d4e;">
+          <h3 style="margin:0 0 14px; color:#1f5c38; font-size: 15px;">📋 שדות מורחבים — מקור פרטי</h3>
+          <div style="font-size:11.5px; color:var(--muted); margin-bottom:14px; padding:8px 12px; background:#ebf3ed; border-radius:6px;">
+            השדות הבאים הם לפי <b>נהלי קטלוג ספיר למקורות פרטיים</b>: חטיבה ארכיונית, יוצרי החומר, מקוריות, פריטים נלווים, סיווג ועוד.
+          </div>
+
+          <!-- Archival division / hierarchy -->
+          <div class="field-group">
+            <h4>חטיבה ארכיונית / Archive division</h4>
+            <div class="compact-row"><label>שם / סימול חטיבה</label><input type="text" id="r-division-name" placeholder="למשל O.93 / חטיבת זיכרונות / קולקציה משפחתית"></div>
+            <div class="compact-row"><label>סוג פריט</label>
+              <select id="r-item-type">
+                <option value="פריט תוכן">פריט תוכן / פריט לוגי</option>
+                <option value="מסמך-רשימה">מסמך-רשימה (רשימת נספים/ניצולים/וכו׳)</option>
+                <option value="מסמך ייחודי">מסמך ייחודי (יומן/עדות/תצהיר)</option>
+              </select>
+            </div>
+            <div class="compact-row"><label>סימול חטיבה קודם</label><input type="text" id="r-prev-division" placeholder="אם הועבר מחטיבה אחרת"></div>
+            <div class="compact-row"><label>סימול תיק קודם</label><input type="text" id="r-prev-file" placeholder="מספר תיק היסטורי"></div>
+          </div>
+
+          <!-- Creator fields -->
+          <div class="field-group">
+            <h4>יוצרי החומר / Material creators</h4>
+            <div class="compact-row"><label>שם יוצר החומר (אדם)</label><input type="text" id="r-creator-person" placeholder="שם הכותב/יוצר התוכן"></div>
+            <div class="compact-row"><label>יוצר החומר (ארגון)</label><input type="text" id="r-creator-org" placeholder="גוף שאסף/הפיק/ערך"></div>
+          </div>
+
+          <!-- Authentic vs Reconstructed dates -->
+          <div class="field-group">
+            <h4>תאריכים אותנטי / משוחזר</h4>
+            <div class="compact-row"><label>תאריך תחילה (אותנטי)</label><input type="text" id="r-date-start-auth" placeholder="כפי שכתוב במסמך"></div>
+            <div class="compact-row"><label>תאריך תחילה (משוחזר)</label><input type="text" id="r-date-start-recon" placeholder="DD/MM/YYYY מלא"></div>
+            <div class="compact-row"><label>תאריך סיום (אותנטי)</label><input type="text" id="r-date-end-auth"></div>
+            <div class="compact-row"><label>תאריך סיום (משוחזר)</label><input type="text" id="r-date-end-recon"></div>
+            <div style="font-size:11px; color:var(--muted); margin-top:4px;">💡 גם כשהאותנטי מלא — שכפל לשדה המשוחזר. אם רק שנה — 01/01/YYYY לתחילה, 31/12/YYYY לסיום.</div>
+          </div>
+
+          <!-- Material originality -->
+          <div class="field-group">
+            <h4>מקוריות החומר / Originality</h4>
+            <div class="compact-row"><label>מקוריות</label>
+              <select id="r-originality">
+                <option value="">— לא צוין —</option>
+                <option value="מקורי">מקורי (כתב יד, דפוס מקור, מכונת כתיבה, פוטוקופיה מהתקופה)</option>
+                <option value="לא מקורי">לא מקורי (הדפסה מודרנית, סריקה, צילום, מקובץ דיגיטלי)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- מידע נוסף — structured (3 sub-fields per the procedure) -->
+          <div class="field-group">
+            <h4>מבנה "מידע נוסף" / Additional Info structure <small>(לפי הנוהל)</small></h4>
+            <div style="margin-top:8px;"><label class="label">תוכן עיקרי (פסקת תיאור התיק)</label></div>
+            <textarea id="r-info-main" rows="4" placeholder="פסקאות לפי קבוצות בתיק. מסמך ייחודי לרוב ראשון בפסקה."></textarea>
+
+            <div style="margin-top:8px;"><label class="label">בתיק גם <small>(מסמכים משניים — נקודה אחת לכל אחד)</small></label></div>
+            <textarea id="r-info-also" rows="3" placeholder="- תעודת מעבר של...&#10;- רשימת כתובות שנמצאה ביומן&#10;- מכתבים משנות ה-50 (לא רלוונטי לשואה)"></textarea>
+
+            <div style="margin-top:8px;"><label class="label">הערות מוסר החומר <small>(נרטיב רציף — רק מה שקשור לתיק, בסוף!)</small></label></div>
+            <textarea id="r-info-donor" rows="4" placeholder="הסיפור מדף האיסוף, רק חלקים שמקנים הקשר למסמכים, נרטיב בגוף שלישי. אסור: לחזור על מידע מהכותר או ממידע נוסף עיקרי."></textarea>
+          </div>
+
+          <!-- Content vs Admin notes -->
+          <div class="field-group">
+            <h4>הערות תוכן ואדמיניסטרציה</h4>
+            <div style="margin-top:8px;"><label class="label">הערת תוכן <small>(הבהרות תוכניות — מונחים, סתירות, מקורות חיצוניים)</small></label></div>
+            <textarea id="r-content-note" rows="2" placeholder="לדוגמה: 'Auschwitz II נשא את השם KGL עד אביב 1944'"></textarea>
+
+            <div style="margin-top:8px;"><label class="label">הערת אדמיניסטרציה <small>(פנימי — לא מוצג לציבור)</small></label></div>
+            <textarea id="r-admin-note" rows="2" placeholder="חומרים לא סרוקים, בעיות בזיהוי, בקשות לבדיקה"></textarea>
+          </div>
+
+          <!-- Names typing flag -->
+          <div class="field-group">
+            <h4>הפניות והקלדות</h4>
+            <div class="compact-row"><label>מיועד להקלדת שמות?</label>
+              <select id="r-names-typing">
+                <option value="לא" selected>לא</option>
+                <option value="כן">כן — יש שמות נספים/מגורשים/תושבים יהודיים מתקופת השואה</option>
+              </select>
+            </div>
+            <div style="font-size:11px; color:var(--muted); margin-top:4px;">💡 סמן "כן" רק אם יש שמות מלאים שניתן להעבירם להקלדה במאגר השמות של יד ושם.</div>
+          </div>
+
+          <!-- Related items (up to 5) -->
+          <div class="field-group">
+            <h4>פריטים נלווים / Related items <small>(עד 5, רק הקשורים ישירות לנושא התיק)</small></h4>
+            <textarea id="r-related-items" rows="3" placeholder="O.33/1234 — עדות של ...&#10;דף עד של ... (מאגר השמות)"></textarea>
+            <div style="font-size:11px; color:var(--muted); margin-top:4px;">💡 פריטי המאגר הפנימי של יד ושם בלבד. עדיף לא להפנות לארכיונים חיצוניים.</div>
+          </div>
+
+          <!-- Classification -->
+          <div class="field-group">
+            <h4>סיווג / Classification</h4>
+            <div class="compact-row"><label>סיווג</label>
+              <select id="r-classification">
+                <option value="בלתי מסווג" selected>בלתי מסווג (פתוח לעיון מלא)</option>
+                <option value="מוגבל">מוגבל (רק באינטרה-נט)</option>
+                <option value="שמור">שמור (דורש אישור מיוחד)</option>
+              </select>
+            </div>
+            <div class="compact-row"><label>הסבר לסיווג</label><input type="text" id="r-classification-reason" placeholder="חובה למלא אם 'מוגבל' או 'שמור'"></div>
+            <div class="compact-row"><label>הצגה באינטרה-נט</label>
+              <select id="r-show-intranet">
+                <option value="Yes" selected>Yes — מוצג באולם העיון</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Cataloger info -->
+          <div class="field-group">
+            <h4>פרטי הרישום</h4>
+            <div class="compact-row"><label>שם הרושם</label><input type="text" id="r-cataloger" placeholder="שם המקטלג"></div>
+            <div class="compact-row"><label>תאריך רישום</label><input type="text" id="r-register-date" placeholder="DD/MM/YYYY"></div>
+          </div>
+        </div>
+        <!-- END PRIVATE-ONLY -->
+
       </div>
 
       <div id="no-results" style="text-align:center; padding:30px; color:var(--muted); font-style:italic;">
@@ -430,7 +594,48 @@ const state = {
     gemini: localStorage.getItem('yv_api_key_gemini') || '',
   },
   thesaurus_top: [],
+  // Document type mode: 'institutional' or 'private' (default)
+  doc_mode: localStorage.getItem('yv_doc_mode') || 'private',
+  // Batch queue (same pattern as photos.html)
+  doc_queue: [],
+  current_doc_queue_index: -1,
+  doc_queue_processor_running: false,
 };
+
+// Doc-mode toggle behavior — show/hide the private-only section
+function applyDocMode() {
+  document.querySelectorAll('.private-only-section').forEach(el => {
+    el.style.display = state.doc_mode === 'private' ? 'block' : 'none';
+  });
+  // Update visual: which card is highlighted
+  const instCard = document.getElementById('type-inst-card');
+  const privCard = document.getElementById('type-priv-card');
+  if (instCard && privCard) {
+    if (state.doc_mode === 'institutional') {
+      instCard.style.borderColor = 'var(--accent)';
+      instCard.style.background = '#fef9e7';
+      privCard.style.borderColor = 'var(--line)';
+      privCard.style.background = 'white';
+    } else {
+      privCard.style.borderColor = '#2e7d4e';
+      privCard.style.background = '#ebf3ed';
+      instCard.style.borderColor = 'var(--line)';
+      instCard.style.background = 'white';
+    }
+  }
+}
+
+// Wire type-selector radio buttons
+document.querySelectorAll('input[name="doc-type-mode"]').forEach(r => {
+  r.checked = (r.value === state.doc_mode);
+  r.addEventListener('change', () => {
+    state.doc_mode = r.value;
+    localStorage.setItem('yv_doc_mode', state.doc_mode);
+    applyDocMode();
+  });
+});
+// Apply initial state on load
+setTimeout(applyDocMode, 50);
 
 // Settings
 const settingsToggle = document.getElementById('settings-toggle');
@@ -510,6 +715,163 @@ function clearDoc() {
   fileInput.value = '';
   refreshButtons();
 }
+
+// =====================================================================
+//  DOC BATCH QUEUE — up to 20 documents with pre-fetch identification
+// =====================================================================
+const DOC_BATCH_MAX = 20;
+const DOC_QUEUE_STATUSES = {
+  pending:   { icon: '⏳', label: 'ממתין',   color: '#8a7140' },
+  analyzing: { icon: '🔄', label: 'מנתח',    color: '#0d47a1' },
+  ready:     { icon: '✓',  label: 'מוכן',    color: '#2e7d32' },
+  reviewing: { icon: '▶',  label: 'בסקירה',  color: '#1f5c38' },
+  done:      { icon: '💾', label: 'נשמר',    color: '#155724' },
+  error:     { icon: '❌', label: 'שגיאה',   color: '#b22222' },
+};
+
+document.getElementById('doc-batch-add-btn').addEventListener('click', () =>
+  document.getElementById('doc-batch-input').click());
+document.getElementById('doc-queue-add-more-btn').addEventListener('click', () =>
+  document.getElementById('doc-batch-input').click());
+document.getElementById('doc-batch-input').addEventListener('change', e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  addDocsToQueue(files);
+});
+
+async function addDocsToQueue(files) {
+  if (!files.length) return;
+  if (state.doc_queue.length + files.length > DOC_BATCH_MAX) {
+    const can = DOC_BATCH_MAX - state.doc_queue.length;
+    if (can <= 0) { alert(`התור מלא (${DOC_BATCH_MAX}).`); return; }
+    if (!confirm(`התור יקבל רק ${can} מתוך ${files.length} (מקס ${DOC_BATCH_MAX}). להמשיך?`)) return;
+    files = files.slice(0, can);
+  }
+  for (const file of files) {
+    const id = 'dq' + Date.now() + '_' + state.doc_queue.length;
+    const item = { id, file, status: 'pending', identification: null, error: null, thumb: null };
+    state.doc_queue.push(item);
+    // Generate thumbnail (first page for PDFs would require pdfjs — skip; image: dataurl)
+    if (file.type.startsWith('image/')) {
+      item.thumb = await new Promise(r => {
+        const reader = new FileReader();
+        reader.onload = e => r(e.target.result);
+        reader.readAsDataURL(file);
+      });
+    }
+  }
+  document.getElementById('doc-queue-panel').style.display = 'block';
+  renderDocQueuePanel();
+  setTimeout(() => startDocQueueProcessor(), 100);
+}
+
+function renderDocQueuePanel() {
+  const list = document.getElementById('doc-queue-list');
+  const summary = document.getElementById('doc-queue-summary');
+  if (!state.doc_queue.length) {
+    document.getElementById('doc-queue-panel').style.display = 'none';
+    return;
+  }
+  const counts = { pending: 0, analyzing: 0, ready: 0, reviewing: 0, done: 0, error: 0 };
+  state.doc_queue.forEach(it => counts[it.status]++);
+  summary.textContent = `(${state.doc_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}`;
+  list.innerHTML = state.doc_queue.map((it, idx) => {
+    const s = DOC_QUEUE_STATUSES[it.status] || DOC_QUEUE_STATUSES.pending;
+    const isActive = idx === state.current_doc_queue_index;
+    const isPdf = it.file.type === 'application/pdf';
+    const errTip = it.error ? ` title="${esc(it.error)}"` : '';
+    return `<div class="doc-queue-item" data-idx="${idx}"${errTip}
+      style="flex:0 0 auto; width:100px; cursor:pointer; padding:5px; border:2px solid ${isActive ? '#2e7d4e' : 'transparent'}; border-radius:6px; background:${isActive ? '#fff' : 'transparent'};">
+      <div style="position:relative; width:90px; height:90px; border-radius:4px; overflow:hidden; background:#e5dfd1; margin:0 auto; display:flex; align-items:center; justify-content:center;">
+        ${it.thumb ? `<img src="${it.thumb}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="font-size:36px; opacity:.6;">${isPdf ? '📄' : '🖼'}</div>`}
+        <div style="position:absolute; bottom:0; right:0; left:0; background:rgba(0,0,0,.7); color:#fff; font-size:9px; text-align:center; padding:1px 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(it.file.name)}</div>
+      </div>
+      <div style="text-align:center; margin-top:3px; font-size:10.5px; color:${s.color}; font-weight:600;">${s.icon} ${s.label}</div>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.doc-queue-item').forEach(el =>
+    el.addEventListener('click', () => jumpToDocQueueItem(parseInt(el.dataset.idx))));
+}
+
+function jumpToDocQueueItem(idx) {
+  if (idx < 0 || idx >= state.doc_queue.length) return;
+  const item = state.doc_queue[idx];
+  if (state.current_doc_queue_index >= 0 && state.current_doc_queue_index !== idx) {
+    const prev = state.doc_queue[state.current_doc_queue_index];
+    if (prev && prev.status === 'reviewing') prev.status = 'ready';
+  }
+  state.current_doc_queue_index = idx;
+  loadDocQueueItemIntoUI(item);
+  renderDocQueuePanel();
+}
+
+function loadDocQueueItemIntoUI(item) {
+  clearDoc();
+  loadDoc(item.file);
+  if (item.status === 'ready' || item.status === 'reviewing') {
+    item.status = 'reviewing';
+    if (item.identification) {
+      fillResults(item.identification);
+      document.getElementById('results').classList.add('show');
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('download-bar').style.display = 'flex';
+    }
+  } else if (item.status === 'error') {
+    showStatus('המסמך נכשל: ' + (item.error || 'שגיאה'), 'err');
+  }
+}
+
+async function startDocQueueProcessor() {
+  if (state.doc_queue_processor_running) return;
+  state.doc_queue_processor_running = true;
+  try {
+    while (true) {
+      const next = state.doc_queue.find(it => it.status === 'pending');
+      if (!next) break;
+      next.status = 'analyzing';
+      renderDocQueuePanel();
+      try {
+        const result = await identifyDocQueueItem(next);
+        next.identification = result;
+        next.status = 'ready';
+        if (state.current_doc_queue_index < 0) {
+          state.current_doc_queue_index = state.doc_queue.indexOf(next);
+          loadDocQueueItemIntoUI(next);
+        }
+      } catch (err) {
+        next.status = 'error';
+        next.error = err.message;
+        console.error(`Doc queue item ${next.id} failed:`, err);
+      }
+      renderDocQueuePanel();
+      await new Promise(r => setTimeout(r, state.provider === 'gemini' ? 7000 : 2000));
+    }
+  } finally {
+    state.doc_queue_processor_running = false;
+  }
+}
+
+async function identifyDocQueueItem(item) {
+  const saved = state.document;
+  const savedMeta = state.docMeta;
+  state.document = item.file;
+  state.docMeta = { mime: item.file.type, size_bytes: item.file.size, page_count: 1 };
+  try {
+    if (state.provider === 'gemini') return await callGemini();
+    return await callAnthropic();
+  } finally {
+    state.document = saved;
+    state.docMeta = savedMeta;
+  }
+}
+
+document.getElementById('doc-queue-clear-btn').addEventListener('click', () => {
+  if (!state.doc_queue.length) return;
+  if (!confirm('למחוק את התור?')) return;
+  state.doc_queue = [];
+  state.current_doc_queue_index = -1;
+  renderDocQueuePanel();
+});
 
 // Context
 const contextEl = document.getElementById('context-input');
@@ -648,7 +1010,72 @@ const fileToBase64 = file => new Promise((resolve, reject) => {
   r.onerror = reject; r.readAsDataURL(file);
 });
 
+// Build private-only rules block — injected only when state.doc_mode === 'private'
+function buildPrivateModeRules() {
+  if (state.doc_mode !== 'private') return '';
+  return `
+
+═══════════════════════════════════════════════════════════════
+📋 **חוקים ייחודיים לקטלוג מקור פרטי** (לפי נהלי ספיר)
+═══════════════════════════════════════════════════════════════
+
+המסמך מקוטלג כחלק מתיק/אוסף ממקור פרטי (משפחה, אספן). פעל לפי הנהלים:
+
+### א. עקרונות ניסוח כותר (title_he):
+- שיקוף **התוכן העיקרי**: סוג המסמך + נושא מרכזי + דמויות + טווח שנים
+- ללא נקודות. רק פסיקים במקרה הצורך
+- ללא כפילות עם "מידע נוסף"
+- שמות פרטיים/משפחה/מקומות — בצורה הנפוצה ביותר
+- טווח שנים בלבד (לא תאריכים ספציפיים)
+- דוגמה טובה: "מכתבים שנשלחו אל לסלו וייס בפלוגות עבודה בהונגריה בידי בני משפחה וחברים בבודפשט ב-1943–1944"
+
+### ב. מבנה "מידע נוסף":
+- פסקה 1 (info_main): תוכן עיקרי של התיק. מסמכים ייחודיים — בולטים בראש פסקה.
+- פסקה "בתיק גם:" (info_also): רשימה קצרה של מסמכים משניים, נקודה אחת לכל אחד.
+- "הערות מוסר החומר" (info_donor): בסוף בלבד. נרטיב רציף בגוף שלישי. רק מה שקשור לתיק.
+- אל תחזור על מה שכבר בכותר.
+
+### ג. שילוב מקור חיצוני:
+- ברירת מחדל: רק מידע מהמסמכים עצמם.
+- חריג: זהויות בדויות → "ככל הנראה X"; גורל אנשים → ציין במידע נוסף עם הפניה לפריט נלווה.
+- "ככל הנראה" חיוני להבחנה בין ודאות להשלמה.
+
+### ד. מסמכים ייחודיים:
+- זהה "יהלומים" — תעודות ספציפיות, מכתבי גורל, יומנים, רשימות נספים — וקטלג אותם כפריט תוכן בנפרד (גם אם נשאר פיזית בתיק).
+- ציין במפורש בכותר/מידע נוסף ראשון.
+
+### ה. תאריכים אותנטי + משוחזר:
+- date_start_authentic: כפי שכתוב במסמך (שנה / חודש שנה / מלא)
+- date_start_reconstructed: תאריך מלא DD/MM/YYYY מבוסס על הקשר
+- אם רק שנה ידועה → 01/01/YYYY לתחילה, 31/12/YYYY לסיום
+
+### ו. מקוריות (originality):
+- "מקורי" — כתב יד, דפוס מקור, מכונת כתיבה, פוטוקופיה מהתקופה
+- "לא מקורי" — הדפסה מודרנית, סריקה, צילום, מקובץ דיגיטלי
+
+### ז. שדות יוצרים:
+- creator_person: שם האדם שיצר את התוכן (כותב, מחבר)
+- creator_org: שם הארגון אם רלוונטי (אם זה אוסף מארגון)
+
+### ח. סיווג (classification):
+- "בלתי מסווג" (ברירת מחדל) — פתוח לציבור
+- "מוגבל" — רק באולם העיון
+- "שמור" — אישור בלבד
+- אם "מוגבל" או "שמור" — חובה classification_reason
+
+### ט. מיועד להקלדת שמות (names_typing):
+- "כן" אם המסמך כולל שמות מלאים של נספים/מגורשים/תושבים יהודיים בתקופת השואה
+- "לא" אחרת
+
+### י. פריטים נלווים (related_items):
+- עד 5, רק קשורים ישירות לתיק (לאדם/למשפחה/לגוף)
+- העדף מאגרי יד ושם (דפי עד, עדויות)
+
+`;
+}
+
 function buildDocPrompt() {
+  const privateRules = buildPrivateModeRules();
   const ctx = contextEl.value.trim();
   const langHints = document.getElementById('lang-hints').value.trim();
   const writingType = document.getElementById('writing-type').value;
@@ -656,6 +1083,9 @@ function buildDocPrompt() {
   const thesaurusBrief = (state.thesaurus_top || []).map(t => `${t.he} | ${t.en}`).join('\n');
 
   return `אתה מקטלג בכיר במדור המסמכים של ארכיון יד ושם, מומחה לפיענוח מסמכים היסטוריים מהתקופה 1900–1948.
+
+**סוג רישום:** ${state.doc_mode === 'private' ? '👤 מסמך ממקור פרטי (נוהל ספיר מורחב)' : '🏛 מסמך מוסדי (רישום סטנדרטי)'}
+${privateRules}
 
 ═══════════════════════════════════════════════════════════════
 🛑🛑🛑 **חוק עליון — אפס סובלנות להזיות** 🛑🛑🛑
@@ -811,6 +1241,43 @@ ${thesaurusBrief}
 - \`unreadable_count\` הוא מספר משוער של מילים שלא הצלחת לקרוא בכלל
 
 **עיקרון אחרון**: אם אתה לא בטוח אם להחזיר ערך — **אל תחזיר.** ארכיונאי אנושי יראה את התוצאה ויחליט אם להוסיף ידע מקצועי. אסור שתחליט במקומו על בסיס ניחוש.
+
+${state.doc_mode === 'private' ? `
+### שדות נוספים שחובה להחזיר במצב מקור פרטי:
+
+\`\`\`json
+{
+  "division_name": "שם / סימול חטיבה (למשל O.93)",
+  "item_type": "פריט תוכן | מסמך-רשימה | מסמך ייחודי",
+  "prev_division": "סימול חטיבה קודם (אם הועבר)",
+  "prev_file": "סימול תיק קודם",
+  "creator_person": "שם יוצר התוכן (אדם)",
+  "creator_org": "ארגון/גוף שיצר את החומר",
+  "date_start_authentic": "תאריך תחילה כפי שכתוב (חלקי או מלא)",
+  "date_start_reconstructed": "DD/MM/YYYY מלא",
+  "date_end_authentic": "תאריך סיום כפי שכתוב",
+  "date_end_reconstructed": "DD/MM/YYYY מלא",
+  "originality": "מקורי | לא מקורי",
+  "info_main": "פסקת תוכן עיקרי של 'מידע נוסף'",
+  "info_also": "תוכן 'בתיק גם:' — מסמכים משניים, נקודה לכל אחד",
+  "info_donor": "הערות מוסר החומר — נרטיב רציף בגוף שלישי, רק חלקים שקשורים למסמכים",
+  "content_note": "הערת תוכן — הבהרות תוכניות, סתירות, מקורות חיצוניים",
+  "admin_note": "הערת אדמיניסטרציה — פנימי",
+  "names_typing": "כן | לא",
+  "related_items": "פריטים נלווים (עד 5, מיד ושם בלבד אם אפשר)",
+  "classification": "בלתי מסווג | מוגבל | שמור",
+  "classification_reason": "נימוק (חובה אם 'מוגבל' או 'שמור')",
+  "show_intranet": "Yes | No"
+}
+\`\`\`
+
+⚠ כללים מיוחדים למקור פרטי:
+- כל שדה לא ידוע → ריק ("")
+- info_main + info_also + info_donor אסור שיחזרו על מידע מהכותר
+- "ככל הנראה" חיוני בכל ניחוש פרשני (אבל עדיין: רק עם בסיס)
+- creator_person/creator_org נפרדים — לא לערבב
+- date_start_reconstructed תמיד מלא DD/MM/YYYY (שלם)
+` : ''}
 
 החזר JSON בלבד.`;
 }
@@ -999,6 +1466,31 @@ function fillResults(d) {
   setVal('r-context-he', d.context_he); setVal('r-context-en', d.context_en);
   setVal('r-notes', d.decipher_notes);
 
+  // Private-only fields
+  if (state.doc_mode === 'private') {
+    setVal('r-division-name',     d.division_name);
+    if (d.item_type) document.getElementById('r-item-type').value = d.item_type;
+    setVal('r-prev-division',     d.prev_division);
+    setVal('r-prev-file',         d.prev_file);
+    setVal('r-creator-person',    d.creator_person);
+    setVal('r-creator-org',       d.creator_org);
+    setVal('r-date-start-auth',   d.date_start_authentic);
+    setVal('r-date-start-recon',  d.date_start_reconstructed);
+    setVal('r-date-end-auth',     d.date_end_authentic);
+    setVal('r-date-end-recon',    d.date_end_reconstructed);
+    if (d.originality) document.getElementById('r-originality').value = d.originality;
+    setVal('r-info-main',         d.info_main);
+    setVal('r-info-also',         d.info_also);
+    setVal('r-info-donor',        d.info_donor);
+    setVal('r-content-note',      d.content_note);
+    setVal('r-admin-note',        d.admin_note);
+    if (d.names_typing) document.getElementById('r-names-typing').value = d.names_typing;
+    setVal('r-related-items',     d.related_items);
+    if (d.classification) document.getElementById('r-classification').value = d.classification;
+    setVal('r-classification-reason', d.classification_reason);
+    if (d.show_intranet) document.getElementById('r-show-intranet').value = d.show_intranet;
+  }
+
   // Apply confidence badges to all known fields
   for (const [id, key] of Object.entries(FIELD_CONF_MAP)) {
     paintConfidenceFor(id, d[key] || '');
@@ -1111,6 +1603,43 @@ function buildDocHTML() {
     .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.document?.name || ''));
 }
 
+// Hook into download: if batch active, mark done + advance to next ready
+function _docBatchAdvance() {
+  if (state.current_doc_queue_index < 0) return false;
+  const cur = state.doc_queue[state.current_doc_queue_index];
+  if (cur) { cur.status = 'done'; renderDocQueuePanel(); }
+  let nextIdx = -1;
+  for (let i = state.current_doc_queue_index + 1; i < state.doc_queue.length; i++) {
+    const it = state.doc_queue[i];
+    if (['ready','analyzing','pending'].includes(it.status)) { nextIdx = i; break; }
+  }
+  if (nextIdx === -1) {
+    for (let i = 0; i < state.current_doc_queue_index; i++) {
+      const it = state.doc_queue[i];
+      if (['ready','analyzing','pending'].includes(it.status)) { nextIdx = i; break; }
+    }
+  }
+  if (nextIdx === -1) {
+    state.current_doc_queue_index = -1;
+    showStatus('🎉 כל תור המסמכים הסתיים!', 'ok');
+    return true;
+  }
+  state.current_doc_queue_index = nextIdx;
+  const next = state.doc_queue[nextIdx];
+  if (next.status === 'ready') {
+    loadDocQueueItemIntoUI(next);
+    showStatus(`▶ מסמך ${nextIdx + 1}/${state.doc_queue.length} — מוכן`, 'info');
+  } else {
+    clearDoc(); loadDoc(next.file);
+    showStatus(`⏳ מסמך ${nextIdx + 1}/${state.doc_queue.length} — עדיין בניתוח...`, 'info');
+    const poll = setInterval(() => {
+      if (next.status === 'ready') { clearInterval(poll); loadDocQueueItemIntoUI(next); showStatus(`▶ מסמך ${nextIdx + 1} מוכן`, 'ok'); }
+      else if (next.status === 'error') { clearInterval(poll); showStatus(`❌ נכשל: ${next.error}`, 'err'); }
+    }, 500);
+  }
+  return true;
+}
+
 document.getElementById('download-final-btn').addEventListener('click', () => {
   const html = buildDocHTML();
   const stem = (state.document?.name || 'document').replace(/\.[^.]+$/, '').replace(/[^\w֐-׿.-]/g, '_');
@@ -1123,6 +1652,7 @@ document.getElementById('download-final-btn').addEventListener('click', () => {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   showStatus(`✓ הורד: ${fname}`, 'ok');
+  _docBatchAdvance();
 });
 document.getElementById('preview-btn').addEventListener('click', () => {
   const blob = new Blob([buildDocHTML()], { type: 'text/html;charset=utf-8' });
