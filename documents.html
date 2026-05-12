@@ -1595,6 +1595,10 @@ async function geminiOCROnly() {
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelSelGemini.value}:generateContent`;
+  console.log('[Gemini OCR] POST', url);
+  console.log('[Gemini OCR] docPart kind:', docPart.inline_data ? 'inline_data' : 'file_data', 'mime:',
+    docPart.inline_data?.mime_type || docPart.file_data?.mime_type,
+    docPart.file_data ? 'uri:' + docPart.file_data.file_uri : `data:${(docPart.inline_data?.data?.length || 0)} chars`);
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
@@ -1605,7 +1609,9 @@ async function geminiOCROnly() {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(`Gemini OCR (שלב 1) HTTP ${res.status}: ${err.error?.message || ''}`);
+    console.error('[Gemini OCR] HTTP', res.status, 'FULL ERROR:', err);
+    const details = err.error?.details ? '\n\nפרטים:\n' + JSON.stringify(err.error.details, null, 2) : '';
+    throw new Error(`Gemini OCR HTTP ${res.status}: ${err.error?.message || 'unknown'}${details}\n\n(פתח DevTools Console לפרטים נוספים)`);
   }
   const data = await res.json();
   const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
@@ -1626,14 +1632,22 @@ function fileToBase64(file) {
 }
 
 async function uploadToGeminiFiles(file, onProgress, apiKey) {
+  console.log('[Files API] Upload start:', file.name, file.size, file.type);
   // Step 1: Initiate resumable upload — get the upload URL
+  // Note: Gemini requires a valid MIME type. application/octet-stream is rejected
+  // for image/PDF processing. Force application/pdf for unknown PDF files.
+  let mime = file.type || '';
+  if (!mime && file.name.toLowerCase().endsWith('.pdf')) mime = 'application/pdf';
+  if (!mime) mime = 'application/pdf'; // safe default for our use case
+  console.log('[Files API] Using MIME:', mime);
+
   const startRes = await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
     method: 'POST',
     headers: {
       'X-Goog-Upload-Protocol': 'resumable',
       'X-Goog-Upload-Command': 'start',
       'X-Goog-Upload-Header-Content-Length': file.size.toString(),
-      'X-Goog-Upload-Header-Content-Type': file.type || 'application/octet-stream',
+      'X-Goog-Upload-Header-Content-Type': mime,
       'Content-Type': 'application/json',
       'x-goog-api-key': apiKey,
     },
@@ -1660,10 +1674,12 @@ async function uploadToGeminiFiles(file, onProgress, apiKey) {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
+          console.log('[Files API] Upload complete. File:', data.file);
           resolve(data.file);
-        } catch { reject(new Error('Files API החזיר תגובה לא תקנית')); }
+        } catch (e) { reject(new Error('Files API החזיר תגובה לא תקנית: ' + e.message)); }
       } else {
-        reject(new Error(`Files API העלאה נכשלה: HTTP ${xhr.status}`));
+        console.error('[Files API] Upload HTTP', xhr.status, xhr.responseText);
+        reject(new Error(`Files API העלאה נכשלה: HTTP ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
       }
     };
     xhr.onerror = () => reject(new Error('Files API: שגיאת רשת בהעלאה'));
@@ -1672,17 +1688,29 @@ async function uploadToGeminiFiles(file, onProgress, apiKey) {
 }
 
 async function waitForGeminiFileActive(fileName, apiKey, maxAttempts = 60) {
+  console.log('[Files API] Polling for ACTIVE state:', fileName);
   for (let i = 0; i < maxAttempts; i++) {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
       headers: { 'x-goog-api-key': apiKey },
     });
-    if (!res.ok) throw new Error(`בדיקת סטטוס Files API נכשלה: ${res.status}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('[Files API] Status check failed:', errText);
+      throw new Error(`בדיקת סטטוס Files API נכשלה: ${res.status} — ${errText.slice(0, 150)}`);
+    }
     const data = await res.json();
-    if (data.state === 'ACTIVE') return data;
-    if (data.state === 'FAILED') throw new Error('Gemini נכשל בעיבוד המסמך: ' + (data.error?.message || ''));
+    if (i === 0 || i % 5 === 0) console.log(`[Files API] poll ${i+1}: state=${data.state}`);
+    if (data.state === 'ACTIVE') {
+      console.log('[Files API] File ACTIVE:', data);
+      return data;
+    }
+    if (data.state === 'FAILED') {
+      console.error('[Files API] File FAILED:', data);
+      throw new Error('Gemini נכשל בעיבוד הקובץ: ' + (data.error?.message || JSON.stringify(data.error || {})));
+    }
     await new Promise(r => setTimeout(r, 2000));
   }
-  throw new Error('Timeout — Gemini לא סיים לעבד את המסמך (>2 דקות).');
+  throw new Error('Timeout — Gemini לא סיים לעבד את המסמך תוך 2 דקות.');
 }
 
 async function claudeStructureFromOCR(ocrText) {
@@ -2192,6 +2220,10 @@ async function callGemini() {
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+  console.log('[callGemini] POST', url);
+  console.log('[callGemini] part kind:', part.inline_data ? 'inline_data' : 'file_data', 'mime:',
+    part.inline_data?.mime_type || part.file_data?.mime_type,
+    part.file_data ? 'uri:' + part.file_data.file_uri : `data:${(part.inline_data?.data?.length || 0)} chars`);
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
@@ -2200,7 +2232,12 @@ async function callGemini() {
       generationConfig: { temperature: 0, maxOutputTokens: 32000, responseMimeType: 'application/json' }
     })
   });
-  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    console.error('[Gemini callGemini] HTTP', res.status, 'FULL ERROR:', err);
+    const details = err.error?.details ? '\n\nפרטים:\n' + JSON.stringify(err.error.details, null, 2) : '';
+    throw new Error(`Gemini HTTP ${res.status}: ${err.error?.message || 'unknown'}${details}\n\n(פתח DevTools Console לפרטים)`);
+  }
   const data = await res.json();
   const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
   if (!text) throw new Error('Gemini תגובה ריקה');
