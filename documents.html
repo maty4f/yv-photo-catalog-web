@@ -1070,17 +1070,23 @@ function removeMerge(idx) {
 }
 
 async function performMerge() {
-  if (!state.merge_files.length) return;
+  console.log('[merge] performMerge called, files:', state.merge_files.length);
+  if (!state.merge_files.length) { alert('אין קבצים למיזוג'); return; }
   if (!window.jspdf?.jsPDF) {
-    alert('ספריית jsPDF לא נטענה. נסה לרענן את הדף.');
+    alert('ספריית jsPDF לא נטענה. נסה לרענן את הדף (Cmd+Shift+R) ושים לב לשגיאות ב-DevTools Console.');
     return;
   }
+  const overlay = document.getElementById('merge-modal-overlay');
   const goBtn = document.getElementById('merge-go');
+  const cancelBtn = document.getElementById('merge-cancel');
   const progressEl = document.getElementById('merge-progress');
   goBtn.disabled = true;
+  cancelBtn.disabled = true;
   goBtn.innerHTML = '<span class="spinner"></span>ממזג…';
   const pageSize = document.getElementById('merge-page-size').value;
-  const outputName = document.getElementById('merge-output-name').value.trim() || 'merged_document.pdf';
+  const outputName = (document.getElementById('merge-output-name').value.trim() || 'merged_document.pdf').replace(/\.pdf$/i, '') + '.pdf';
+
+  console.log('[merge] starting:', { fileCount: state.merge_files.length, pageSize, outputName });
 
   try {
     const { jsPDF } = window.jspdf;
@@ -1088,31 +1094,42 @@ async function performMerge() {
 
     for (let i = 0; i < state.merge_files.length; i++) {
       const file = state.merge_files[i];
-      progressEl.textContent = `מעבד ${i + 1}/${state.merge_files.length}: ${file.name}…`;
+      progressEl.textContent = `מעבד ${i + 1}/${state.merge_files.length}: ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)…`;
+      console.log(`[merge] page ${i+1}/${state.merge_files.length}:`, file.name, file.type, `${(file.size/1024/1024).toFixed(1)}MB`);
+
+      // Read file as data URL
       const dataUrl = await new Promise((res, rej) => {
         const r = new FileReader();
         r.onload = e => res(e.target.result);
-        r.onerror = rej;
+        r.onerror = () => rej(new Error('קריאת קובץ נכשלה: ' + file.name));
         r.readAsDataURL(file);
       });
+
+      // Load image element to get dimensions
       const img = await new Promise((res, rej) => {
         const im = new Image();
         im.onload = () => res(im);
-        im.onerror = rej;
+        im.onerror = () => rej(new Error('טעינת תמונה נכשלה (אולי פגומה): ' + file.name));
         im.src = dataUrl;
       });
+      console.log(`[merge]   loaded image: ${img.width}×${img.height}`);
+
+      // Detect format from data URL prefix (more reliable than file.type)
+      const fmt = dataUrl.startsWith('data:image/png') ? 'PNG' :
+                  dataUrl.startsWith('data:image/webp') ? 'WEBP' :
+                  'JPEG';
 
       if (pageSize === 'fit') {
-        // Each page sized exactly to image (in pixels → points: 1px ≈ 0.75pt; jsPDF default px units)
+        // Each page = image dimensions
+        const orientation = img.width > img.height ? 'l' : 'p';
         if (i === 0) {
-          doc = new jsPDF({ unit: 'px', format: [img.width, img.height], orientation: img.width > img.height ? 'l' : 'p' });
+          doc = new jsPDF({ unit: 'px', format: [img.width, img.height], orientation });
         } else {
-          doc.addPage([img.width, img.height], img.width > img.height ? 'l' : 'p');
+          doc.addPage([img.width, img.height], orientation);
         }
-        const fmt = (file.type === 'image/png') ? 'PNG' : 'JPEG';
         doc.addImage(dataUrl, fmt, 0, 0, img.width, img.height);
       } else {
-        // Fixed size — fit image to page maintaining aspect ratio
+        // Fixed page size — fit image with maintained aspect ratio
         if (i === 0) {
           doc = new jsPDF({
             unit: 'mm',
@@ -1132,35 +1149,50 @@ async function performMerge() {
         if (h > availH) { h = availH; w = availH * imgRatio; }
         const x = (pw - w) / 2;
         const y = (ph - h) / 2;
-        const fmt = (file.type === 'image/png') ? 'PNG' : 'JPEG';
         doc.addImage(dataUrl, fmt, x, y, w, h);
       }
+      console.log(`[merge]   page ${i+1} added`);
     }
 
-    progressEl.textContent = 'מייצר קובץ PDF…';
+    progressEl.textContent = 'מייצר קובץ PDF — רגע…';
+    console.log('[merge] generating blob');
     const pdfBlob = doc.output('blob');
     const pdfFile = new File([pdfBlob], outputName, { type: 'application/pdf' });
+    console.log(`[merge] DONE: ${outputName}, ${(pdfBlob.size/1024/1024).toFixed(1)}MB`);
 
-    progressEl.textContent = `✓ נוצר ${outputName} · ${(pdfBlob.size/1024/1024).toFixed(1)} MB`;
-
-    // Show actions: load to slot / download / both
-    const overlay = document.getElementById('merge-modal-overlay');
-    overlay.querySelector('div > div').innerHTML += `
-      <div id="merge-success" style="margin-top:14px; padding:14px; background:#d4edda; border:1px solid #c3e6cb; border-radius:8px; text-align:center;">
-        <div style="font-size:14px; color:#155724; font-weight:600; margin-bottom:10px;">✓ ה-PDF המאוחד נוצר בהצלחה</div>
-        <div style="font-size:12.5px; color:#155724; margin-bottom:12px;">${state.merge_files.length} עמודים · ${(pdfBlob.size/1024/1024).toFixed(1)} MB</div>
-        <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
-          <button type="button" id="merge-load" class="primary" style="background:#2e7d4e;">📥 טען לפיענוח כעת</button>
-          <button type="button" id="merge-download" class="ghost">⬇ הורד למחשב</button>
-          <button type="button" id="merge-both" class="ghost">⬇📥 גם וגם</button>
+    // BUILD SUCCESS PANE (replace the modal body entirely — safer than innerHTML+=)
+    const modalContainer = overlay.querySelector('div'); // First child div = the modal container
+    modalContainer.innerHTML = `
+      <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="margin:0; font-size:16px; color:#155724;">✓ ה-PDF נוצר בהצלחה</h3>
+        <button type="button" id="merge-close-x" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
+      </div>
+      <div style="padding:30px 18px; text-align:center;">
+        <div style="font-size:48px; line-height:1; margin-bottom:10px;">📄✓</div>
+        <div style="font-size:16px; color:#155724; font-weight:700; margin-bottom:6px; direction:ltr; unicode-bidi:isolate;">${esc(outputName)}</div>
+        <div style="font-size:13px; color:var(--muted); margin-bottom:24px;">${state.merge_files.length} עמודים · ${(pdfBlob.size/1024/1024).toFixed(1)} MB</div>
+        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+          <button type="button" id="merge-load" class="primary" style="background:#2e7d4e; padding:10px 18px; font-size:14px;">📥 טען לפיענוח כעת</button>
+          <button type="button" id="merge-download" class="ghost" style="padding:10px 18px; font-size:14px;">⬇ הורד למחשב</button>
+          <button type="button" id="merge-both" class="ghost" style="padding:10px 18px; font-size:14px;">⬇📥 גם וגם</button>
         </div>
+      </div>
+      <div style="padding:12px 18px; border-top:1px solid var(--line); display:flex; justify-content:flex-end;">
+        <button type="button" id="merge-success-close" class="ghost">סגור</button>
       </div>`;
+
     const loadFn = () => {
-      // Load the PDF as the current document
-      clearDoc();
-      loadDoc(pdfFile);
-      overlay.remove();
-      showStatus(`✓ ${outputName} נטען. לחץ "פענח" להמשך.`, 'ok');
+      try {
+        clearDoc();
+        loadDoc(pdfFile);
+        overlay.remove();
+        showStatus(`✓ ${outputName} נטען (${state.merge_files.length} עמודים, ${(pdfBlob.size/1024/1024).toFixed(1)} MB). לחץ "פענח" להמשך.`, 'ok');
+        // Clear the merge_files for next session
+        state.merge_files = [];
+      } catch (e) {
+        console.error('[merge] load failed:', e);
+        alert('שגיאה בטעינה: ' + e.message);
+      }
     };
     const downloadFn = () => {
       const a = document.createElement('a');
@@ -1169,21 +1201,21 @@ async function performMerge() {
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     };
-    document.getElementById('merge-load').onclick = loadFn;
-    document.getElementById('merge-download').onclick = () => { downloadFn(); overlay.remove(); };
-    document.getElementById('merge-both').onclick = () => { downloadFn(); loadFn(); };
+    const closeFn = () => { overlay.remove(); state.merge_files = []; };
 
-    // Hide the original action row
-    goBtn.style.display = 'none';
-    document.getElementById('merge-cancel').textContent = 'סגור';
-    document.getElementById('merge-cancel').onclick = () => overlay.remove();
+    document.getElementById('merge-load').onclick = loadFn;
+    document.getElementById('merge-download').onclick = () => { downloadFn(); /* keep modal open so user can also Load if they want */ };
+    document.getElementById('merge-both').onclick = () => { downloadFn(); loadFn(); };
+    document.getElementById('merge-close-x').onclick = closeFn;
+    document.getElementById('merge-success-close').onclick = closeFn;
 
   } catch (err) {
-    console.error('Merge failed:', err);
+    console.error('[merge] FAILED:', err);
     progressEl.textContent = '';
-    alert('שגיאה במיזוג: ' + err.message);
     goBtn.disabled = false;
+    cancelBtn.disabled = false;
     goBtn.innerHTML = '📥 צור PDF';
+    alert('שגיאה במיזוג: ' + err.message + '\n\nבדוק את DevTools Console (Cmd+Option+J) לפרטים נוספים.');
   }
 }
 
