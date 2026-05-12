@@ -334,10 +334,10 @@
   <section class="step">
     <div class="head"><span class="num">2</span><span class="title">רמזים לזיהוי <small>Hints — שפה צפויה, סוג כתיבה (יקצרו את זמן הניתוח)</small></span></div>
     <div class="body">
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
         <div>
-          <label class="label">שפה/שפות צפויות <small>(אופציונלי — עוזר ל-AI)</small></label>
-          <input type="text" id="lang-hints" placeholder="גרמנית + יידיש / רוסית פרה-מהפכנית / פולנית">
+          <label class="label">שפה/שפות צפויות <small>(אופציונלי)</small></label>
+          <input type="text" id="lang-hints" placeholder="גרמנית + יידיש / רוסית">
         </div>
         <div>
           <label class="label">סוג כתיבה</label>
@@ -345,8 +345,16 @@
             <option value="auto" selected>זיהוי אוטומטי</option>
             <option value="typewritten">מכונת כתיבה</option>
             <option value="handwritten">כתב יד</option>
-            <option value="mixed">מעורב (כתב יד + מודפס)</option>
-            <option value="printed">דפוס (ספר/עיתון)</option>
+            <option value="mixed">מעורב</option>
+            <option value="printed">דפוס</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">אופן תרגום <small>(לטקסט ארוך)</small></label>
+          <select id="translation-mode" title="טקסט קצר תמיד מתורגם מלא. טקסט ארוך — לפי הבחירה כאן.">
+            <option value="auto" selected>🤖 אוטומטי (קצר=מלא, ארוך=סיכום)</option>
+            <option value="full">📝 תרגום מלא תמיד</option>
+            <option value="summary">📑 סיכום מורחב תמיד</option>
           </select>
         </div>
       </div>
@@ -630,6 +638,8 @@ const state = {
   thesaurus_top: [],
   // Document type mode: 'institutional' or 'private' (default)
   doc_mode: localStorage.getItem('yv_doc_mode') || 'private',
+  // Translation mode: 'auto' (default) | 'full' | 'summary'
+  translation_mode: localStorage.getItem('yv_translation_mode') || 'auto',
   // Transkribus credentials (separate from API keys)
   tk_credentials: {
     username: localStorage.getItem('yv_tk_username') || '',
@@ -676,6 +686,45 @@ document.querySelectorAll('input[name="doc-type-mode"]').forEach(r => {
 });
 // Apply initial state on load
 setTimeout(applyDocMode, 50);
+
+// Wire translation mode selector — persist to localStorage
+setTimeout(() => {
+  const sel = document.getElementById('translation-mode');
+  if (!sel) return;
+  sel.value = state.translation_mode;
+  sel.addEventListener('change', () => {
+    state.translation_mode = sel.value;
+    localStorage.setItem('yv_translation_mode', state.translation_mode);
+    // Update label in results form to reflect current mode
+    updateTranslationLabels();
+  });
+}, 50);
+
+// Update field labels to reflect the chosen translation mode
+function updateTranslationLabels() {
+  const mode = state.translation_mode;
+  const heHdr = document.querySelector('#results .field-group h4');
+  // Find specifically the headers for translation fields by walking groups
+  document.querySelectorAll('#results .field-group').forEach(group => {
+    const h4 = group.querySelector('h4');
+    const ta = group.querySelector('textarea');
+    if (!h4 || !ta) return;
+    if (ta.id === 'r-translation-he') {
+      h4.innerHTML = mode === 'summary'
+        ? 'סיכום מורחב בעברית / Hebrew extended summary <small>(מצב: 📑 סיכום)</small>'
+        : mode === 'full'
+          ? 'תרגום לעברית / Hebrew translation <small>(מצב: 📝 מלא)</small>'
+          : 'תרגום / סיכום לעברית <small>(מצב: 🤖 אוטומטי — לפי אורך)</small>';
+    } else if (ta.id === 'r-translation-en') {
+      h4.innerHTML = mode === 'summary'
+        ? 'Extended summary (English) <small>(mode: 📑 summary)</small>'
+        : mode === 'full'
+          ? 'תרגום לאנגלית / English translation <small>(מצב: 📝 מלא)</small>'
+          : 'Translation / Summary (English) <small>(mode: 🤖 auto by length)</small>';
+    }
+  });
+}
+setTimeout(updateTranslationLabels, 100);
 
 // Settings
 const settingsToggle = document.getElementById('settings-toggle');
@@ -1874,11 +1923,50 @@ function buildDocPrompt() {
   const writingType = document.getElementById('writing-type').value;
   const writingTypeMap = { auto: 'זיהוי אוטומטי', typewritten: 'מכונת כתיבה', handwritten: 'כתב יד', mixed: 'מעורב', printed: 'דפוס' };
   const thesaurusBrief = (state.thesaurus_top || []).map(t => `${t.he} | ${t.en}`).join('\n');
+  const translationMode = document.getElementById('translation-mode')?.value || 'auto';
+
+  // Translation mode rules — controls how translation_he/translation_en should look
+  let translationModeBlock = '';
+  if (translationMode === 'auto') {
+    translationModeBlock = `
+═══════════════════════════════════════════════════════════════
+📝 **אופן תרגום — אוטומטי לפי אורך**
+═══════════════════════════════════════════════════════════════
+
+- **טקסט קצר** (~עד 500 מילים, כ-1–2 עמודים): תרגום מלא ל-translation_he ו-translation_en.
+- **טקסט ארוך** (מעל 500 מילים): **אין לתרגם מילולית את כל הטקסט.** במקום זה, ב-translation_he ו-translation_en כתוב **סיכום מובנה** של 8–20 שורות שמכסה את כל הנושאים המרכזיים בסדר שלהם, עם שמות, תאריכים, מקומות ופרטים חשובים. שמור עברית/אנגלית בקובץ מקצועי-ארכיוני.
+- summary_he ו-summary_en נשארים כתקציר קצר (3-5 שורות) — נפרד מ-translation שיכול להיות סיכום מורחב.
+
+**חוק לטקסט ארוך**: אל תיצור פסקאות תרגום של עמודים שלמים. ארכיונאי יודע לקרוא את המקור (original_text). תפקיד התרגום במצב זה: לאפשר חיפוש ושליפה ע"פ נושאים, לא לשכפל את כל הטקסט.`;
+  } else if (translationMode === 'summary') {
+    translationModeBlock = `
+═══════════════════════════════════════════════════════════════
+📑 **אופן תרגום — סיכום מורחב בלבד**
+═══════════════════════════════════════════════════════════════
+
+- **אסור** לתרגם את הטקסט מילה במילה.
+- ב-translation_he ו-translation_en כתוב **סיכום מובנה** של 8–25 שורות:
+  * מכסה את כל הנושאים בסדר שלהם
+  * כולל שמות, תאריכים, מקומות, אירועים, אישים מרכזיים
+  * שומר על דיוק עובדתי — מה שלא ברור = "[?]"
+  * עברית/אנגלית מקצועית-ארכיונית
+- summary_he ו-summary_en נשארים תקציר קצר (3-5 שורות).`;
+  } else {
+    translationModeBlock = `
+═══════════════════════════════════════════════════════════════
+📝 **אופן תרגום — מלא**
+═══════════════════════════════════════════════════════════════
+
+- תרגם את כל הטקסט במלואו ל-translation_he ול-translation_en.
+- אסור לדלג על קטעים.
+- אם הטקסט גדול מאוד וייתכן חיתוך בפלט — תעדיף לחלק לפסקאות עם שורת ריק ביניהן.`;
+  }
 
   return `אתה מקטלג בכיר במדור המסמכים של ארכיון יד ושם, מומחה לפיענוח מסמכים היסטוריים מהתקופה 1900–1948.
 
 **סוג רישום:** ${state.doc_mode === 'private' ? '👤 מסמך ממקור פרטי (נוהל ספיר מורחב)' : '🏛 מסמך מוסדי (רישום סטנדרטי)'}
 ${privateRules}
+${translationModeBlock}
 
 ═══════════════════════════════════════════════════════════════
 🛑🛑🛑 **חוק עליון — אפס סובלנות להזיות** 🛑🛑🛑
