@@ -1602,7 +1602,11 @@ async function geminiOCROnly() {
     showStatus(`שלב 1/2 · ממתין ש-Gemini יעבד את המסמך…`, 'info');
     await waitForGeminiFileActive(uploadedFile.name, state.apiKeys.gemini);
     showStatus(`שלב 1/2 · המסמך מוכן. Gemini מבצע OCR…`, 'info');
-    docPart = { file_data: { file_uri: uploadedFile.uri, mime_type: uploadedFile.mimeType || mime } };
+    // Google's docs are inconsistent — some examples use uploadedFile.uri (full URL),
+    // others use uploadedFile.name (e.g. 'files/abc-123'). Use the FULL URI which is
+    // what newer v1beta examples show, but fall back to name on failure.
+    docPart = { file_data: { file_uri: uploadedFile.uri || ('https://generativelanguage.googleapis.com/v1beta/' + uploadedFile.name), mime_type: uploadedFile.mimeType || mime } };
+    state._lastUploadedFile = uploadedFile; // save for fallback retry
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelSelGemini.value}:generateContent`;
@@ -1621,6 +1625,37 @@ async function geminiOCROnly() {
   if (!res.ok) {
     const errBody = await res.text();
     console.error('[Gemini OCR] HTTP', res.status, 'RAW BODY:', errBody);
+
+    // RETRY with alternative file_uri format (just 'files/abc' instead of full URL)
+    // if this was a 400 with Files API and we haven't retried yet
+    if (res.status === 400 && docPart.file_data && state._lastUploadedFile && !state._fileUriRetried) {
+      console.log('[Gemini OCR] 400 with Files API — retrying with shortname file_uri');
+      state._fileUriRetried = true;
+      showStatus('שלב 1/2 · נסיון שני עם פורמט URI אלטרנטיבי…', 'info');
+      docPart = { file_data: { file_uri: state._lastUploadedFile.name, mime_type: state._lastUploadedFile.mimeType || mime } };
+      console.log('[Gemini OCR] retry docPart:', docPart);
+      const res2 = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [ docPart, { text: ocrPrompt } ]}],
+          generationConfig: { temperature: 0, maxOutputTokens: 8192 }
+        })
+      });
+      state._fileUriRetried = false;
+      if (res2.ok) {
+        const data2 = await res2.json();
+        const text2 = (data2.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+        if (text2) {
+          console.log('[Gemini OCR] retry SUCCESS');
+          return text2;
+        }
+      }
+      // Capture the retry error for display
+      const errBody2 = await res2.text().catch(() => '');
+      console.error('[Gemini OCR] retry also failed. RAW:', errBody2);
+    }
+
     let err = {};
     try { err = JSON.parse(errBody); } catch {}
     console.error('[Gemini OCR] PARSED ERROR:', err);
