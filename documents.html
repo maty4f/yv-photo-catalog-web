@@ -612,6 +612,7 @@
   <div class="download-bar" id="download-bar" style="display:none;">
     <span style="font-size:13px; color:var(--muted)">דוח מוכן:</span>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button id="validate-btn" class="ghost" type="button" title="פאס בקרה אקדמית — בודק כל טענה בקטלוג מול המסמך המקורי" style="border-color:#6b3f9b; color:#6b3f9b;">🔬 בקרה אקדמית</button>
       <button id="preview-btn" class="ghost" type="button">👁 תצוגה מקדימה</button>
       <button id="download-final-btn">⬇ הורד HTML</button>
     </div>
@@ -2592,6 +2593,273 @@ function buildDocHTML() {
     .replace(/\{\{SUBJECTS\}\}/g, chipsHTML)
     .replace(/\{\{ANALYSIS_DATE\}\}/g, new Date().toLocaleDateString('he-IL'))
     .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.document?.name || ''));
+}
+
+// =====================================================================
+//  ACADEMIC VALIDATION — runs a 2nd-pass AI review of catalog vs source
+//  Methodology adapted from the academic-validation Claude Code skill:
+//  - Per-claim verdict: confirmed / inferred / unsupported / hallucinated
+//  - Specific evidence required for every CONFIRMED claim
+//  - Categorize problems by severity and field
+//  - Output is a STRUCTURED REPORT, never a rewrite (cataloger decides)
+// =====================================================================
+
+document.getElementById('validate-btn').addEventListener('click', async () => {
+  if (!state.identification) {
+    alert('אין תוצאות לבדיקה. הפעל "פענח מסמך" קודם.');
+    return;
+  }
+  if (!state.document) {
+    alert('המסמך המקורי לא זמין. נסה לטעון מחדש.');
+    return;
+  }
+  // Pick which API to use for validation:
+  // - If Hybrid/Anthropic available → use Claude (best for reasoning)
+  // - Else fall back to Gemini
+  const useAnthropic = !!state.apiKeys.anthropic;
+  const useGemini = !!state.apiKeys.gemini;
+  if (!useAnthropic && !useGemini) {
+    alert('דרוש API key (Anthropic או Gemini) לבדיקה.');
+    return;
+  }
+
+  const validateBtn = document.getElementById('validate-btn');
+  validateBtn.disabled = true;
+  validateBtn.innerHTML = '<span class="spinner"></span>בקרה…';
+
+  try {
+    const report = await runAcademicValidation(useAnthropic);
+    showValidationReport(report);
+  } catch (err) {
+    console.error('[validation] failed:', err);
+    alert('שגיאה בבקרה: ' + err.message);
+  } finally {
+    validateBtn.disabled = false;
+    validateBtn.innerHTML = '🔬 בקרה אקדמית';
+  }
+});
+
+function buildValidationPrompt() {
+  const cat = state.identification;
+  return `אתה מבקר אקדמי בכיר במדור הקטלוג של ארכיון יד ושם. תפקידך: לבצע **academic validation** של קטלוג שהופק ע"י AI, מול המסמך המקורי.
+
+═══════════════════════════════════════════════════════════════
+🎯 **המתודולוגיה** (מבוססת על academic-validation methodology)
+═══════════════════════════════════════════════════════════════
+
+לכל טענה בקטלוג, סווג אותה לאחת מארבע רמות:
+
+1. **CONFIRMED** ✓ — הטענה נתמכת ישירות במסמך
+   - יש לצטט את הטקסט המדויק מהמסמך שתומך בה
+   - לתאריך/שם: צריך להיות כתוב במפורש במסמך
+
+2. **INFERRED** ~ — ניתן להסיק מקונטקסט, אבל לא כתוב במפורש
+   - יש להסביר את הקו ההגיוני
+   - מקובל אם זה הסקה סבירה, אבל לציין
+
+3. **UNSUPPORTED** ⚠ — לא נמצא בסיס במסמך
+   - הטענה אולי נכונה היסטורית, אבל אינה ניתנת לאימות מהמקור
+   - דורש מקור חיצוני שלא צוין
+
+4. **HALLUCINATED** ❌ — סותר את המסמך, או ממוצא לא ידוע
+   - בעיה חמורה — צריך לתקן
+   - לדוגמה: AI כתב "1942" כשבמסמך כתוב בבירור "1937"
+
+═══════════════════════════════════════════════════════════════
+📋 **דברים לבדוק קפדנית**
+═══════════════════════════════════════════════════════════════
+
+1. **כותר** (title_he, title_en): האם משקף את התוכן הויזואלי + הטקסטואלי של המסמך?
+2. **תאריכים** (doc_date, creation_date, וכו'): האם מבוססים על משהו שכתוב במסמך, או על "הקשר" חיצוני?
+3. **שמות אישים** (sender, recipient, persons): האם נכתבו במפורש?
+4. **מקומות** (place): האם נכתבו במפורש או הוסקו?
+5. **תרגום/סיכום** (translation_he/en, summary_he/en): האם נאמן למקור? יש קטעים שהאריך מעבר למה שכתוב?
+6. **טקסט מקורי** (original_text): האם ה-OCR נכון? יש מילים מומצאות במקום [?]?
+7. **קונטקסט היסטורי**: האם תואם תקופה ומקום, או הוסק שלא בהצדקה?
+8. **מטא-דאטה פרטית** (creator, division, classification, וכו'): בסיס?
+
+═══════════════════════════════════════════════════════════════
+📤 **פלט נדרש — JSON תקין בלבד**
+═══════════════════════════════════════════════════════════════
+
+\`\`\`json
+{
+  "overall_verdict": "OK | NEEDS_REVISION | CRITICAL_ISSUES",
+  "confirmed_count": 5,
+  "inferred_count": 3,
+  "unsupported_count": 2,
+  "hallucinated_count": 0,
+  "field_verdicts": [
+    {
+      "field": "title_he",
+      "verdict": "CONFIRMED | INFERRED | UNSUPPORTED | HALLUCINATED",
+      "value": "הערך הנוכחי בקטלוג",
+      "evidence": "ציטוט מדויק מהמסמך אם CONFIRMED, או הסבר אחר",
+      "issue": "פירוט הבעיה אם UNSUPPORTED/HALLUCINATED — null אחרת",
+      "suggested_fix": "תיקון מוצע — null אם הכל בסדר"
+    }
+  ],
+  "critical_issues": ["רשימת בעיות חמורות שדורשות תיקון מיידי"],
+  "recommendations": ["המלצות כלליות לשיפור"]
+}
+\`\`\`
+
+⚠ חוקים:
+- היה קפדן: עדיף לסמן UNSUPPORTED מאשר לאשר טענה לא מבוססת
+- evidence חובה בכל CONFIRMED — צטט טקסט מדויק
+- אם הקטלוג מצוין → confirmed_count גבוה, hallucinated_count=0, overall_verdict=OK
+- אסור לכתוב catalog מתוקן — רק לדווח. הרושם יחליט.
+
+═══════════════════════════════════════════════════════════════
+📦 **הקטלוג לבדיקה**
+═══════════════════════════════════════════════════════════════
+
+\`\`\`json
+${JSON.stringify(cat, null, 2)}
+\`\`\`
+
+המסמך המקורי מצורף לבקשה הזו. השווה כל טענה אליו וצור את הדוח.`;
+}
+
+async function runAcademicValidation(useAnthropic) {
+  const prompt = buildValidationPrompt();
+  const mime = state.document.type || 'application/pdf';
+
+  if (useAnthropic) {
+    // Claude — supports PDF documents directly
+    const docB64 = await fileToBase64(state.document);
+    const isPdf = mime === 'application/pdf';
+    const docPart = isPdf
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: docB64 } }
+      : { type: 'image', source: { type: 'base64', media_type: mime, data: docB64 } };
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': state.apiKeys.anthropic,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: modelSelAnthropic.value,
+        max_tokens: 16000,
+        messages: [{ role: 'user', content: [docPart, { type: 'text', text: prompt }] }],
+      })
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Claude validation HTTP ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    return parseJson(data.content?.[0]?.text || '', 'Claude validator');
+  } else {
+    // Gemini fallback
+    const sizeMB = state.document.size / 1024 / 1024;
+    let docPart;
+    if (sizeMB > 18) {
+      const uploaded = state._lastUploadedFile;
+      if (uploaded) {
+        docPart = { file_data: { file_uri: uploaded.uri || uploaded.name, mime_type: uploaded.mimeType || mime } };
+      } else {
+        throw new Error('המסמך גדול מ-18MB וטרם הועלה ל-Files API. הפעל "פענח" קודם.');
+      }
+    } else {
+      const docB64 = await fileToBase64(state.document);
+      docPart = { inline_data: { mime_type: mime, data: docB64 } };
+    }
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelSelGemini.value}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [docPart, { text: prompt }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' }
+      })
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Gemini validation HTTP ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+    return parseJson(text, 'Gemini validator');
+  }
+}
+
+function showValidationReport(report) {
+  const verdictColors = {
+    OK: { bg: '#d4edda', border: '#c3e6cb', color: '#155724', label: '✓ הקטלוג תקין' },
+    NEEDS_REVISION: { bg: '#fff3cd', border: '#ffe69c', color: '#856404', label: '⚠ נדרשת בדיקה' },
+    CRITICAL_ISSUES: { bg: '#f8d7da', border: '#f5c6cb', color: '#721c24', label: '❌ בעיות חמורות' },
+  };
+  const v = verdictColors[report.overall_verdict] || verdictColors.NEEDS_REVISION;
+  const fieldVerdictColors = {
+    CONFIRMED:    { icon: '✓', color: '#2e7d32', bg: '#e8f5e9' },
+    INFERRED:     { icon: '~', color: '#b07000', bg: '#fff8e1' },
+    UNSUPPORTED:  { icon: '⚠', color: '#c62828', bg: '#ffebee' },
+    HALLUCINATED: { icon: '❌', color: '#b71c1c', bg: '#ffcdd2' },
+  };
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px;';
+  overlay.innerHTML = `
+    <div style="background:white; border-radius:8px; max-width:920px; width:100%; max-height:90vh; display:flex; flex-direction:column;">
+      <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="margin:0; font-size:16px; color:#6b3f9b;">🔬 דוח בקרה אקדמית</h3>
+        <button type="button" id="val-close-x" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
+      </div>
+      <div style="padding:16px 18px; overflow-y:auto; flex:1;">
+        <div style="background:${v.bg}; border:1px solid ${v.border}; border-radius:8px; padding:14px; margin-bottom:14px;">
+          <div style="font-size:16px; font-weight:700; color:${v.color}; margin-bottom:8px;">${v.label}</div>
+          <div style="font-size:13px; color:${v.color}; display:flex; gap:14px; flex-wrap:wrap;">
+            <span>✓ Confirmed: <b>${report.confirmed_count || 0}</b></span>
+            <span>~ Inferred: <b>${report.inferred_count || 0}</b></span>
+            <span>⚠ Unsupported: <b>${report.unsupported_count || 0}</b></span>
+            <span>❌ Hallucinated: <b>${report.hallucinated_count || 0}</b></span>
+          </div>
+        </div>
+
+        ${(report.critical_issues || []).length ? `
+          <div style="background:#fff5f5; border:1px solid #fbb; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
+            <div style="font-weight:700; color:#b71c1c; margin-bottom:6px;">🚨 בעיות חמורות</div>
+            <ul style="margin:0; padding-inline-start:20px; color:#7a1f1f; font-size:13px;">
+              ${report.critical_issues.map(i => `<li>${esc(i)}</li>`).join('')}
+            </ul>
+          </div>` : ''}
+
+        <h4 style="margin:14px 0 8px; color:var(--accent); font-size:14px;">📋 פירוט לפי שדה</h4>
+        <div style="border:1px solid var(--line); border-radius:6px; overflow:hidden;">
+          ${(report.field_verdicts || []).map(fv => {
+            const c = fieldVerdictColors[fv.verdict] || fieldVerdictColors.INFERRED;
+            return `
+              <div style="border-bottom:1px solid var(--line); padding:10px 14px; background:${c.bg};">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:4px;">
+                  <div style="font-weight:700; color:${c.color}; font-size:13px;">
+                    <span style="font-size:15px;">${c.icon}</span> ${esc(fv.field)}
+                    <span style="font-weight:400; color:var(--muted); margin-inline-start:6px;">[${fv.verdict}]</span>
+                  </div>
+                </div>
+                <div style="font-size:12.5px; color:var(--ink); margin-bottom:3px;"><b>ערך:</b> ${esc(fv.value || '—')}</div>
+                ${fv.evidence ? `<div style="font-size:12px; color:var(--muted); margin-bottom:3px;"><b>ראיה:</b> ${esc(fv.evidence)}</div>` : ''}
+                ${fv.issue ? `<div style="font-size:12px; color:#b71c1c; margin-top:4px;"><b>🚨 בעיה:</b> ${esc(fv.issue)}</div>` : ''}
+                ${fv.suggested_fix ? `<div style="font-size:12px; color:#155724; margin-top:4px;"><b>💡 הצעת תיקון:</b> ${esc(fv.suggested_fix)}</div>` : ''}
+              </div>`;
+          }).join('')}
+        </div>
+
+        ${(report.recommendations || []).length ? `
+          <h4 style="margin:14px 0 8px; color:var(--accent); font-size:14px;">💡 המלצות</h4>
+          <ul style="margin:0; padding-inline-start:20px; color:var(--ink); font-size:13px;">
+            ${report.recommendations.map(r => `<li style="margin-bottom:4px;">${esc(r)}</li>`).join('')}
+          </ul>` : ''}
+      </div>
+      <div style="padding:12px 18px; border-top:1px solid var(--line); display:flex; gap:8px; justify-content:flex-end;">
+        <button type="button" id="val-close" class="ghost">סגור</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#val-close').onclick = close;
+  overlay.querySelector('#val-close-x').onclick = close;
 }
 
 // Hook into download: if batch active, mark done + advance to next ready
