@@ -1568,9 +1568,11 @@ function usePartForCatalog(part) {
 
 async function ensureFFmpegLoaded(onStatus) {
   if (ffmpegLib) return ffmpegLib;
-  onStatus('טוען ffmpeg.wasm מ-CDN (~25MB) — בפעם הראשונה זה לוקח 10–60 שניות…');
-  const ffmpegModule = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
-  const utilModule = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
+  onStatus('טוען ffmpeg.wasm (~25MB) — בפעם הראשונה זה לוקח 10–60 שניות…');
+  // Load ESM from same origin so the auto-spawned worker.js is also same-origin
+  // (avoids CORP/COEP issues with cross-origin Worker scripts).
+  const ffmpegModule = await import('./vendor/ffmpeg/index.js');
+  const utilModule = await import('./vendor/util/index.js');
   const ffmpeg = new ffmpegModule.FFmpeg();
   ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
   const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
