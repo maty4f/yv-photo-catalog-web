@@ -206,26 +206,27 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="anthropic">Anthropic (Claude)</option>
-        <option value="gemini" selected>Google (Gemini — מומלץ לסרטים)</option>
+        <option value="pipeline" selected>Pipeline: Gemini → Claude (מומלץ — דיוק היסטורי)</option>
+        <option value="gemini">Google (Gemini) — וידאו ישיר, מהיר</option>
+        <option value="anthropic">Anthropic (Claude) — פריימים בלבד</option>
       </select>
     </div>
-    <div class="row provider-row" data-provider="anthropic">
+    <div class="row provider-row" data-provider="anthropic pipeline">
       <label>מפתח Anthropic</label>
       <input type="password" id="api-key-anthropic" placeholder="sk-ant-…" autocomplete="off">
     </div>
-    <div class="row provider-row" data-provider="anthropic">
+    <div class="row provider-row" data-provider="anthropic pipeline">
       <label>מודל Claude</label>
       <select id="api-model-anthropic">
         <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (מומלץ — איזון איכות/עלות)</option>
         <option value="claude-opus-4-6">Claude Opus 4.6 (הכי מדויק)</option>
       </select>
     </div>
-    <div class="row provider-row" data-provider="gemini">
+    <div class="row provider-row" data-provider="gemini pipeline">
       <label>מפתח Gemini</label>
       <input type="password" id="api-key-gemini" placeholder="AIza…" autocomplete="off">
     </div>
-    <div class="row provider-row" data-provider="gemini">
+    <div class="row provider-row" data-provider="gemini pipeline">
       <label>מודל Gemini</label>
       <select id="api-model-gemini">
         <option value="gemini-2.5-pro">Gemini 2.5 Pro (מדויק)</option>
@@ -234,11 +235,12 @@
       </select>
     </div>
     <div class="hint">
-      📍 <b>Gemini</b> תומך בווידאו ישירות:
-      <br>· עד <b>~18MB</b>: inline (מהיר, בקשה אחת)
+      📍 <b>Pipeline (מומלץ)</b>: Gemini רואה את הסרט ומפיק טיוטה → Claude מקבל את הטיוטה + 20 פריימים ומאמת היסטורית (מתקן מקומות, תאריכים, מדים, טרמינולוגיית יד-ושם, מסמן רמת ודאות). דורש שני מפתחות. עלות מצטברת אבל דיוק גבוה.
+      <br>📍 <b>Gemini בלבד</b> — מהיר וזול לסקירה כללית:
+      <br>· עד <b>~18MB</b>: inline (בקשה אחת)
       <br>· <b>18MB–2GB</b>: Files API — העלאה אוטומטית עם progress bar
       <br>· מעל 2GB: יש לדחוס/לחתוך מראש (HandBrake)
-      <br>📍 <b>Claude</b> לא תומך בווידאו — מחלץ 30 פריימים בדפדפן (כל גודל סרט).
+      <br>📍 <b>Claude בלבד</b> — לא תומך בווידאו, מחלץ 30 פריימים בדפדפן.
     </div>
   </div>
 
@@ -529,9 +531,18 @@ syncProviderRows();
 providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
 apiKeyAnthropic.addEventListener('input', () => { state.apiKeys.anthropic = apiKeyAnthropic.value.trim(); localStorage.setItem('yv_api_key_anthropic', state.apiKeys.anthropic); refreshButtons(); });
 apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
-function syncProviderRows() { document.querySelectorAll('.provider-row').forEach(row => { row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none'; }); }
+function syncProviderRows() {
+  document.querySelectorAll('.provider-row').forEach(row => {
+    const providers = (row.dataset.provider || '').split(/\s+/).filter(Boolean);
+    row.style.display = providers.includes(state.provider) ? 'grid' : 'none';
+  });
+}
 function getActiveApiKey() { return state.apiKeys[state.provider] || ''; }
 function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
+function hasAllRequiredKeys() {
+  if (state.provider === 'pipeline') return !!state.apiKeys.gemini && !!state.apiKeys.anthropic;
+  return !!getActiveApiKey();
+}
 settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('open'));
 
 // Thesaurus
@@ -768,6 +779,7 @@ async function identifyFilmQueueItem(item) {
     };
   });
   try {
+    if (state.provider === 'pipeline') return await callPipeline();
     if (state.provider === 'gemini') return await callGemini();
     return await callAnthropic();
   } finally {
@@ -834,18 +846,26 @@ const identifyStatus = document.getElementById('identify-status');
 
 function refreshButtons() {
   const hasFilm = !!state.film;
-  const hasKey = !!getActiveApiKey();
+  const hasKey = hasAllRequiredKeys();
   identifyBtn.disabled = !(hasFilm && hasKey);
-  identifyBtn.title = !hasFilm ? 'יש להעלות סרט' : !hasKey ? 'יש להגדיר API key' : '';
+  identifyBtn.title = !hasFilm
+    ? 'יש להעלות סרט'
+    : !hasKey
+      ? (state.provider === 'pipeline' ? 'יש להגדיר שני מפתחות: Gemini ו-Anthropic' : 'יש להגדיר API key')
+      : '';
 }
 
 identifyBtn.addEventListener('click', async () => {
   identifyBtn.disabled = true;
-  const providerLabel = state.provider === 'gemini' ? 'Gemini' : 'Claude';
+  const providerLabel = state.provider === 'pipeline'
+    ? 'Pipeline (Gemini → Claude)'
+    : (state.provider === 'gemini' ? 'Gemini' : 'Claude');
   identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel + '…';
-  showStatus('שולח את הסרט ל-' + providerLabel + ' (30-120 שניות)…', 'info');
+  showStatus('שולח את הסרט ל-' + providerLabel + ' (30-180 שניות)…', 'info');
   try {
-    const result = state.provider === 'gemini' ? await callGemini() : await callAnthropic();
+    const result = state.provider === 'pipeline'
+      ? await callPipeline()
+      : (state.provider === 'gemini' ? await callGemini() : await callAnthropic());
     state.identification = result;
     fillResults(result);
     document.getElementById('results').classList.add('show');
@@ -1103,6 +1123,119 @@ async function callAnthropic() {
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`); }
   const data = await res.json();
   return parseJson(data.content?.[0]?.text || '', 'Claude');
+}
+
+// =====================================================================
+//  PIPELINE: Gemini drafts → Claude historically validates
+// =====================================================================
+async function callPipeline() {
+  if (!state.apiKeys.gemini) throw new Error('חסר מפתח Gemini (נדרש לשלב הניתוח הראשוני)');
+  if (!state.apiKeys.anthropic) throw new Error('חסר מפתח Anthropic (נדרש לשלב האימות ההיסטורי)');
+
+  // Stage 1 — Gemini analyzes the full video
+  showStatus('שלב 1/3: Gemini מנתח את הסרט במלואו…', 'info');
+  const savedProvider = state.provider;
+  state.provider = 'gemini';
+  let draft;
+  try { draft = await callGemini(); }
+  finally { state.provider = savedProvider; }
+
+  // Stage 2 — Extract 20 frames as visual evidence for Claude
+  showStatus('שלב 2/3: מחלץ 20 פריימים לאימות חזותי של Claude…', 'info');
+  const frames = await extractKeyframes(state.film, 20);
+
+  // Stage 3 — Claude validates against frames + provided context
+  showStatus('שלב 3/3: Claude מאמת היסטורית ומתקן…', 'info');
+  const validatorPrompt = buildValidatorPrompt(draft);
+  const content = [{
+    type: 'text',
+    text: 'להלן ניתוח ראשוני של סרט שביצע Gemini, שראה את הסרט במלואו. מצורפים 20 פריימים מתוך הסרט כראיה חזותית עבורך (אתה לא ראית את הסרט עצמו). תפקידך: לאמת את הניתוח מול הפריימים והקונטקסט, ולתקן.'
+  }];
+  for (const f of frames) {
+    content.push({ type: 'text', text: `--- ${f.tc} ---` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.b64 } });
+  }
+  content.push({ type: 'text', text: validatorPrompt });
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKeys.anthropic,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: modelSelAnthropic.value,
+      max_tokens: 16000,
+      messages: [{ role: 'user', content }]
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error('שלב האימות (Claude) נכשל: ' + (err.error?.message || `HTTP ${res.status}`));
+  }
+  const data = await res.json();
+  const revised = parseJson(data.content?.[0]?.text || '', 'Claude (validator)');
+
+  // Merge validation_notes into admin_notes so the archivist sees what changed
+  if (revised.validation_notes) {
+    const header = '──────── אימות Claude ────────';
+    const existing = (revised.admin_notes || '').trim();
+    revised.admin_notes = existing
+      ? `${existing}\n\n${header}\n${revised.validation_notes}`
+      : `${header}\n${revised.validation_notes}`;
+    delete revised.validation_notes;
+  }
+  return revised;
+}
+
+function buildValidatorPrompt(draft) {
+  const ctx = (contextEl.value || '').trim();
+  const ctxBlock = ctx
+    ? `\n## קונטקסט מהמוסר (אוטוריטטיבי כשתואם ויזואלית)\n${ctx}\n`
+    : '';
+  return `אתה היסטוריון בכיר ביד ושם, מומחה לתקופה 1930-1945 (שואה, אנטישמיות, מלחמת העולם השנייה, התנגדות יהודית). תפקידך לאמת ולתקן ניתוח ראשוני של סרט ארכיוני שביצע Gemini.
+
+🎯 משימותיך — בסדר הזה:
+
+1. **בדוק כל זיהוי מול הפריימים**: מקום, אדם, אירוע, יחידה צבאית, מדים, סמלים. אם אין ביסוס בפריימים → סמן ב-(?), הוסף הסתייגות, או הסר.
+2. **תאריכים** — אם Gemini נתן תאריך ספציפי בלי כיתוב מתועד או ראיה מוצקה → רחב לתקופה (חודש/שנה/"שנות ה-30"/"לפני המלחמה"), או השאר ריק. **אסור לנחש שנה.**
+3. **טרמינולוגיית יד-ושם** — החלף מונחים גנריים במונחים סטנדרטיים:
+   - "פעולה" → "אקציה"
+   - "העברה" / "פינוי" → "גירוש" (אם זה ההקשר)
+   - "ועד יהודים" / "מנהל יהודי" → "יודנראט"
+   - "מחנה" → "מחנה ריכוז" / "מחנה השמדה" / "מחנה עבודה" (לפי הזהות הידועה, או "מחנה (לא מזוהה)")
+   - "פליטים" → "ניצולים" / "שארית הפליטה" (אם אחרי 1945)
+4. **שמות מקומות** — איות סטנדרטי לפי גבולות **01/09/1939**:
+   - Łódź ולא Lodz; Brussels ולא Brussel; Lwów (לא Lviv לפני 1945); Wilno (לא Vilnius לפני 1945)
+   - אם Gemini זיהה מחנה/גטו ספציפי בלי שלט/אדריכלות חד-משמעית → רחב ל"גטו במזרח אירופה (לא מזוהה)" / "מחנה ריכוז (לא מזוהה)"
+5. **מדים וסמלים** — תקן זיהויים: Wehrmacht שהוא בעצם SS, חייל פשוט שהוא בעצם קצין, מדים גנריים שהם דגם ספציפי. אם אינך בטוח — הכלל את הקטגוריה הרחבה.
+6. **כיתובי-ביניים / שלטים** — עבור על תעתיק יידיש (תקן YIVO), גרמנית גותית, פולנית, רוסית. תקן שגיאות תעתיק או תרגום.
+7. **שמות אנשים** — שמות שניתנו בלי כיתוב גלוי, ללא קונטקסט אוטוריטטיבי, וללא דמות היסטורית מובהקת → הסר או הפוך ל-(?) עם תיאור פיזי.
+8. **סימוני ודאות** — חובה לכל זיהוי בשדות persons / inscriptions / summary:
+   - ✓ Confirmed | ~ Probable | ? Tentative
+
+⚠️ חוקים קריטיים:
+
+- **לא להמציא**. אתה מאמת/מתקן/מסיר/מרחיב — לא מוסיף סצנות, אנשים, מקומות, אירועים שאינם בטיוטה ולא נראים בפריימים.
+- **בספק → השאר את הגרסה של Gemini** עם סימן (?) ושמור עליה כפי שהיא.
+- **שמור על אותה JSON-schema בדיוק**. אל תוסיף/תסיר שדות.
+- **שמור על הטיימליין** — אל תמחק סצנות; תקן רק תיאורים שגויים.
+
+📝 שדה אחד יחיד שמותר להוסיף:
+
+\`"validation_notes"\`: טקסט עברי קצר (עד 250 מילים) שמתאר באופן תמציתי את התיקונים העיקריים שעשית — מה שונה, מה הוסר, מה רוחב, ולמה. הארכיבאית תקרא את זה כדי להבין את ההפרש בין הטיוטה של Gemini לגרסה הסופית. אם לא היו תיקונים מהותיים, כתוב "ללא תיקונים מהותיים — הטיוטה של Gemini אומתה".
+${ctxBlock}
+---
+
+## הטיוטה של Gemini (JSON לעיבוד):
+
+\`\`\`json
+${JSON.stringify(draft, null, 2)}
+\`\`\`
+
+החזר **JSON תקין בלבד** באותה סכמה, עם התיקונים שלך + שדה validation_notes. ללא טקסט נוסף מחוץ ל-JSON.`;
 }
 
 async function extractKeyframes(file, count) {
