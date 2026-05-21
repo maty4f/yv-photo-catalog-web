@@ -209,9 +209,9 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="hybrid">⭐ Hybrid: Gemini OCR + Claude קטלוג (מומלץ למסמכים מורכבים)</option>
+        <option value="hybrid" selected>⭐ Hybrid: Gemini OCR + Claude קטלוג (מומלץ — דיוק היסטורי)</option>
         <option value="anthropic">Anthropic (Claude) בלבד</option>
-        <option value="gemini" selected>Google (Gemini) בלבד</option>
+        <option value="gemini">Google (Gemini) בלבד</option>
         <option value="transkribus">🇪🇺 Transkribus + Claude (כתב יד אירופאי — Sütterlin, Kurrent, יידיש)</option>
       </select>
     </div>
@@ -233,8 +233,7 @@
     <div class="row provider-row" data-provider="gemini">
       <label>מודל Gemini</label>
       <select id="api-model-gemini">
-        <option value="gemini-2.5-pro" selected>Gemini 2.5 Pro (מומלץ — כתב יד)</option>
-        <option value="gemini-2.5-flash">Gemini 2.5 Flash (מהיר וזול)</option>
+        <option value="gemini-3.5-flash" selected>Gemini 3.5 Flash (מומלץ — כתב יד)</option>
       </select>
     </div>
 
@@ -2075,6 +2074,29 @@ ${translationModeBlock}
 **אם רמת הודאות תהיה "?" — תחשוב שוב: האם באמת ראית את זה? אם לא — מחק והשאר ריק.**
 
 ═══════════════════════════════════════════════════════════════
+📊 **Dual-Axis: V (Visual) + H (Historical) — חובה**
+═══════════════════════════════════════════════════════════════
+ראה \`reference/confidence_dual_axis.md\`.
+
+המערכת הקיימת (✓/~/?) מודדת רק את ציר ה-V (כמה ברור קריא במסמך).
+מעכשיו, **לכל שדה תחזיר גם H** = עד כמה המידע תואם היסטוריה מתועדת.
+
+**מבנה ב-JSON (חובה):**
+- שדה הוודאות הקיים (\`*_conf\` / \`confidence\`) ← נשאר ציר ה-V.
+- הוסף שדה מקביל \`*_h_conf\` (או \`h_confidence\`) עם הערכים: \`"✓"\` / \`"~"\` / \`"?"\` / \`""\`.
+
+**בטקסט להזרקה ל-HTML:** סמן זוג inline אחרי כל קביעה — \`<span class="cv c-mid">V~</span><span class="ch c-high">H✓</span>\`.
+
+**חוק קריטי:** אם V וגם H = "?" → אל תכתוב את הקביעה. השאר ריק.
+
+**דוגמאות:**
+- תאריך כתוב בבירור "1942" → V✓ H✓
+- תאריך בכתב יד דהוי שניתן לקרוא כ-"1942" → V~ H✓
+- שם משפחה שאתה מצליח לקרוא חלקית, ותואם משפחה מוכרת בארכיון → V~ H✓
+- שם פרטי לא קריא בכלל אך המוסר כתב מי זה → V? H✓
+- חתימה שנראית "אולי X" ללא תיעוד אחר → V~ H? (סף תחתון — שקול להשאיר ריק)
+
+═══════════════════════════════════════════════════════════════
 ❌ **רשימת איסורים מוחלטים**
 ═══════════════════════════════════════════════════════════════
 
@@ -2666,6 +2688,24 @@ function buildValidationPrompt() {
 4. **HALLUCINATED** ❌ — סותר את המסמך, או ממוצא לא ידוע
    - בעיה חמורה — צריך לתקן
    - לדוגמה: AI כתב "1942" כשבמסמך כתוב בבירור "1937"
+
+═══════════════════════════════════════════════════════════════
+📊 **Dual-Axis בבדיקה — V vs H**
+═══════════════════════════════════════════════════════════════
+ראה \`reference/confidence_dual_axis.md\`.
+
+ה-4 רמות שלמעלה מסווגות **את ציר ה-V בלבד** (עד כמה המסמך תומך בקביעה).
+תפקידך בנוסף: לסווג **את ציר ה-H** (עד כמה הקביעה תואמת היסטוריה מתועדת):
+- **H✓** = פרט מבוסס היסטורית (תאריך/מקום/אישיות שמתועדים במקור אחר)
+- **H~** = פרט סביר היסטורית אבל לא ודאי
+- **H?** = פרט אנכרוניסטי/חשוד/בלתי-ודאי היסטורית
+
+**אם V וגם H = ? — סימן ל-HALLUCINATED או UNSUPPORTED.** דרוש תיקון.
+**אם V=✓ אבל H=? — הקביעה אמיתית במסמך אבל המסמך עצמו אולי שגוי.** מצב נדיר — סמן ב-notes.
+
+**פלט הבדיקה — הוסף לכל ממצא:**
+- \`v_confidence\` ← הציר הוויזואלי (CONFIRMED/INFERRED/UNSUPPORTED/HALLUCINATED מקובע)
+- \`h_confidence\` ← הציר ההיסטורי ("✓" / "~" / "?")
 
 ═══════════════════════════════════════════════════════════════
 📋 **דברים לבדוק קפדנית**

@@ -229,9 +229,7 @@
     <div class="row provider-row" data-provider="gemini pipeline">
       <label>מודל Gemini</label>
       <select id="api-model-gemini">
-        <option value="gemini-2.5-pro">Gemini 2.5 Pro (מדויק)</option>
-        <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (מומלץ — תומך וידאו)</option>
-        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+        <option value="gemini-3.5-flash" selected>Gemini 3.5 Flash (מומלץ — תומך וידאו)</option>
       </select>
     </div>
     <div class="hint">
@@ -906,6 +904,18 @@ function buildFilmPrompt() {
 
 ✅ **מותר**: לתאר תמציתי ויזואלי של מה שרואים; לסמן רמת ודאות; להשאיר שדות ריקים כשאין מידע.
 
+📊 **מערכת ודאות Dual-Axis (חובה)** — ראה \`reference/confidence_dual_axis.md\`
+
+לכל קביעה (סצנה, כותרת ביניים, אדם, מקום, אירוע) קיימים **שני צירי ודאות עצמאיים**:
+- **V (Visual)** = עד כמה הסרט מראה את הקביעה בבירור: ✓ ודאי / ~ סביר / ? השערה.
+- **H (Historical)** = עד כמה הקביעה תואמת היסטוריה מתועדת: ✓ / ~ / ?.
+
+**חוקים:**
+1. ב-JSON: השדה הקיים \`confidence\` ימשיך להחזיק את הציר ההיסטורי (H). הוסף שדה חדש \`v_confidence\` עם "high" | "medium" | "low".
+2. בטקסט שאתה מציע ל-HTML (descriptions וכו') — סמן זוג inline אחרי הקביעה: \`<span class="cv c-mid">V~</span><span class="ch c-high">H✓</span>\`.
+3. אם V וגם H יהיו "low" — **אל תכתוב את הקביעה**. השאר ריק.
+4. דוגמאות: שלט קריא של מקום → V✓ H✓ | מבנה דומה אבל ללא שלט → V~ H✓ | אדם שזיהה המוסר אך פניו מטושטשות → V? H✓.
+
 **עקרון**: שדה ריק עדיף משדה מומצא. אם הסרט קצר ופשוט — תקציר קצר. אם לא ברור מי האנשים — לא להמציא שמות.
 
 
@@ -1213,8 +1223,11 @@ function buildValidatorPrompt(draft) {
 5. **מדים וסמלים** — תקן זיהויים: Wehrmacht שהוא בעצם SS, חייל פשוט שהוא בעצם קצין, מדים גנריים שהם דגם ספציפי. אם אינך בטוח — הכלל את הקטגוריה הרחבה.
 6. **כיתובי-ביניים / שלטים** — עבור על תעתיק יידיש (תקן YIVO), גרמנית גותית, פולנית, רוסית. תקן שגיאות תעתיק או תרגום.
 7. **שמות אנשים** — שמות שניתנו בלי כיתוב גלוי, ללא קונטקסט אוטוריטטיבי, וללא דמות היסטורית מובהקת → הסר או הפוך ל-(?) עם תיאור פיזי.
-8. **סימוני ודאות** — חובה לכל זיהוי בשדות persons / inscriptions / summary:
-   - ✓ Confirmed | ~ Probable | ? Tentative
+8. **סימוני ודאות Dual-Axis** — חובה לכל זיהוי בשדות persons / inscriptions / summary. ראה \`reference/confidence_dual_axis.md\`:
+   - **V (Visual)** ✓/~/? — עד כמה הסרט מראה את הקביעה.
+   - **H (Historical)** ✓/~/? — עד כמה תואם היסטוריה מתועדת.
+   - שניהם "low" → להוריד את הקביעה. ב-JSON: \`confidence\` = H, הוסף \`v_confidence\` נפרד.
+   - בטקסט HTML: זוג spans \`<span class="cv c-mid">V~</span><span class="ch c-high">H✓</span>\` אחרי כל קביעה.
 
 ⚠️ חוקים קריטיים:
 

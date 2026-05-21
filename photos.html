@@ -361,9 +361,7 @@
     <div class="row provider-row" data-provider="gemini" style="display:none">
       <label>מודל Gemini</label>
       <select id="api-model-gemini">
-        <option value="gemini-2.5-pro" selected>Gemini 2.5 Pro (מדויק)</option>
-        <option value="gemini-2.5-flash">Gemini 2.5 Flash (מהיר וזול)</option>
-        <option value="gemini-2.0-flash">Gemini 2.0 Flash (זמין יותר)</option>
+        <option value="gemini-3.5-flash" selected>Gemini 3.5 Flash (מומלץ)</option>
       </select>
     </div>
 
@@ -1895,6 +1893,18 @@ ${itemBlock}
 
 אם בכלל לא רואים פנים — אל תוסיף תיאור מפורט של אנשים. אם אין כיתוב — אל תוסיף שם.
 
+📊 **מערכת ודאות Dual-Axis (חובה)** — ראה \`reference/confidence_dual_axis.md\`
+
+לכל קביעה (אדם, מקום, אובייקט, אירוע, תאריך, כיתוב) קיימים **שני צירי ודאות עצמאיים**:
+- **V (Visual)** = עד כמה התצלום מראה את הקביעה בבירור: ✓ / ~ / ?.
+- **H (Historical)** = עד כמה הקביעה תואמת היסטוריה מתועדת: ✓ / ~ / ?.
+
+**חוקים:**
+1. ב-JSON: השדה הקיים \`confidence\` מחזיק את ציר ה-H. הוסף גם \`v_confidence\` עם "high" | "medium" | "low".
+2. בטקסט להזרקה ל-HTML: סמן זוג inline \`<span class="cv c-mid">V~</span><span class="ch c-high">H✓</span>\` אחרי כל קביעה.
+3. V וגם H "low" → אל תכתוב את הקביעה (השאר ריק או "—").
+4. דוגמאות: שלט "Litzmannstadt-Getto" קריא → V✓ H✓ | אדריכלות שמזכירה לודז׳ ללא שלט → V~ H✓ | המוסר ציין "אבא" אך הפנים מטושטשות → V? H✓.
+
 
 ## כותר (חובה בפורמט קבוע)
 \`[City in English], [Country in English], [content], [date]\`
@@ -3116,6 +3126,14 @@ function buildCollectionPrompt(sources) {
 אם הטופס מכיל רק שם המוסר ותאריך — מלא **רק** את שני אלה.
 אם הטופס בכלל לא קריא — החזר את רוב השדות ריקות.
 אם בטופס סרוק חסר חלק — אל תמלא את החלק החסר ע"פ הקשר.
+
+📊 **מערכת ודאות Dual-Axis (חובה)** — ראה \`reference/confidence_dual_axis.md\`
+
+גם בקטלוג אוסף (intake): לכל פריט/אדם/מקום שאתה מציע, סמן שני צירים:
+- **V (Visual)** = עד כמה הטופס מציג את המידע בבירור (כתב יד קריא, סריקה ברורה).
+- **H (Historical)** = עד כמה המידע תואם מציאות מתועדת.
+- 3 רמות: ✓ / ~ / ?. שניהם "low" → אל תכלול את הפריט.
+- ב-JSON: \`confidence\` נשאר כ-H; הוסף \`v_confidence\`.
 
 **בדיקה לפני החזרה**: אם אתה כתבת משהו ולא יכול להצביע על המילים בטופס שמהן הוצאת את זה — מחק את אותו השדה.
 
