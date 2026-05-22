@@ -336,9 +336,9 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="hybrid" selected>⭐ Hybrid: Gemini ויזואל + Claude מבני (מומלץ)</option>
-        <option value="anthropic">Anthropic (Claude) בלבד</option>
-        <option value="gemini">Google (Gemini) בלבד</option>
+        <option value="hybrid" selected>⭐ Hybrid: Gemini ויזואל + Claude מבני (מומלץ — דיוק היסטורי)</option>
+        <option value="anthropic">Anthropic (Claude) בלבד (בתשלום)</option>
+        <option value="gemini">🆓 Google (Gemini) בלבד (חינם — free tier)</option>
       </select>
     </div>
 
@@ -367,8 +367,8 @@
 
     <div class="hint">
       📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: Gemini עושה זיהוי ראשוני ויזואלי (אישים, חפצים, מקומות, OCR של כיתובים) → Claude עושה זיהוי משני (פורמט ספיר, עברית אקדמית, אימות היסטורי, טרמינולוגיית יד-ושם). שניהם מסמנים <b>ודאות dual-axis V/H</b>: V=ויזואלי (מה רואים), H=היסטורי (מה תואם תיעוד). דורש שני מפתחות. ראה <code>reference/confidence_dual_axis.md</code>.
-      <br>📍 <b>Anthropic בלבד</b>: זיהוי ויזואלי + סינתזה במודל אחד. מהיר וטוב לתצלום פשוט; פחות חזק על OCR של כיתובים מטושטשים.
-      <br>📍 <b>Gemini בלבד</b>: זיהוי ויזואלי + OCR חזק, אבל ללא שכבת אימות היסטורי בעברית אקדמית.
+      <br>📍 <b>🆓 Gemini בלבד (חינם)</b>: זיהוי ויזואלי + OCR חזק במעבר אחד. הכי זול — בדרך כלל בתוך ה-free tier של Google. ללא שכבת אימות היסטורי, פחות חזק על Sapir/עברית אקדמית. <b>מסלול חינמי חלופי:</b> השתמש ב-CLI <code>yv photo catalog &lt;file&gt;</code> שמדפיס prompt → הדבק ב-Claude Code (שיש לך) → גם זה $0.
+      <br>📍 <b>Anthropic בלבד (בתשלום)</b>: זיהוי ויזואלי + סינתזה במודל אחד. מהיר וטוב לתצלום פשוט; פחות חזק על OCR של כיתובים מטושטשים.
       <br>—
       <br>🔒 המפתחות נשמרים אך ורק ב-localStorage של הדפדפן שלך.
       <br>📍 <b>Anthropic</b>: api.anthropic.com · השגת מפתח: <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> · ~$0.05–0.30 לזיהוי

@@ -210,8 +210,8 @@
       <label>ספק API</label>
       <select id="api-provider">
         <option value="hybrid" selected>⭐ Hybrid: Gemini OCR + Claude קטלוג (מומלץ — דיוק היסטורי)</option>
-        <option value="anthropic">Anthropic (Claude) בלבד</option>
-        <option value="gemini">Google (Gemini) בלבד</option>
+        <option value="anthropic">Anthropic (Claude) בלבד (בתשלום)</option>
+        <option value="gemini">🆓 Google (Gemini) בלבד (חינם — free tier)</option>
         <option value="transkribus">🇪🇺 Transkribus + Claude (כתב יד אירופאי — Sütterlin, Kurrent, יידיש)</option>
       </select>
     </div>
@@ -265,6 +265,7 @@
     </div>
     <div class="hint">
       📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: Gemini עושה זיהוי ראשוני — OCR נאמן בשפת המקור (חינמי, איכותי) → Claude עושה זיהוי משני — בונה את שדות קטלוג ספיר, מתרגם לעברית אקדמית, מאמת היסטורית (סוג מסמך, צדדים, תאריכים, מקומות). שניהם מסמנים <b>ודאות dual-axis V/H</b>: V=ויזואלי (מה קריא במסמך), H=היסטורי (מה תואם תיעוד). דורש שני מפתחות. עלות ~$0.002/דף. ראה <code>reference/confidence_dual_axis.md</code>.
+      <br>📍 <b>🆓 Gemini בלבד (חינם)</b>: OCR + ניתוח במעבר אחד, בדרך כלל בתוך ה-free tier. ללא שכבת אימות היסטורי בעברית אקדמית. <b>מסלול חינמי חלופי (מומלץ למסמכים מורכבים):</b> <code>yv doc catalog &lt;file&gt; --pipeline-free</code> — Gemini API (free tier) + claude CLI שלך = pipeline אמיתי, $0.
       <br>📍 <b>למסמכים מודפסים</b>: שני הספקים עובדים מצוין. Gemini Flash הכי זול.
       <br>📍 <b>לכתב יד מאתגר</b>: Hybrid או Transkribus — דיוק גבוה יותר ושכבת אימות היסטורי.
       <br>📍 <b>🇪🇺 Transkribus</b>: סטנדרט הזהב לכתב יד אירופאי. 500 קרדיטים/חודש חינם (~50-100 עמ׳). דרוש חשבון ב-<a href="https://app.transkribus.org" target="_blank">app.transkribus.org</a>. אם API חסום (CORS) — בחר "הזנה ידנית" ותדביק את ה-OCR.

@@ -207,8 +207,8 @@
       <label>ספק API</label>
       <select id="api-provider">
         <option value="pipeline" selected>Pipeline: Gemini → Claude (מומלץ — דיוק היסטורי)</option>
-        <option value="gemini">Google (Gemini) — וידאו ישיר, מהיר</option>
-        <option value="anthropic">Anthropic (Claude) — פריימים בלבד</option>
+        <option value="gemini">🆓 Google (Gemini) — וידאו ישיר, מהיר (חינם — free tier)</option>
+        <option value="anthropic">Anthropic (Claude) — פריימים בלבד (בתשלום)</option>
       </select>
     </div>
     <div class="row provider-row" data-provider="anthropic pipeline">
@@ -234,11 +234,12 @@
     </div>
     <div class="hint">
       📍 <b>Pipeline (מומלץ — דיוק היסטורי)</b>: Gemini עושה זיהוי ראשוני — רואה את הסרט ומפיק טיוטה של סצנות, כותרות ביניים, אישים → Claude עושה זיהוי משני — מקבל את הטיוטה + 20 פריימים ומאמת היסטורית (מתקן מקומות, תאריכים, מדים, טרמינולוגיית יד-ושם). שניהם מסמנים <b>ודאות dual-axis V/H</b>: V=ויזואלי (מה רואים בסרט), H=היסטורי (מה תואם תיעוד). דורש שני מפתחות. עלות מצטברת אבל דיוק גבוה. ראה <code>reference/confidence_dual_axis.md</code>.
-      <br>📍 <b>Gemini בלבד</b> — מהיר וזול לסקירה כללית, ללא שכבת אימות היסטורי:
+      <br>📍 <b>🆓 Gemini בלבד (חינם)</b> — מהיר וזול לסקירה כללית, ללא שכבת אימות היסטורי. בדרך כלל בתוך ה-free tier של Google:
       <br>· עד <b>~18MB</b>: inline (בקשה אחת)
       <br>· <b>18MB–2GB</b>: Files API — העלאה אוטומטית עם progress bar
       <br>· מעל 2GB: יש לדחוס/לחתוך מראש (HandBrake)
-      <br>📍 <b>Claude בלבד</b> — לא תומך בווידאו, מחלץ 30 פריימים בדפדפן. פחות מומלץ לסרטים ארוכים.
+      <br>· <b>מסלול חינמי חלופי:</b> <code>yv film extract &lt;file&gt;</code> מקומית → <code>yv film catalog &lt;file&gt;</code> מדפיס prompt → הדבק ב-Claude Code (שיש לך) → גם זה $0.
+      <br>📍 <b>Claude בלבד (בתשלום)</b> — לא תומך בווידאו, מחלץ 30 פריימים בדפדפן. פחות מומלץ לסרטים ארוכים.
     </div>
   </div>
 
