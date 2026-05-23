@@ -209,7 +209,27 @@
         <option value="pipeline" selected>Pipeline: Gemini → Claude (מומלץ — דיוק היסטורי)</option>
         <option value="gemini">🆓 Google (Gemini) — וידאו ישיר, מהיר (חינם — free tier)</option>
         <option value="anthropic">Anthropic (Claude) — פריימים בלבד (בתשלום)</option>
+        <option value="cli">⌨️ CLI מקומי (yv) — Claude Code / Max (ללא תשלום API)</option>
       </select>
+    </div>
+    <div class="row provider-row" data-provider="cli" style="display:none;">
+      <label>הפקודה להרצה</label>
+      <div style="background:#1a1a1a; color:#e2e8f0; padding:10px 14px; border-radius:6px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; direction:ltr; text-align:left; unicode-bidi:isolate; line-height:1.6; position:relative;">
+        <div id="cli-film-cmd">yv film catalog &lt;video&gt;</div>
+        <button type="button" onclick="(function(){const t=document.getElementById('cli-film-cmd').innerText;navigator.clipboard.writeText(t);this.innerText='✓ הועתק';setTimeout(()=>this.innerText='📋 העתק',1400);}).call(this)" style="position:absolute; top:6px; left:6px; background:#2d3748; color:#e2e8f0; border:1px solid #4a5568; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; font-family:inherit;">📋 העתק</button>
+      </div>
+    </div>
+    <div class="row provider-row" data-provider="cli" style="display:none;">
+      <label>איך משתמשים</label>
+      <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
+        ה-CLI רץ במחשב שלך עם <code>claude</code> CLI (Claude Code / Max) — <b>אין צורך במפתח API ולא משלמים לכל קריאה</b>. מתאים לסרטים ארוכים שעלות ה-API שלהם גבוהה.
+        <ol style="margin:6px 0 0 0; padding-inline-start:18px;">
+          <li>התקן את ה-CLI + ffmpeg לפי <a href="https://github.com/maty4f/yv-photo-catalog/blob/main/photo-system/INSTALL.md" target="_blank">INSTALL.md</a></li>
+          <li>חילוץ פריימים: <code>python3 tools/extract_frames.py video.mp4</code></li>
+          <li>הרץ <code>yv film catalog &lt;video&gt;</code> — מנפיק prompt ל-Claude Code על כל הפריימים</li>
+          <li>לסרטים ארוכים: <code>python3 tools/split_film.py video.mp4 --chunk 300</code> ואז catalog לכל חתיכה</li>
+        </ol>
+      </div>
     </div>
     <div class="row provider-row" data-provider="anthropic pipeline">
       <label>מפתח Anthropic</label>
