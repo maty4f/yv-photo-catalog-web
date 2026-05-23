@@ -213,8 +213,15 @@
         <option value="anthropic">Anthropic (Claude) בלבד (בתשלום)</option>
         <option value="gemini">🆓 Google (Gemini) בלבד (חינם — free tier)</option>
         <option value="transkribus">🇪🇺 Transkribus + Claude (כתב יד אירופאי — Sütterlin, Kurrent, יידיש)</option>
-        <option value="cli">⌨️ CLI מקומי (yv) — Claude Code / Max (ללא תשלום API)</option>
+        <option value="cli">⌨️ CLI Hybrid: Gemini OCR + Claude CLI מקומי (חינם — $0)</option>
       </select>
+    </div>
+    <div class="row provider-row" data-provider="cli" style="display:none;">
+      <label>איך זה עובד</label>
+      <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
+        <b>אותו hybrid pipeline</b> כמו ⭐ למעלה — Gemini עושה OCR ראשוני (חינמי) ו-Claude בונה את שדות ספיר ומאמת היסטורית — <b>אבל</b> שלב ה-Claude רץ דרך <code>claude</code> CLI במחשב שלך (Claude Code / Max), ולא דרך Anthropic API בתשלום.
+        <br><span class="c-mid">~</span> <b>תוצאה:</b> $0 לקריאה (Gemini ב-free tier), דיוק היסטורי מלא, ודאות dual-axis V/H — בלי בילינג.
+      </div>
     </div>
     <div class="row provider-row" data-provider="cli" style="display:none;">
       <label>הפקודה להרצה</label>
@@ -224,14 +231,13 @@
       </div>
     </div>
     <div class="row provider-row" data-provider="cli" style="display:none;">
-      <label>איך משתמשים</label>
+      <label>דרישות מקדימות</label>
       <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        ה-CLI רץ במחשב שלך עם <code>claude</code> CLI (Claude Code / Max) — <b>אין צורך במפתח API ולא משלמים לכל קריאה</b>.
-        <ol style="margin:6px 0 0 0; padding-inline-start:18px;">
-          <li>התקן את ה-CLI לפי <a href="https://github.com/maty4f/yv-photo-catalog/blob/main/photo-system/INSTALL.md" target="_blank">INSTALL.md</a></li>
-          <li>הוסף את הקובץ: <code>yv add /path/to/file.jpg</code></li>
-          <li>הרץ את הפקודה למעלה — הפלט נשמר ב-<code>output/</code></li>
-          <li>אפשר גם: <code>yv catalog &lt;file&gt; --api</code> (במצב API) במקום ה-CLI המקומי</li>
+        <ol style="margin:0; padding-inline-start:18px;">
+          <li><code>claude</code> CLI מותקן ומחובר (Claude Code או Max subscription)</li>
+          <li>מפתח Gemini ב-env: <code>export GEMINI_API_KEY=AIza...</code> (free tier מספיק)</li>
+          <li>yv CLI לפי <a href="https://github.com/maty4f/yv-photo-catalog/blob/main/photo-system/INSTALL.md" target="_blank">INSTALL.md</a></li>
+          <li>הקובץ ב-<code>media/documents/</code> (או הרץ קודם <code>yv add &lt;file&gt;</code>)</li>
         </ol>
       </div>
     </div>
