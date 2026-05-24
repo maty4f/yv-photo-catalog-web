@@ -2530,15 +2530,18 @@ async function callGemini() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [part, { text: buildDocPrompt() }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 32000, responseMimeType: 'application/json' }
+      contents: [{ role: 'user', parts: [part, { text: buildDocPrompt() + '\n\n⚠ החזר JSON תקין בלבד ללא code-fence ולא טקסט הקדמה.' }] }],
+      // maxOutputTokens 8192 = Gemini 2.5 Flash hard limit; responseMimeType removed
+      // (it triggers 400 on some model+file_data combinations)
+      generationConfig: { temperature: 0, maxOutputTokens: 8192 }
     })
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    console.error('[Gemini callGemini] HTTP', res.status, 'FULL ERROR:', err);
+    const errBody = await res.text();
+    console.error('[Gemini callGemini] HTTP', res.status, 'RAW BODY:', errBody);
+    let err = {}; try { err = JSON.parse(errBody); } catch {}
     const details = err.error?.details ? '\n\nפרטים:\n' + JSON.stringify(err.error.details, null, 2) : '';
-    throw new Error(`Gemini HTTP ${res.status}: ${err.error?.message || 'unknown'}${details}\n\n(פתח DevTools Console לפרטים)`);
+    throw new Error(`Gemini HTTP ${res.status}: ${err.error?.message || errBody.slice(0, 200)}${details}\n\n=== גוף מלא ===\n${errBody.slice(0, 1500)}\n\n(פתח DevTools Console לפרטים)`);
   }
   const data = await res.json();
   const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
