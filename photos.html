@@ -339,33 +339,19 @@
         <option value="hybrid" selected>⭐ Hybrid: Gemini ויזואל + Claude מבני (מומלץ — דיוק היסטורי)</option>
         <option value="anthropic">Anthropic (Claude) בלבד (בתשלום)</option>
         <option value="gemini">🆓 Google (Gemini) בלבד (חינם — free tier)</option>
-        <option value="cli">⌨️ CLI Hybrid: Gemini ויזואל + Claude CLI מקומי (חינם — $0)</option>
+        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (חינם — דורש שרת מקומי)</option>
       </select>
     </div>
 
-    <div class="row provider-row" data-provider="cli" style="display:none;">
+    <div class="row provider-row" data-provider="cli-hybrid" style="display:none;">
+      <label>שרת CLI מקומי (URL)</label>
+      <input type="text" id="local-server-url" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="direction:ltr; text-align:left;">
+    </div>
+    <div class="row provider-row" data-provider="cli-hybrid" style="display:none;">
       <label>איך זה עובד</label>
       <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        <b>אותו hybrid pipeline</b> כמו ⭐ למעלה — Gemini עושה ניתוח ויזואלי ראשוני (חינמי) ו-Claude בונה את שדות ספיר, מתרגם לעברית אקדמית, ומאמת היסטורית — <b>אבל</b> שלב ה-Claude רץ דרך <code>claude</code> CLI במחשב שלך (Claude Code / Max), ולא דרך Anthropic API בתשלום.
-        <br><span class="c-mid">~</span> <b>תוצאה:</b> $0 לקריאה (Gemini ב-free tier), דיוק היסטורי מלא, ודאות dual-axis V/H — בלי בילינג.
-      </div>
-    </div>
-    <div class="row provider-row" data-provider="cli" style="display:none;">
-      <label>הפקודה להרצה</label>
-      <div style="background:#1a1a1a; color:#e2e8f0; padding:10px 14px; border-radius:6px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; direction:ltr; text-align:left; unicode-bidi:isolate; line-height:1.6; position:relative;">
-        <div id="cli-photo-cmd">yv catalog &lt;photo&gt; --pipeline-free</div>
-        <button type="button" onclick="(function(){const t=document.getElementById('cli-photo-cmd').innerText;navigator.clipboard.writeText(t);this.innerText='✓ הועתק';setTimeout(()=>this.innerText='📋 העתק',1400);}).call(this)" style="position:absolute; top:6px; left:6px; background:#2d3748; color:#e2e8f0; border:1px solid #4a5568; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; font-family:inherit;">📋 העתק</button>
-      </div>
-    </div>
-    <div class="row provider-row" data-provider="cli" style="display:none;">
-      <label>דרישות מקדימות</label>
-      <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        <ol style="margin:0; padding-inline-start:18px;">
-          <li><code>claude</code> CLI מותקן ומחובר (Claude Code או Max subscription)</li>
-          <li>מפתח Gemini ב-env: <code>export GEMINI_API_KEY=AIza...</code> (free tier מספיק)</li>
-          <li>yv CLI לפי <a href="https://github.com/maty4f/yv-photo-catalog/blob/main/photo-system/INSTALL.md" target="_blank">INSTALL.md</a></li>
-          <li>התצלום ב-<code>media/photos/</code> (או הרץ קודם <code>yv add &lt;photo&gt;</code>)</li>
-        </ol>
+        Gemini עושה ניתוח ויזואלי ראשוני (API חינמי) → Claude בונה את שדות ספיר ומאמת היסטורית, אבל דרך <code>claude</code> CLI שרץ במחשב שלך (במקום API בתשלום).<br>
+        <b>דורש:</b> מפתח Gemini (למטה) + שרת מקומי פעיל ב-URL למעלה. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
       </div>
     </div>
 
@@ -1208,8 +1194,9 @@ async function identifyQueueItem(item) {
   const savedPhotos = { ...state.photos };
   state.photos = { front: item.front, back: item.back };
   try {
-    if (state.provider === 'hybrid')   return await callHybrid();
-    if (state.provider === 'gemini')   return await callGemini();
+    if (state.provider === 'hybrid')     return await callHybrid();
+    if (state.provider === 'cli-hybrid') return await callCliHybrid();
+    if (state.provider === 'gemini')     return await callGemini();
     return await callAnthropic();
   } finally {
     state.photos = savedPhotos;
@@ -1328,6 +1315,19 @@ const modelSelGemini = document.getElementById('api-model-gemini');
 apiKeyAnthropic.value = state.apiKeys.anthropic;
 apiKeyGemini.value = state.apiKeys.gemini;
 providerSel.value = state.provider;
+
+// CLI-Hybrid: local server URL
+state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
+const localServerUrlInput = document.getElementById('local-server-url');
+if (localServerUrlInput) {
+  localServerUrlInput.value = state.localServerUrl;
+  localServerUrlInput.addEventListener('input', () => {
+    state.localServerUrl = localServerUrlInput.value.trim().replace(/\/$/, '');
+    localStorage.setItem('yv_local_server_url', state.localServerUrl);
+    refreshAllButtons();
+  });
+}
+
 syncProviderRows();
 
 // Refresh BOTH the photo identify button AND the collection identify button
@@ -1356,10 +1356,13 @@ apiKeyGemini.addEventListener('input', () => {
 });
 
 function syncProviderRows() {
-  // In hybrid mode, show BOTH Anthropic and Gemini rows (need both keys)
+  // hybrid → show both anthropic + gemini; cli-hybrid → gemini + cli-hybrid rows
   document.querySelectorAll('.provider-row').forEach(row => {
     if (state.provider === 'hybrid') {
-      row.style.display = 'grid';
+      // hide cli-hybrid rows in hybrid mode
+      row.style.display = row.dataset.provider === 'cli-hybrid' ? 'none' : 'grid';
+    } else if (state.provider === 'cli-hybrid') {
+      row.style.display = (row.dataset.provider === 'cli-hybrid' || row.dataset.provider === 'gemini') ? 'grid' : 'none';
     } else {
       row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none';
     }
@@ -1373,10 +1376,16 @@ function getActiveApiKey() {
       ? state.apiKeys.gemini  // returning the gemini key as a "presence" indicator
       : '';
   }
+  if (state.provider === 'cli-hybrid') {
+    return state.apiKeys.gemini && state.localServerUrl ? state.apiKeys.gemini : '';
+  }
   return state.apiKeys[state.provider] || '';
 }
 function hasHybridKeys() {
   return !!state.apiKeys.anthropic && !!state.apiKeys.gemini;
+}
+function hasCliHybridReady() {
+  return !!state.apiKeys.gemini && !!state.localServerUrl;
 }
 function getActiveModel() {
   return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value;
@@ -1512,16 +1521,23 @@ const identifyStatus = document.getElementById('identify-status');
 
 function refreshButtons() {
   const hasFront = !!state.photos.front;
-  const hasKey = state.provider === 'hybrid' ? hasHybridKeys() : !!getActiveApiKey();
+  const hasKey = state.provider === 'hybrid' ? hasHybridKeys()
+    : state.provider === 'cli-hybrid' ? hasCliHybridReady()
+    : !!getActiveApiKey();
   identifyBtn.disabled = !(hasFront && hasKey);
   copyPromptBtn.disabled = !hasFront;
-  identifyBtn.title = !hasFront ? 'יש להעלות חזית תצלום' :
-                      !hasKey ? (state.provider === 'hybrid'
-                        ? 'מצב Hybrid דורש שני מפתחות: Anthropic + Gemini'
-                        : 'יש להגדיר API key (כפתור "הגדרות API" למעלה)') : '';
+  let missingMsg = 'יש להגדיר API key (כפתור "הגדרות API" למעלה)';
+  if (state.provider === 'hybrid') missingMsg = 'מצב Hybrid דורש שני מפתחות: Anthropic + Gemini';
+  else if (state.provider === 'cli-hybrid') {
+    if (!state.apiKeys.gemini) missingMsg = 'מצב CLI Hybrid דורש מפתח Gemini';
+    else if (!state.localServerUrl) missingMsg = 'מצב CLI Hybrid דורש URL של שרת CLI מקומי';
+  }
+  identifyBtn.title = !hasFront ? 'יש להעלות חזית תצלום' : (!hasKey ? missingMsg : '');
   identifyBtn.innerHTML = state.provider === 'hybrid'
     ? '🔍 זהה תצלום (Gemini→Claude)'
-    : state.provider === 'gemini' ? '🔍 זהה תצלום (Gemini)' : '🔍 זהה תצלום (Claude)';
+    : state.provider === 'cli-hybrid'
+      ? '🔍 זהה תצלום (Gemini→Claude CLI)'
+      : state.provider === 'gemini' ? '🔍 זהה תצלום (Gemini)' : '🔍 זהה תצלום (Claude)';
 }
 
 contextEl.addEventListener('input', refreshButtons);
@@ -1546,8 +1562,8 @@ identifyBtn.addEventListener('click', async () => {
   showStatus(`שולח ל-${providerLabel}…`, 'info');
 
   try {
-    const result = state.provider === 'hybrid'
-      ? await callHybrid()
+    const result = state.provider === 'hybrid' ? await callHybrid()
+      : state.provider === 'cli-hybrid' ? await callCliHybrid()
       : state.provider === 'gemini' ? await callGemini() : await callAnthropic();
     state.identification = result;
     fillResultsForm(result);
@@ -1715,6 +1731,57 @@ async function callHybrid() {
   // and produces the full structured JSON catalog
   showStatus('שלב 2/2 · Claude בונה קטלוג מובנה לפי הכללים של ספיר…', 'info');
   return await claudeStructureFromVisual(visualDescription);
+}
+
+// CLI-Hybrid: same as callHybrid but Step 2 routes through user's local claude CLI
+// (via the local-server tunnel) instead of api.anthropic.com.
+async function callCliHybrid() {
+  if (!hasCliHybridReady()) {
+    throw new Error('מצב CLI Hybrid דורש מפתח Gemini + URL של שרת CLI מקומי.');
+  }
+  showStatus('שלב 1/2 · Gemini מנתח את התצלום ויזואלית…', 'info');
+  const visualDescription = await geminiVisualExtract();
+  showStatus('שלב 2/2 · Claude CLI מקומי בונה קטלוג מובנה…', 'info');
+  return await claudeStructureFromVisual_viaCLI(visualDescription);
+}
+
+async function claudeStructureFromVisual_viaCLI(visualDescription) {
+  const ctxText = contextEl.value.trim();
+  const studiosBrief = state.studios.map(s => `${s.id} | ${s.name} (${s.city}, ${s.country})`).join('\n');
+  const rulesPrompt = buildSystemRules(ctxText, studiosBrief);
+  const prompt = `אני שולח לך **ניתוח ויזואלי שכבר בוצע ע"י Gemini** של תצלום ארכיוני. תפקידך: לקבל את הניתוח הזה + פרופיל האוסף + תיאור הפריט מטופס איסוף + חוקי הקטלוג של יד ושם, ולהפיק JSON מובנה לפי הסכימה.
+
+חשוב: אל תוסיף תוכן ויזואלי שאינו בניתוח של Gemini. אם Gemini אומר "[לא ברור]" — שמור על זה. אם Gemini לא ראה משהו — אסור להמציא.
+
+## הניתוח הויזואלי של Gemini
+
+${visualDescription}
+
+## חוקי הקטלוג + פרופיל האוסף + תיאור פריט (אם יש)
+
+${rulesPrompt}
+
+החזר JSON תקין בלבד (ללא קוד-בלוק markdown, ללא טקסט הקדמה).`;
+
+  const url = state.localServerUrl + '/api/ask';
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+  } catch (e) {
+    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${url}). ודא שהשרת + tunnel פעילים. (${e.message})`);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`שרת CLI החזיר HTTP ${res.status}: ${err.error || err.stderr || ''}`);
+  }
+  const data = await res.json();
+  let text = (data.text || '').trim();
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  return parseJson(text, 'Claude CLI');
 }
 
 // Gemini step — pure vision, returns descriptive Hebrew text (no JSON)

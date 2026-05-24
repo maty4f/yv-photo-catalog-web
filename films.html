@@ -209,32 +209,19 @@
         <option value="pipeline" selected>Pipeline: Gemini → Claude (מומלץ — דיוק היסטורי)</option>
         <option value="gemini">🆓 Google (Gemini) — וידאו ישיר, מהיר (חינם — free tier)</option>
         <option value="anthropic">Anthropic (Claude) — פריימים בלבד (בתשלום)</option>
-        <option value="cli">⌨️ CLI Hybrid: Gemini וידאו + Claude CLI מקומי (חינם — $0)</option>
+        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (חינם — דורש שרת מקומי)</option>
       </select>
     </div>
-    <div class="row provider-row" data-provider="cli" style="display:none;">
+    <div class="row provider-row" data-provider="cli-hybrid" style="display:none;">
+      <label>שרת CLI מקומי (URL)</label>
+      <input type="text" id="local-server-url" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="direction:ltr; text-align:left;">
+    </div>
+    <div class="row provider-row" data-provider="cli-hybrid" style="display:none;">
       <label>איך זה עובד</label>
       <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        <b>אותו pipeline</b> כמו למעלה — Gemini עושה ניתוח וידאו ראשוני על הפריימים (חינמי) ו-Claude בונה timeline מובנה, מתרגם כתוביות-ביניים, ומאמת היסטורית — <b>אבל</b> שלב ה-Claude רץ דרך <code>claude</code> CLI במחשב שלך (Claude Code / Max), ולא דרך Anthropic API בתשלום.
-        <br><span class="c-mid">~</span> <b>תוצאה:</b> $0 לקריאה (Gemini ב-free tier), מתאים במיוחד לסרטים ארוכים שעלות ה-API שלהם גבוהה.
-      </div>
-    </div>
-    <div class="row provider-row" data-provider="cli" style="display:none;">
-      <label>הפקודה להרצה</label>
-      <div style="background:#1a1a1a; color:#e2e8f0; padding:10px 14px; border-radius:6px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; direction:ltr; text-align:left; unicode-bidi:isolate; line-height:1.6; position:relative;">
-        <div id="cli-film-cmd">yv film catalog &lt;video&gt; --pipeline-free</div>
-        <button type="button" onclick="(function(){const t=document.getElementById('cli-film-cmd').innerText;navigator.clipboard.writeText(t);this.innerText='✓ הועתק';setTimeout(()=>this.innerText='📋 העתק',1400);}).call(this)" style="position:absolute; top:6px; left:6px; background:#2d3748; color:#e2e8f0; border:1px solid #4a5568; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; font-family:inherit;">📋 העתק</button>
-      </div>
-    </div>
-    <div class="row provider-row" data-provider="cli" style="display:none;">
-      <label>דרישות מקדימות</label>
-      <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        <ol style="margin:0; padding-inline-start:18px;">
-          <li><code>claude</code> CLI מותקן ומחובר (Claude Code או Max subscription)</li>
-          <li>מפתח Gemini ב-env: <code>export GEMINI_API_KEY=AIza...</code> (free tier מספיק)</li>
-          <li>ffmpeg + yv CLI לפי <a href="https://github.com/maty4f/yv-photo-catalog/blob/main/photo-system/INSTALL.md" target="_blank">INSTALL.md</a></li>
-          <li>לסרטים ארוכים (&gt;30 דק׳): <code>python3 tools/split_film.py video.mp4 --chunk 300</code> ואז catalog לכל חתיכה</li>
-        </ol>
+        Gemini עושה ניתוח וידאו ראשוני (API חינמי) → Claude מאמת היסטורית ומפיק timeline מובנה דרך <code>claude</code> CLI במחשב שלך.<br>
+        <b>הערה:</b> בניגוד ל-Pipeline הרגיל, ה-CLI לא מקבל פריימים (רק טקסט) — אז שכבת האימות החזותית מוותרת. עדיין מקבלת תוצאה מובנית ואמינה, אבל פחות מדויקת ויזואלית.<br>
+        <b>דורש:</b> מפתח Gemini (למטה) + שרת מקומי פעיל ב-URL למעלה.
       </div>
     </div>
     <div class="row provider-row" data-provider="anthropic pipeline">
@@ -551,6 +538,19 @@ const modelSelGemini = document.getElementById('api-model-gemini');
 apiKeyAnthropic.value = state.apiKeys.anthropic;
 apiKeyGemini.value = state.apiKeys.gemini;
 providerSel.value = state.provider;
+
+// CLI-Hybrid: local server URL
+state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
+const localServerUrlInput = document.getElementById('local-server-url');
+if (localServerUrlInput) {
+  localServerUrlInput.value = state.localServerUrl;
+  localServerUrlInput.addEventListener('input', () => {
+    state.localServerUrl = localServerUrlInput.value.trim().replace(/\/$/, '');
+    localStorage.setItem('yv_local_server_url', state.localServerUrl);
+    refreshButtons();
+  });
+}
+
 syncProviderRows();
 
 providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
@@ -566,6 +566,7 @@ function getActiveApiKey() { return state.apiKeys[state.provider] || ''; }
 function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
 function hasAllRequiredKeys() {
   if (state.provider === 'pipeline') return !!state.apiKeys.gemini && !!state.apiKeys.anthropic;
+  if (state.provider === 'cli-hybrid') return !!state.apiKeys.gemini && !!state.localServerUrl;
   return !!getActiveApiKey();
 }
 settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('open'));
@@ -804,8 +805,9 @@ async function identifyFilmQueueItem(item) {
     };
   });
   try {
-    if (state.provider === 'pipeline') return await callPipeline();
-    if (state.provider === 'gemini') return await callGemini();
+    if (state.provider === 'pipeline')   return await callPipeline();
+    if (state.provider === 'cli-hybrid') return await callCliHybrid();
+    if (state.provider === 'gemini')     return await callGemini();
     return await callAnthropic();
   } finally {
     state.film = savedFilm;
@@ -873,23 +875,27 @@ function refreshButtons() {
   const hasFilm = !!state.film;
   const hasKey = hasAllRequiredKeys();
   identifyBtn.disabled = !(hasFilm && hasKey);
-  identifyBtn.title = !hasFilm
-    ? 'יש להעלות סרט'
-    : !hasKey
-      ? (state.provider === 'pipeline' ? 'יש להגדיר שני מפתחות: Gemini ו-Anthropic' : 'יש להגדיר API key')
-      : '';
+  let missingMsg = 'יש להגדיר API key';
+  if (state.provider === 'pipeline') missingMsg = 'יש להגדיר שני מפתחות: Gemini ו-Anthropic';
+  else if (state.provider === 'cli-hybrid') {
+    if (!state.apiKeys.gemini) missingMsg = 'מצב CLI Hybrid דורש מפתח Gemini';
+    else if (!state.localServerUrl) missingMsg = 'מצב CLI Hybrid דורש URL של שרת CLI מקומי';
+  }
+  identifyBtn.title = !hasFilm ? 'יש להעלות סרט' : (!hasKey ? missingMsg : '');
 }
 
 identifyBtn.addEventListener('click', async () => {
   identifyBtn.disabled = true;
   const providerLabel = state.provider === 'pipeline'
     ? 'Pipeline (Gemini → Claude)'
-    : (state.provider === 'gemini' ? 'Gemini' : 'Claude');
+    : state.provider === 'cli-hybrid'
+      ? 'CLI Hybrid (Gemini → Claude CLI)'
+      : (state.provider === 'gemini' ? 'Gemini' : 'Claude');
   identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel + '…';
   showStatus('שולח את הסרט ל-' + providerLabel + ' (30-180 שניות)…', 'info');
   try {
-    const result = state.provider === 'pipeline'
-      ? await callPipeline()
+    const result = state.provider === 'pipeline'   ? await callPipeline()
+      : state.provider === 'cli-hybrid' ? await callCliHybrid()
       : (state.provider === 'gemini' ? await callGemini() : await callAnthropic());
     state.identification = result;
     fillResults(result);
@@ -1218,6 +1224,70 @@ async function callPipeline() {
   // Merge validation_notes into admin_notes so the archivist sees what changed
   if (revised.validation_notes) {
     const header = '──────── אימות Claude ────────';
+    const existing = (revised.admin_notes || '').trim();
+    revised.admin_notes = existing
+      ? `${existing}\n\n${header}\n${revised.validation_notes}`
+      : `${header}\n${revised.validation_notes}`;
+    delete revised.validation_notes;
+  }
+  return revised;
+}
+
+// CLI-Hybrid: Gemini analyzes video, then Claude CLI validates *text-only*
+// (no frames sent — local /api/ask endpoint accepts only text prompts).
+async function callCliHybrid() {
+  if (!state.apiKeys.gemini) throw new Error('חסר מפתח Gemini');
+  if (!state.localServerUrl) throw new Error('חסר URL של שרת CLI מקומי');
+
+  // Stage 1 — Gemini analyzes the full video
+  showStatus('שלב 1/2 · Gemini מנתח את הסרט במלואו…', 'info');
+  const savedProvider = state.provider;
+  state.provider = 'gemini';
+  let draft;
+  try { draft = await callGemini(); }
+  finally { state.provider = savedProvider; }
+
+  // Stage 2 — Claude CLI validates the JSON draft using text + context only
+  showStatus('שלב 2/2 · Claude CLI מקומי מאמת היסטורית…', 'info');
+  const validatorPrompt = buildValidatorPrompt(draft);
+  const prompt = `להלן ניתוח ראשוני של סרט שביצע Gemini, שראה את הסרט במלואו. אתה לא רואה את הסרט עצמו ולא את הפריימים — רק את הניתוח של Gemini ואת הקונטקסט. תפקידך: לאמת היסטורית את הניתוח ולתקן.
+
+⚠ אם פרט תלוי בראיה חזותית שאתה לא רואה — סמן ⟨V?⟩ ושמור על מה ש-Gemini כתב, אל תמחק.
+
+## הניתוח של Gemini (JSON)
+
+\`\`\`json
+${JSON.stringify(draft, null, 2)}
+\`\`\`
+
+## חוקי האימות
+
+${validatorPrompt}
+
+החזר JSON תקין בלבד (ללא קוד-בלוק markdown, ללא טקסט הקדמה).`;
+
+  const url = state.localServerUrl + '/api/ask';
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+  } catch (e) {
+    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${url}). ודא שהשרת + tunnel פעילים. (${e.message})`);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`שרת CLI החזיר HTTP ${res.status}: ${err.error || err.stderr || ''}`);
+  }
+  const data = await res.json();
+  let text = (data.text || '').trim();
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  const revised = parseJson(text, 'Claude CLI (validator)');
+
+  if (revised.validation_notes) {
+    const header = '──────── אימות Claude CLI ────────';
     const existing = (revised.admin_notes || '').trim();
     revised.admin_notes = existing
       ? `${existing}\n\n${header}\n${revised.validation_notes}`
