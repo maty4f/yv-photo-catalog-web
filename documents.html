@@ -1652,7 +1652,7 @@ ${rulesPrompt}
 async function geminiOCROnly() {
   if (!state.document) throw new Error('אין מסמך');
   const sizeMB = state.document.size / 1024 / 1024;
-  const INLINE_THRESHOLD_MB = 18;        // Gemini inline_data total request limit ~20MB
+  const INLINE_THRESHOLD_MB = 14;        // Gemini inline_data total request limit ~20MB; base64 adds 33%, so raw must be ≤14MB
   const FILES_API_LIMIT_MB = 2048;       // Gemini Files API limit (2GB)
   if (sizeMB > FILES_API_LIMIT_MB) {
     throw new Error(`מסמך גדול מ-2GB (${sizeMB.toFixed(0)}MB). חתוך לחלקים או דחס לפני העלאה.`);
