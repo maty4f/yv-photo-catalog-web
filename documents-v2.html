@@ -126,6 +126,17 @@
         <option value="gemini-2.0-flash">Gemini 2.0 Flash (דור קודם, יציב מאוד)</option>
       </select>
     </div>
+    <div class="row">
+      <label>🔬 שרת Docling (אופציונלי)</label>
+      <div>
+        <input type="text" id="local-server-url" class="ltr" placeholder="https://xxx.trycloudflare.com">
+        <div class="small">
+          לקבצים גדולים מ-50MB — Docling רץ במחשב המקומי שלך, מחלץ טקסט מובנה (כולל מ-PDFים סרוקים) ושולח רק את הטקסט ל-Gemini. ללא מגבלות גודל, פרטי, מהיר.
+          <br>
+          השאר ריק אם אתה לא משתמש בשרת מקומי.
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- =================== מסמך =================== -->
@@ -259,6 +270,7 @@
 const state = {
   apiKey: localStorage.getItem('yv_v2_api_key') || '',
   model: localStorage.getItem('yv_v2_model') || 'gemini-2.5-flash',
+  localServerUrl: (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, ''),
   pdf: null,
   result: null,
 };
@@ -290,6 +302,13 @@ apiKeyInput.addEventListener('input', () => {
 modelSel.addEventListener('change', () => {
   state.model = modelSel.value;
   localStorage.setItem('yv_v2_model', state.model);
+});
+
+const localServerUrlInput = $('local-server-url');
+localServerUrlInput.value = state.localServerUrl;
+localServerUrlInput.addEventListener('input', () => {
+  state.localServerUrl = localServerUrlInput.value.trim().replace(/\/$/, '');
+  localStorage.setItem('yv_local_server_url', state.localServerUrl);
 });
 
 // =====================================================================
@@ -524,8 +543,35 @@ analyzeBtn.addEventListener('click', async () => {
     let parts;        // array of content parts to send to Gemini
     let sampleInfo;   // {sampled, total} if we sampled instead of sending the whole PDF
 
-    if (sizeMB > PDF_SAMPLE_THRESHOLD_MB) {
-      // === SAMPLE MODE === for huge PDFs Gemini won't accept whole
+    if (sizeMB > PDF_SAMPLE_THRESHOLD_MB && state.localServerUrl) {
+      // === DOCLING MODE === huge PDF + local server available
+      // → send to docling on the local server, get back full markdown,
+      //   then pass the markdown (not the PDF) to Gemini for the archival record.
+      showStatus(`🔬 שולח קובץ גדול (${sizeMB.toFixed(0)}MB) ל-Docling במחשב המקומי…`);
+      const fd = new FormData();
+      fd.append('file', state.pdf);
+      const dRes = await fetch(state.localServerUrl + '/api/docling', { method: 'POST', body: fd });
+      if (!dRes.ok) {
+        const t = await dRes.text();
+        throw new Error(`Docling failed: HTTP ${dRes.status} — ${t.slice(0, 300)}`);
+      }
+      const dData = await dRes.json();
+      if (!dData.ok) throw new Error(`Docling error: ${dData.error || 'unknown'}`);
+
+      showStatus(`Docling חילץ ${dData.num_chars.toLocaleString()} תווים מ-${dData.num_pages} עמודים (${dData.elapsed_sec}s). שולח ל-Gemini לרישום…`);
+      sampleInfo = { sampled: 'docling-markdown', total: dData.num_pages };
+      // Cap markdown at ~200K chars (~50K tokens) so Gemini context isn't blown
+      let mdForGemini = dData.markdown || '';
+      if (mdForGemini.length > 200000) {
+        const head = mdForGemini.slice(0, 100000);
+        const tail = mdForGemini.slice(-80000);
+        mdForGemini = head + '\n\n[...טקסט מהאמצע הושמט בגלל אורך — ' + (dData.num_chars - 180000).toLocaleString() + ' תווים...]\n\n' + tail;
+      }
+      parts = [{
+        text: `המסמך עובד מקומית ע"י Docling (IBM) שחילץ את הטקסט המובנה מ-${dData.num_pages} עמודים. הטקסט מצורף כ-Markdown להלן. תפיק רישום ארכיוני על-בסיסו.\n\n--- DOCLING MARKDOWN ---\n${mdForGemini}\n--- END MARKDOWN ---`
+      }];
+    } else if (sizeMB > PDF_SAMPLE_THRESHOLD_MB) {
+      // === SAMPLE MODE === for huge PDFs without local server
       showStatus(`קובץ גדול (${sizeMB.toFixed(0)}MB) — דוגם עמודים מייצגים בדפדפן…`);
       const { totalPages, sampled } = await samplePdfAsImages(state.pdf, (done, total, allPages) => {
         showStatus(`דוגם עמוד ${done}/${total} (מתוך ${allPages} עמודים בקובץ)…`);

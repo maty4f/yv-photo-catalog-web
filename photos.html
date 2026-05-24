@@ -1050,9 +1050,34 @@ document.getElementById('batch-file-input').addEventListener('change', e => {
   addFilesToQueue(files);
 });
 
+// Sort pairs by numeric components of basename, ascending.
+// "13090_90" → [13090, 90]; "13090_91" → [13090, 91]; "13091_1" → [13091, 1]
+// Non-numeric basenames fall back to lexicographic order, after numeric ones.
+function sortPairsByPhotoNumber(pairs) {
+  const keyOf = (pair) => {
+    const base = pair.front.name.replace(/\.[^.]+$/, '').replace(/#$/, '');
+    const nums = base.match(/\d+/g);
+    return nums ? nums.map(Number) : null;
+  };
+  return pairs.slice().sort((a, b) => {
+    const ka = keyOf(a), kb = keyOf(b);
+    if (ka && kb) {
+      const len = Math.max(ka.length, kb.length);
+      for (let i = 0; i < len; i++) {
+        const va = ka[i] ?? -1, vb = kb[i] ?? -1;
+        if (va !== vb) return va - vb;
+      }
+      return 0;
+    }
+    if (ka) return -1;
+    if (kb) return 1;
+    return a.front.name.localeCompare(b.front.name);
+  });
+}
+
 function addFilesToQueue(files) {
   if (!files.length) return;
-  const pairs = pairFilesByHash(files);
+  const pairs = sortPairsByPhotoNumber(pairFilesByHash(files));
   if (state.photo_queue.length + pairs.length > BATCH_MAX) {
     const can = BATCH_MAX - state.photo_queue.length;
     if (can <= 0) {
@@ -2067,7 +2092,23 @@ ${itemBlock}
 
 ## כותר (חובה בפורמט קבוע)
 \`[City in English], [Country in English], [content], [date]\`
-דוגמה: \`Brussels, Belgium, חברים בתנועת הנוער בני עקיבא, 1935\`
+
+### כלל פתיחה לכותר העברי — חובה 🛑
+תוכן הכותר העברי (החלק שאחרי \`City, Country,\`) **חייב להתחיל תמיד במילה "תצלום"** ואחריה מתאר. בחר את המתאר המתאים לתוכן:
+- \`תצלום של\` — דמות יחידה (\`תצלום של איש חרדי\`, \`תצלום של ילדה\`)
+- \`תצלום קבוצתי של\` — קבוצה (\`תצלום קבוצתי של חברי תנועת הנוער\`)
+- \`תצלום משפחתי של\` — משפחה (\`תצלום משפחתי של משפחת X\`)
+- \`תצלום פורטרט של\` — פורטרט סטודיו (\`תצלום פורטרט של אישה\`)
+- \`תצלום זוגי של\` — שניים (\`תצלום זוגי של זוג צעיר\`)
+- \`תצלום של\` + תיאור הסצנה — אירוע/פעולה (\`תצלום של חתונה יהודית\`, \`תצלום של טקס עלייה\`)
+
+הכותר באנגלית **אינו** חייב לפתוח ב-\`photograph of\` — שמור על הפורמט הקיים שם.
+
+דוגמאות נכונות:
+- \`Brussels, Belgium, תצלום קבוצתי של חברי תנועת הנוער בני עקיבא, 1935\`
+- \`Jerusalem, Mandatory Palestine, תצלום של חתונה יהודית, 1942\`
+- \`Łódź, Poland, תצלום פורטרט של אישה, c. 1938\`
+- ❌ \`Brussels, Belgium, חברים בתנועת הנוער בני עקיבא, 1935\` — חסר "תצלום של/קבוצתי של"
 
 ## שמות מקומות — אנגלית בלבד, גבולות 01/09/1939
 - Brussels, Belgium (לא Brussel Belgien)
