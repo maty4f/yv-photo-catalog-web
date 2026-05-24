@@ -2496,7 +2496,7 @@ ${state.doc_mode === 'private' ? `
 async function callGemini() {
   if (!state.document) throw new Error('אין מסמך');
   const sizeMB = state.document.size / 1024 / 1024;
-  const INLINE_THRESHOLD_MB = 18;
+  const INLINE_THRESHOLD_MB = 14;        // base64 adds 33%, request limit ~20MB
   const FILES_API_LIMIT_MB = 2048;
   if (sizeMB > FILES_API_LIMIT_MB) {
     throw new Error(`מסמך גדול מ-2GB (${sizeMB.toFixed(0)}MB). חתוך לחלקים.`);
