@@ -2539,6 +2539,27 @@ async function callGemini() {
   if (!res.ok) {
     const errBody = await res.text();
     console.error('[Gemini callGemini] HTTP', res.status, 'RAW BODY:', errBody);
+    // Auto-log to local server so the developer can read it without copy-paste
+    if (state.localServerUrl) {
+      const diagPayload = {
+        when: new Date().toISOString(),
+        where: 'callGemini',
+        http_status: res.status,
+        request_url: url,
+        model: getActiveModel(),
+        part_kind: part.inline_data ? 'inline_data' : 'file_data',
+        mime: part.inline_data?.mime_type || part.file_data?.mime_type,
+        file_size_mb: sizeMB.toFixed(2),
+        file_name: state.document.name,
+        file_uri: part.file_data?.file_uri || null,
+        response_body: errBody.slice(0, 4000),
+      };
+      fetch(state.localServerUrl + '/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: '__DIAGNOSTIC_LOG__\n' + JSON.stringify(diagPayload, null, 2) }),
+      }).catch(() => {});
+    }
     let err = {}; try { err = JSON.parse(errBody); } catch {}
     const details = err.error?.details ? '\n\nפרטים:\n' + JSON.stringify(err.error.details, null, 2) : '';
     throw new Error(`Gemini HTTP ${res.status}: ${err.error?.message || errBody.slice(0, 200)}${details}\n\n=== גוף מלא ===\n${errBody.slice(0, 1500)}\n\n(פתח DevTools Console לפרטים)`);
