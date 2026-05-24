@@ -249,7 +249,14 @@
     </div>
     <div class="row provider-row" data-provider="gemini">
       <label>מפתח Gemini</label>
-      <input type="password" id="api-key-gemini" placeholder="AIza…" autocomplete="off">
+      <div>
+        <input type="password" id="api-key-gemini" placeholder="AIza…" autocomplete="off" style="width:100%;">
+        <div style="margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" id="test-gemini-key-btn" style="padding:4px 12px; font-size:12px; background:#2c5d8a; color:#fff; border:none; border-radius:4px; cursor:pointer;">🔍 בדוק מפתח</button>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" style="font-size:11px; color:#5a5a5a;">השג מפתח חדש מ-aistudio.google.com →</a>
+        </div>
+        <div id="test-gemini-key-status" style="margin-top:6px; font-size:11.5px; line-height:1.5;"></div>
+      </div>
     </div>
     <div class="row provider-row" data-provider="gemini">
       <label>מודל Gemini</label>
@@ -801,6 +808,82 @@ if (fillTunnelBtn && activeTunnelEl && localServerUrlInput) {
     const orig = fillTunnelBtn.innerText;
     fillTunnelBtn.innerText = '✓ הוזן';
     setTimeout(() => { fillTunnelBtn.innerText = orig; }, 1400);
+  });
+}
+
+// "🔍 בדוק מפתח" — full diagnostic of the Gemini API key
+const testGeminiBtn = document.getElementById('test-gemini-key-btn');
+const testGeminiStatus = document.getElementById('test-gemini-key-status');
+if (testGeminiBtn && testGeminiStatus) {
+  testGeminiBtn.addEventListener('click', async () => {
+    const key = (apiKeyGemini.value || '').trim();
+    testGeminiStatus.innerHTML = '';
+    if (!key) {
+      testGeminiStatus.innerHTML = '<span style="color:#c53030;">❌ אין מפתח. הדבק מפתח בשדה למעלה ונסה שוב.</span>';
+      return;
+    }
+    if (!key.startsWith('AIza')) {
+      testGeminiStatus.innerHTML = '<span style="color:#c53030;">⚠ המפתח לא מתחיל ב-"AIza" — זה לא נראה כמו מפתח Gemini תקין.<br>אולי הדבקת מפתח Anthropic (sk-ant-…) במקום?</span>';
+      return;
+    }
+    testGeminiBtn.disabled = true;
+    testGeminiBtn.innerText = '⏳ בודק…';
+    try {
+      // STEP 1: list models — confirms key is valid + shows which models you have access to
+      testGeminiStatus.innerHTML = '<span style="color:#5a5a5a;">⏳ שלב 1/2 · מאמת מפתח מול Gemini API…</span>';
+      const listRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=50', {
+        headers: { 'x-goog-api-key': key },
+      });
+      const listBody = await listRes.text();
+      if (!listRes.ok) {
+        let parsed = {}; try { parsed = JSON.parse(listBody); } catch {}
+        const reason = parsed.error?.details?.[0]?.reason || '';
+        const msg = parsed.error?.message || listBody.slice(0, 300);
+        let hint = '';
+        if (reason === 'API_KEY_INVALID' || listRes.status === 400) hint = '<br>👉 המפתח לא חוקי או פג. צור חדש ב-<a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com/app/apikey</a>.';
+        else if (listRes.status === 403) hint = '<br>👉 ייתכן ש-Generative Language API לא מופעל בפרויקט שלך. גש ל-<a href="https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com" target="_blank">Google Cloud Console</a> ולחץ "Enable".';
+        else if (listRes.status === 429) hint = '<br>👉 חרגת מ-quota. חכה דקה ונסה שוב, או שדרג ל-paid tier.';
+        testGeminiStatus.innerHTML = `<span style="color:#c53030;">❌ <b>שלב 1 נכשל — HTTP ${listRes.status}</b>${reason ? ' (' + reason + ')' : ''}<br>${msg}${hint}</span>`;
+        return;
+      }
+      const listData = JSON.parse(listBody);
+      const allModels = (listData.models || []).map(m => (m.name || '').replace(/^models\//, ''));
+      const flashModels = allModels.filter(n => n.includes('flash')).slice(0, 8);
+      const proModels = allModels.filter(n => n.includes('pro')).slice(0, 5);
+      const selectedModel = modelSelGemini.value;
+      const selectedAvailable = allModels.includes(selectedModel);
+
+      // STEP 2: try a tiny generateContent call with the selected model
+      testGeminiStatus.innerHTML = `<span style="color:#5a5a5a;">⏳ שלב 2/2 · מנסה לקרוא ל-${selectedModel}…</span>`;
+      const genRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Reply with exactly: OK' }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 5 },
+        }),
+      });
+      const genBody = await genRes.text();
+      let resultHtml = `<div style="color:#2f855a; font-weight:600;">✓ <b>שלב 1: המפתח תקין.</b> זוהו ${allModels.length} מודלים זמינים.</div>`;
+      resultHtml += `<div style="margin-top:4px; font-size:10.5px; color:#5a5a5a;"><b>Flash זמינים:</b> ${flashModels.join(', ') || '— אין —'}</div>`;
+      if (proModels.length) resultHtml += `<div style="font-size:10.5px; color:#5a5a5a;"><b>Pro זמינים:</b> ${proModels.join(', ')}</div>`;
+      if (genRes.ok) {
+        resultHtml += `<div style="margin-top:6px; color:#2f855a; font-weight:600;">✓ <b>שלב 2: ${selectedModel} עובד תקין!</b> הכל מוכן לשימוש.</div>`;
+      } else {
+        let genParsed = {}; try { genParsed = JSON.parse(genBody); } catch {}
+        const genMsg = genParsed.error?.message || genBody.slice(0, 300);
+        resultHtml += `<div style="margin-top:6px; color:#c53030;">❌ <b>שלב 2 נכשל — HTTP ${genRes.status}</b><br>${genMsg}</div>`;
+        if (!selectedAvailable && flashModels.length) {
+          resultHtml += `<div style="margin-top:4px; color:#c05621;">👉 <b>${selectedModel} לא מופיע ברשימת המודלים הזמינים אצלך.</b> נסה לבחור אחד מהמודלים שכן מופיעים למעלה (למשל ${flashModels[0]}).</div>`;
+        }
+      }
+      testGeminiStatus.innerHTML = resultHtml;
+    } catch (e) {
+      testGeminiStatus.innerHTML = `<span style="color:#c53030;">❌ שגיאת רשת: ${e.message}<br>אולי חומת אש או VPN חוסמים את generativelanguage.googleapis.com?</span>`;
+    } finally {
+      testGeminiBtn.disabled = false;
+      testGeminiBtn.innerText = '🔍 בדוק מפתח';
+    }
   });
 }
 
