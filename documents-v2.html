@@ -112,18 +112,40 @@
   <div class="panel">
     <h2>⚙ הגדרות</h2>
     <div class="row">
+      <label>מצב עיבוד</label>
+      <select id="mode">
+        <option value="hybrid" selected>⭐ Hybrid: Gemini חילוץ + Claude רישום (מומלץ — אימות היסטורי)</option>
+        <option value="gemini-only">Gemini בלבד (מהיר, ללא Claude)</option>
+      </select>
+    </div>
+    <div class="row">
       <label>מפתח Gemini</label>
       <div>
         <input type="password" id="api-key" class="ltr" placeholder="AIza…" autocomplete="off">
-        <div class="small">השג חינם ב-<a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a> · נשמר רק ב-localStorage שלך</div>
+        <div class="small">השג חינם ב-<a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
+      </div>
+    </div>
+    <div class="row" id="row-anthropic">
+      <label>מפתח Anthropic</label>
+      <div>
+        <input type="password" id="api-key-anthropic" class="ltr" placeholder="sk-ant-…" autocomplete="off">
+        <div class="small">נדרש למצב Hybrid · <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a></div>
       </div>
     </div>
     <div class="row">
-      <label>מודל</label>
+      <label>מודל Gemini</label>
       <select id="model">
-        <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (מהיר, יציב)</option>
+        <option value="gemini-3.5-flash" selected>Gemini 3.5 Flash (מומלץ — חדש)</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash (יציב)</option>
         <option value="gemini-2.5-pro">Gemini 2.5 Pro (איטי, מדויק יותר)</option>
-        <option value="gemini-2.0-flash">Gemini 2.0 Flash (דור קודם, יציב מאוד)</option>
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash (דור קודם)</option>
+      </select>
+    </div>
+    <div class="row" id="row-claude-model">
+      <label>מודל Claude</label>
+      <select id="claude-model">
+        <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (מומלץ — איזון איכות/עלות)</option>
+        <option value="claude-opus-4-6">Claude Opus 4.6 (מדויק יותר)</option>
       </select>
     </div>
     <div class="row">
@@ -268,8 +290,11 @@
 //  State
 // =====================================================================
 const state = {
+  mode: localStorage.getItem('yv_v2_mode') || 'hybrid',
   apiKey: localStorage.getItem('yv_v2_api_key') || '',
-  model: localStorage.getItem('yv_v2_model') || 'gemini-2.5-flash',
+  apiKeyAnthropic: localStorage.getItem('yv_v2_api_key_anthropic') || '',
+  model: localStorage.getItem('yv_v2_model') || 'gemini-3.5-flash',
+  claudeModel: localStorage.getItem('yv_v2_claude_model') || 'claude-sonnet-4-6',
   localServerUrl: (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, ''),
   pdf: null,
   result: null,
@@ -279,8 +304,11 @@ const state = {
 //  DOM refs
 // =====================================================================
 const $ = id => document.getElementById(id);
+const modeSel = $('mode');
 const apiKeyInput = $('api-key');
+const apiKeyAnthropicInput = $('api-key-anthropic');
 const modelSel = $('model');
+const claudeModelSel = $('claude-model');
 const drop = $('drop');
 const fileInput = $('file-input');
 const filenameEl = $('filename');
@@ -291,17 +319,45 @@ const contextEl = $('context');
 const analyzeBtn = $('analyze-btn');
 const statusEl = $('status');
 const resultsEl = $('results');
+const rowAnthropic = $('row-anthropic');
+const rowClaudeModel = $('row-claude-model');
 
+modeSel.value = state.mode;
 apiKeyInput.value = state.apiKey;
+apiKeyAnthropicInput.value = state.apiKeyAnthropic;
 modelSel.value = state.model;
+claudeModelSel.value = state.claudeModel;
+
+function syncModeUI() {
+  const showClaude = state.mode === 'hybrid';
+  rowAnthropic.style.display = showClaude ? 'grid' : 'none';
+  rowClaudeModel.style.display = showClaude ? 'grid' : 'none';
+}
+syncModeUI();
+
+modeSel.addEventListener('change', () => {
+  state.mode = modeSel.value;
+  localStorage.setItem('yv_v2_mode', state.mode);
+  syncModeUI();
+  refresh();
+});
 apiKeyInput.addEventListener('input', () => {
   state.apiKey = apiKeyInput.value.trim();
   localStorage.setItem('yv_v2_api_key', state.apiKey);
   refresh();
 });
+apiKeyAnthropicInput.addEventListener('input', () => {
+  state.apiKeyAnthropic = apiKeyAnthropicInput.value.trim();
+  localStorage.setItem('yv_v2_api_key_anthropic', state.apiKeyAnthropic);
+  refresh();
+});
 modelSel.addEventListener('change', () => {
   state.model = modelSel.value;
   localStorage.setItem('yv_v2_model', state.model);
+});
+claudeModelSel.addEventListener('change', () => {
+  state.claudeModel = claudeModelSel.value;
+  localStorage.setItem('yv_v2_claude_model', state.claudeModel);
 });
 
 const localServerUrlInput = $('local-server-url');
@@ -335,8 +391,16 @@ function loadPdf(file) {
 }
 
 function refresh() {
-  analyzeBtn.disabled = !(state.pdf && state.apiKey);
-  analyzeBtn.title = !state.pdf ? 'יש להעלות PDF' : (!state.apiKey ? 'יש להזין מפתח Gemini' : '');
+  const hasKey = state.apiKey && (state.mode !== 'hybrid' || state.apiKeyAnthropic);
+  analyzeBtn.disabled = !(state.pdf && hasKey);
+  let missing = '';
+  if (!state.pdf) missing = 'יש להעלות PDF';
+  else if (!state.apiKey) missing = 'יש להזין מפתח Gemini';
+  else if (state.mode === 'hybrid' && !state.apiKeyAnthropic) missing = 'מצב Hybrid דורש גם מפתח Anthropic';
+  analyzeBtn.title = missing;
+  analyzeBtn.textContent = state.mode === 'hybrid'
+    ? '🔍 הפק רישום (Gemini→Claude)'
+    : '🔍 הפק רישום ארכיוני';
 }
 refresh();
 
@@ -522,6 +586,79 @@ ${ctx || '(לא ניתן הקשר מוקדם)'}
 }
 
 // =====================================================================
+//  Stage 2 — Claude refines the Gemini draft (Hybrid mode)
+//  Claude does NOT see the PDF — only the JSON Gemini produced + context.
+//  Its job: historical validation, terminology, Yad Vashem conventions.
+// =====================================================================
+async function claudeRefine(geminiDraft, ctx, sampleInfo) {
+  const samplingNote = sampleInfo
+    ? (sampleInfo.sampled === 'docling-markdown'
+        ? `הטיוטה הוכנה לאחר חילוץ Markdown מלא ע"י Docling מ-${sampleInfo.total} עמודים.`
+        : `הטיוטה הוכנה מ-${sampleInfo.sampled} דגימות עמודים מתוך ${sampleInfo.total} עמודים סה"כ — חלק מהתוכן לא נראה ע"י Gemini.`)
+    : 'הטיוטה הוכנה ע"י Gemini שראה את ה-PDF במלואו.';
+
+  const prompt = `אתה היסטוריון בכיר במדור המסמכים של ארכיון יד ושם, מומחה לתקופה 1900–1948 (שואה, אנטישמיות, מלחמת העולם השנייה, יהדות מזרח אירופה).
+
+תקבל **טיוטת רישום ארכיוני** שהכין Gemini על מסמך היסטורי. תפקידך: **לאמת היסטורית, לחדד טרמינולוגיה, לתקן שגיאות**, ולוודא שהרישום עומד בסטנדרטים של יד ושם.
+
+${samplingNote}
+
+⚠ אתה לא ראית את המסמך עצמו — רק את הטיוטה והקונטקסט. אסור לך להוסיף עובדות שלא בטיוטה. אם פרט תלוי בראיה חזותית שאתה לא רואה — שמור על מה ש-Gemini כתב.
+
+═══ מטלות שלך ═══
+1. **טרמינולוגיה ארכיונית**: וודא שימוש בטרמינולוגיה של יד ושם (גטו, אקציה, גירוש, מחנה ריכוז, מחנה השמדה, יודנראט, פרטיזנים, וכו'). תקן אם Gemini השתמש במונח חופשי.
+2. **שמות מקומות**: וודא שמות מקומות בגבולות 1939, עם תעתיק מקובל (Łódź/לודז', Wilno/וילנה, וכו').
+3. **תאריכים**: וודא פורמט תקין (DD/MM/YYYY או חלקי), והגיוניות היסטורית (לדוגמה: אם הטיוטה אומרת "מכתב יודנראט 1948" — זה אנכרוניזם, סמן ב-notes).
+4. **אישים מוזכרים**: אם מוזכרים שמות של דמויות היסטוריות מוכרות — וודא איות, וציין תפקיד/הקשר אם רלוונטי.
+5. **עברית אקדמית**: שדרג את ה-summary_he לעברית אקדמית-ארכיונית (לא תרגום מילולי).
+6. **English archival register**: שדרג summary_en להיות מקצועי וקצר.
+7. **notes**: הוסף הערות לארכיונאי על: אנכרוניזמים, חוסר התאמה לקונטקסט, מילים שדורשות בירור.
+
+═══ פלט ═══
+החזר את **אותו JSON** עם כל ${Object.keys(geminiDraft).length} השדות, עם התיקונים שלך. אסור להשמיט שדות. אסור להוסיף שדות חדשים.
+
+החזר JSON תקין בלבד, ללא code-fence, ללא טקסט הקדמה.
+
+═══ הקונטקסט מהמוסר ═══
+${ctx || '(לא ניתן)'}
+
+═══ הטיוטה של Gemini ═══
+\`\`\`json
+${JSON.stringify(geminiDraft, null, 2)}
+\`\`\``;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKeyAnthropic,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: state.claudeModel,
+      max_tokens: 8192,
+      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    let err = {}; try { err = JSON.parse(body); } catch {}
+    throw new Error(`Claude HTTP ${res.status}: ${err.error?.message || body.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  let text = (data.content?.[0]?.text || '').trim();
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('Claude החזיר תגובה שאינה JSON תקין');
+    return JSON.parse(m[0]);
+  }
+}
+
+// =====================================================================
 //  Main flow
 // =====================================================================
 function showStatus(msg, kind) {
@@ -599,9 +736,10 @@ analyzeBtn.addEventListener('click', async () => {
       parts = [{ file_data: { file_uri: uploaded.uri, mime_type: uploaded.mimeType || 'application/pdf' } }];
     }
 
+    const stageLabel = state.mode === 'hybrid' ? 'שלב 1/2 · ' : '';
     showStatus(sampleInfo
-      ? `Gemini מפיק רישום מתוך ${sampleInfo.sampled} דגימות (${sampleInfo.total} עמודים סה"כ)…`
-      : 'Gemini מפיק רישום ארכיוני…');
+      ? `${stageLabel}Gemini מפיק רישום מתוך ${sampleInfo.sampled} דגימות (${sampleInfo.total} עמודים סה"כ)…`
+      : `${stageLabel}Gemini מפיק רישום ארכיוני…`);
     const prompt = buildPrompt(contextEl.value.trim(), sampleInfo?.total || '', sampleInfo);
     parts.push({ text: prompt });
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent`, {
@@ -634,10 +772,26 @@ analyzeBtn.addEventListener('click', async () => {
       parsed = JSON.parse(m[0]);
     }
 
-    state.result = parsed;
-    fillForm(parsed);
+    // === Stage 2 (Hybrid only) — Claude refines the Gemini draft ===
+    let final = parsed;
+    if (state.mode === 'hybrid') {
+      showStatus('שלב 2/2 · Claude מאמת היסטורית ומחדד את הרישום…');
+      try {
+        final = await claudeRefine(parsed, contextEl.value.trim(), sampleInfo);
+      } catch (claudeErr) {
+        console.error('Claude refine failed:', claudeErr);
+        showStatus(`⚠ Gemini הצליח אבל Claude נכשל: ${claudeErr.message}\n\nמוצג רישום מ-Gemini בלבד.`, 'err');
+        final = parsed;
+      }
+    }
+
+    state.result = final;
+    fillForm(final);
     resultsEl.classList.add('show');
-    showStatus('✓ הרישום הופק בהצלחה. סקור את השדות וערוך לפי הצורך.', 'ok');
+    const okMsg = state.mode === 'hybrid'
+      ? '✓ הרישום הופק והועשר ע"י Claude. סקור את השדות וערוך לפי הצורך.'
+      : '✓ הרישום הופק בהצלחה. סקור את השדות וערוך לפי הצורך.';
+    showStatus(okMsg, 'ok');
     resultsEl.scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
     console.error(err);
