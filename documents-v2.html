@@ -114,7 +114,8 @@
     <div class="row">
       <label>מצב עיבוד</label>
       <select id="mode">
-        <option value="hybrid" selected>⭐ Hybrid: Gemini חילוץ + Claude רישום (מומלץ — אימות היסטורי)</option>
+        <option value="hybrid" selected>⭐ Hybrid: Gemini + Claude API (מומלץ — אימות היסטורי, בתשלום)</option>
+        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini + Claude CLI מקומי (חינם, דורש שרת מקומי)</option>
         <option value="gemini-only">Gemini בלבד (מהיר, ללא Claude)</option>
       </select>
     </div>
@@ -329,9 +330,10 @@ modelSel.value = state.model;
 claudeModelSel.value = state.claudeModel;
 
 function syncModeUI() {
-  const showClaude = state.mode === 'hybrid';
-  rowAnthropic.style.display = showClaude ? 'grid' : 'none';
-  rowClaudeModel.style.display = showClaude ? 'grid' : 'none';
+  // Anthropic API key only needed for cloud Hybrid
+  rowAnthropic.style.display = state.mode === 'hybrid' ? 'grid' : 'none';
+  // Claude model selector irrelevant for CLI (server picks default model)
+  rowClaudeModel.style.display = state.mode === 'hybrid' ? 'grid' : 'none';
 }
 syncModeUI();
 
@@ -391,16 +393,21 @@ function loadPdf(file) {
 }
 
 function refresh() {
-  const hasKey = state.apiKey && (state.mode !== 'hybrid' || state.apiKeyAnthropic);
+  let hasKey = !!state.apiKey;
+  if (state.mode === 'hybrid' && !state.apiKeyAnthropic) hasKey = false;
+  if (state.mode === 'cli-hybrid' && !state.localServerUrl) hasKey = false;
   analyzeBtn.disabled = !(state.pdf && hasKey);
   let missing = '';
   if (!state.pdf) missing = 'יש להעלות PDF';
   else if (!state.apiKey) missing = 'יש להזין מפתח Gemini';
   else if (state.mode === 'hybrid' && !state.apiKeyAnthropic) missing = 'מצב Hybrid דורש גם מפתח Anthropic';
+  else if (state.mode === 'cli-hybrid' && !state.localServerUrl) missing = 'מצב CLI Hybrid דורש URL של שרת מקומי (למטה)';
   analyzeBtn.title = missing;
   analyzeBtn.textContent = state.mode === 'hybrid'
-    ? '🔍 הפק רישום (Gemini→Claude)'
-    : '🔍 הפק רישום ארכיוני';
+    ? '🔍 הפק רישום (Gemini→Claude API)'
+    : state.mode === 'cli-hybrid'
+      ? '🔍 הפק רישום (Gemini→Claude CLI)'
+      : '🔍 הפק רישום ארכיוני';
 }
 refresh();
 
@@ -659,6 +666,74 @@ ${JSON.stringify(geminiDraft, null, 2)}
 }
 
 // =====================================================================
+//  Stage 2 (CLI variant) — runs `claude` CLI on the user's local machine
+//  via the local-server /api/ask endpoint. Free for Claude Max users.
+// =====================================================================
+async function claudeRefineViaCLI(geminiDraft, ctx, sampleInfo) {
+  if (!state.localServerUrl) throw new Error('חסר URL של שרת מקומי');
+
+  const samplingNote = sampleInfo
+    ? (sampleInfo.sampled === 'docling-markdown'
+        ? `הטיוטה הוכנה לאחר חילוץ Markdown מלא ע"י Docling מ-${sampleInfo.total} עמודים.`
+        : `הטיוטה הוכנה מ-${sampleInfo.sampled} דגימות עמודים מתוך ${sampleInfo.total} עמודים סה"כ — חלק מהתוכן לא נראה ע"י Gemini.`)
+    : 'הטיוטה הוכנה ע"י Gemini שראה את ה-PDF במלואו.';
+
+  const prompt = `אתה היסטוריון בכיר במדור המסמכים של ארכיון יד ושם, מומחה לתקופה 1900–1948 (שואה, אנטישמיות, מלחמת העולם השנייה, יהדות מזרח אירופה).
+
+תקבל **טיוטת רישום ארכיוני** שהכין Gemini על מסמך היסטורי. תפקידך: **לאמת היסטורית, לחדד טרמינולוגיה, לתקן שגיאות**, ולוודא שהרישום עומד בסטנדרטים של יד ושם.
+
+${samplingNote}
+
+⚠ אתה לא ראית את המסמך עצמו — רק את הטיוטה והקונטקסט. אסור להוסיף עובדות שלא בטיוטה.
+
+מטלות:
+1. טרמינולוגיה של יד ושם (גטו, אקציה, גירוש, יודנראט, וכו')
+2. שמות מקומות בגבולות 1939 + תעתיק מקובל
+3. הגיוניות תאריכים
+4. עברית אקדמית-ארכיונית ל-summary_he
+5. English archival register ל-summary_en
+6. notes: הערות לארכיונאי על אנכרוניזמים / חוסר התאמה / נושאים שדורשים בירור
+
+החזר את אותו JSON עם ${Object.keys(geminiDraft).length} השדות, עם התיקונים שלך. אסור להשמיט / להוסיף שדות.
+החזר JSON תקין בלבד, ללא code-fence ובלי טקסט הקדמה.
+
+═══ הקונטקסט מהמוסר ═══
+${ctx || '(לא ניתן)'}
+
+═══ הטיוטה של Gemini ═══
+\`\`\`json
+${JSON.stringify(geminiDraft, null, 2)}
+\`\`\``;
+
+  const url = state.localServerUrl + '/api/ask';
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+  } catch (e) {
+    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${url}). ודא שהשרת + tunnel פעילים. (${e.message})`);
+  }
+  if (!res.ok) {
+    const body = await res.text();
+    let err = {}; try { err = JSON.parse(body); } catch {}
+    throw new Error(`שרת CLI החזיר HTTP ${res.status}: ${err.error || err.stderr || body.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  let text = (data.text || '').trim();
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('Claude CLI החזיר תגובה שאינה JSON תקין');
+    return JSON.parse(m[0]);
+  }
+}
+
+// =====================================================================
 //  Main flow
 // =====================================================================
 function showStatus(msg, kind) {
@@ -772,15 +847,18 @@ analyzeBtn.addEventListener('click', async () => {
       parsed = JSON.parse(m[0]);
     }
 
-    // === Stage 2 (Hybrid only) — Claude refines the Gemini draft ===
+    // === Stage 2 — Claude refines the Gemini draft (Hybrid / CLI Hybrid) ===
     let final = parsed;
-    if (state.mode === 'hybrid') {
-      showStatus('שלב 2/2 · Claude מאמת היסטורית ומחדד את הרישום…');
+    if (state.mode === 'hybrid' || state.mode === 'cli-hybrid') {
+      const label = state.mode === 'cli-hybrid' ? 'Claude CLI מקומי' : 'Claude API';
+      showStatus(`שלב 2/2 · ${label} מאמת היסטורית ומחדד את הרישום…`);
       try {
-        final = await claudeRefine(parsed, contextEl.value.trim(), sampleInfo);
+        final = state.mode === 'cli-hybrid'
+          ? await claudeRefineViaCLI(parsed, contextEl.value.trim(), sampleInfo)
+          : await claudeRefine(parsed, contextEl.value.trim(), sampleInfo);
       } catch (claudeErr) {
         console.error('Claude refine failed:', claudeErr);
-        showStatus(`⚠ Gemini הצליח אבל Claude נכשל: ${claudeErr.message}\n\nמוצג רישום מ-Gemini בלבד.`, 'err');
+        showStatus(`⚠ Gemini הצליח אבל ${label} נכשל: ${claudeErr.message}\n\nמוצג רישום מ-Gemini בלבד.`, 'err');
         final = parsed;
       }
     }
@@ -789,8 +867,10 @@ analyzeBtn.addEventListener('click', async () => {
     fillForm(final);
     resultsEl.classList.add('show');
     const okMsg = state.mode === 'hybrid'
-      ? '✓ הרישום הופק והועשר ע"י Claude. סקור את השדות וערוך לפי הצורך.'
-      : '✓ הרישום הופק בהצלחה. סקור את השדות וערוך לפי הצורך.';
+      ? '✓ הרישום הופק והועשר ע"י Claude API.'
+      : state.mode === 'cli-hybrid'
+        ? '✓ הרישום הופק והועשר ע"י Claude CLI המקומי (חינם).'
+        : '✓ הרישום הופק בהצלחה. סקור את השדות וערוך לפי הצורך.';
     showStatus(okMsg, 'ok');
     resultsEl.scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
