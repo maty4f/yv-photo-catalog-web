@@ -363,6 +363,16 @@
         <b>דורש:</b> מפתח Gemini (למטה) + שרת מקומי פעיל ב-URL למעלה. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
       </div>
     </div>
+    <div class="row">
+      <label>⚙ עקיפת firewall</label>
+      <div style="font-size:12.5px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="proxy-gemini-checkbox" style="margin:0;">
+          <span>השתמש בשרת המקומי כ-proxy ל-Gemini (לשימוש ממחשב עבודה שחוסם Google)</span>
+        </label>
+        <div style="margin-top:4px; color:#888; font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן. דורש URL של שרת CLI מקומי למעלה.</div>
+      </div>
+    </div>
 
     <div class="row provider-row" data-provider="anthropic">
       <label>מפתח Anthropic</label>
@@ -1330,6 +1340,7 @@ providerSel.value = state.provider;
 
 // CLI-Hybrid: local server URL
 state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
+state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
 const localServerUrlInput = document.getElementById('local-server-url');
 if (localServerUrlInput) {
   localServerUrlInput.value = state.localServerUrl;
@@ -1338,6 +1349,19 @@ if (localServerUrlInput) {
     localStorage.setItem('yv_local_server_url', state.localServerUrl);
     refreshAllButtons();
   });
+}
+const proxyGeminiCheckbox = document.getElementById('proxy-gemini-checkbox');
+if (proxyGeminiCheckbox) {
+  proxyGeminiCheckbox.checked = state.proxyGemini;
+  proxyGeminiCheckbox.addEventListener('change', () => {
+    state.proxyGemini = proxyGeminiCheckbox.checked;
+    localStorage.setItem('yv_proxy_gemini', state.proxyGemini ? '1' : '0');
+  });
+}
+function geminiBase() {
+  return (state.proxyGemini && state.localServerUrl)
+    ? state.localServerUrl + '/api/gemini-proxy'
+    : 'https://generativelanguage.googleapis.com';
 }
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
 const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
@@ -1722,7 +1746,7 @@ async function callGemini() {
   parts.push({ text: getRulesAndContext() });
 
   const model = getActiveModel();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const url = geminiBase() + '/v1beta/models/' + model + ':generateContent';
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -1877,7 +1901,7 @@ async function geminiVisualExtract() {
     parts.push({ inline_data: { mime_type: backMime, data: backB64 } });
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelSelGemini.value}:generateContent`;
+  const url = geminiBase() + '/v1beta/models/' + modelSelGemini.value + ':generateContent';
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
@@ -3374,7 +3398,7 @@ async function callGeminiForCollection(sources) {
   const parts = await buildCollectionContent(sources, 'gemini');
   parts.push({ text: buildCollectionPrompt(sources) });
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+  const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
@@ -3615,7 +3639,7 @@ async function translateHeToEn(heText) {
 ${heText}`;
 
   if (state.provider === 'gemini') {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+    const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
@@ -3702,7 +3726,7 @@ async function detectItemTypeFromDesc(descHe) {
 מהי התשובה?`;
   try {
     if (state.provider === 'gemini') {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+      const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },

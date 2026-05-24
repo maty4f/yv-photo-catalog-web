@@ -236,6 +236,16 @@
         <b>דורש:</b> מפתח Gemini (למטה) + שרת מקומי פעיל ב-URL למעלה. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
       </div>
     </div>
+    <div class="row">
+      <label>⚙ עקיפת firewall</label>
+      <div style="font-size:12.5px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="proxy-gemini-checkbox" style="margin:0;">
+          <span>השתמש בשרת המקומי כ-proxy ל-Gemini (לשימוש ממחשב עבודה שחוסם Google)</span>
+        </label>
+        <div style="margin-top:4px; color:#888; font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן. דורש URL של שרת CLI מקומי למעלה.</div>
+      </div>
+    </div>
     <div class="row provider-row" data-provider="anthropic">
       <label>מפתח Anthropic</label>
       <input type="password" id="api-key-anthropic" placeholder="sk-ant-…" autocomplete="off">
@@ -775,6 +785,7 @@ providerSel.value = state.provider;
 
 // CLI-Hybrid: local server URL (used when state.provider === 'cli-hybrid')
 state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
+state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
 const localServerUrlInput = document.getElementById('local-server-url');
 if (localServerUrlInput) {
   localServerUrlInput.value = state.localServerUrl;
@@ -783,6 +794,22 @@ if (localServerUrlInput) {
     localStorage.setItem('yv_local_server_url', state.localServerUrl);
     refreshButtons();
   });
+}
+const proxyGeminiCheckbox = document.getElementById('proxy-gemini-checkbox');
+if (proxyGeminiCheckbox) {
+  proxyGeminiCheckbox.checked = state.proxyGemini;
+  proxyGeminiCheckbox.addEventListener('change', () => {
+    state.proxyGemini = proxyGeminiCheckbox.checked;
+    localStorage.setItem('yv_proxy_gemini', state.proxyGemini ? '1' : '0');
+  });
+}
+// Helper: return the base URL to use for Gemini API.
+// If proxyGemini is enabled AND localServerUrl is set → route through /api/gemini-proxy
+// Otherwise → direct generativelanguage.googleapis.com
+function geminiBase() {
+  return (state.proxyGemini && state.localServerUrl)
+    ? state.localServerUrl + '/api/gemini-proxy'
+    : 'https://generativelanguage.googleapis.com';
 }
 // Copy/fill the active tunnel URL shown in the snippet
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
@@ -831,7 +858,7 @@ if (testGeminiBtn && testGeminiStatus) {
     try {
       // STEP 1: list models — confirms key is valid + shows which models you have access to
       testGeminiStatus.innerHTML = '<span style="color:#5a5a5a;">⏳ שלב 1/2 · מאמת מפתח מול Gemini API…</span>';
-      const listRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=50', {
+      const listRes = await fetch(geminiBase() + '/v1beta/models?pageSize=50', {
         headers: { 'x-goog-api-key': key },
       });
       const listBody = await listRes.text();
@@ -855,7 +882,7 @@ if (testGeminiBtn && testGeminiStatus) {
 
       // STEP 2: try a tiny generateContent call with the selected model
       testGeminiStatus.innerHTML = `<span style="color:#5a5a5a;">⏳ שלב 2/2 · מנסה לקרוא ל-${selectedModel}…</span>`;
-      const genRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`, {
+      const genRes = await fetch(geminiBase() + '/v1beta/models/' + selectedModel + ':generateContent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({
@@ -1822,11 +1849,11 @@ async function geminiOCROnly() {
     // Google's docs are inconsistent — some examples use uploadedFile.uri (full URL),
     // others use uploadedFile.name (e.g. 'files/abc-123'). Use the FULL URI which is
     // what newer v1beta examples show, but fall back to name on failure.
-    docPart = { file_data: { file_uri: uploadedFile.uri || ('https://generativelanguage.googleapis.com/v1beta/' + uploadedFile.name), mime_type: uploadedFile.mimeType || mime } };
+    docPart = { file_data: { file_uri: uploadedFile.uri || (geminiBase() + '/v1beta/' + uploadedFile.name), mime_type: uploadedFile.mimeType || mime } };
     state._lastUploadedFile = uploadedFile; // save for fallback retry
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelSelGemini.value}:generateContent`;
+  const url = geminiBase() + '/v1beta/models/' + modelSelGemini.value + ':generateContent';
   console.log('[Gemini OCR] POST', url);
   console.log('[Gemini OCR] docPart kind:', docPart.inline_data ? 'inline_data' : 'file_data', 'mime:',
     docPart.inline_data?.mime_type || docPart.file_data?.mime_type,
@@ -1911,7 +1938,7 @@ async function uploadToGeminiFiles(file, onProgress, apiKey) {
   if (!mime) mime = 'application/pdf'; // safe default for our use case
   console.log('[Files API] Using MIME:', mime);
 
-  const startRes = await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
+  const startRes = await fetch(geminiBase() + '/upload/v1beta/files', {
     method: 'POST',
     headers: {
       'X-Goog-Upload-Protocol': 'resumable',
@@ -1927,8 +1954,13 @@ async function uploadToGeminiFiles(file, onProgress, apiKey) {
     const err = await startRes.json().catch(() => ({}));
     throw new Error(`Files API התחלה נכשלה: ${err.error?.message || startRes.status}`);
   }
-  const uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
+  let uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
   if (!uploadUrl) throw new Error('Files API לא החזיר URL להעלאה');
+  // When proxying, rewrite the upload URL to also go through our proxy
+  // (Google returns a direct googleapis.com URL that the firewall would block)
+  if (state.proxyGemini && state.localServerUrl) {
+    uploadUrl = uploadUrl.replace('https://generativelanguage.googleapis.com', state.localServerUrl + '/api/gemini-proxy');
+  }
 
   // Step 2: Upload via XHR (so we can track progress)
   return new Promise((resolve, reject) => {
@@ -1960,7 +1992,7 @@ async function uploadToGeminiFiles(file, onProgress, apiKey) {
 async function waitForGeminiFileActive(fileName, apiKey, maxAttempts = 60) {
   console.log('[Files API] Polling for ACTIVE state:', fileName);
   for (let i = 0; i < maxAttempts; i++) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
+    const res = await fetch(geminiBase() + '/v1beta/' + fileName, {
       headers: { 'x-goog-api-key': apiKey },
     });
     if (!res.ok) {
@@ -2521,7 +2553,7 @@ async function callGemini() {
     part = { file_data: { file_uri: uploadedFile.uri, mime_type: uploadedFile.mimeType || mime } };
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+  const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
   console.log('[callGemini] POST', url);
   console.log('[callGemini] part kind:', part.inline_data ? 'inline_data' : 'file_data', 'mime:',
     part.inline_data?.mime_type || part.file_data?.mime_type,
@@ -3057,7 +3089,7 @@ async function runAcademicValidation(useAnthropic) {
       const docB64 = await fileToBase64(state.document);
       docPart = { inline_data: { mime_type: mime, data: docB64 } };
     }
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelSelGemini.value}:generateContent`, {
+    const res = await fetch(geminiBase() + '/v1beta/models/' + modelSelGemini.value + ':generateContent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
       body: JSON.stringify({

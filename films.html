@@ -233,6 +233,16 @@
         <b>דורש:</b> מפתח Gemini (למטה) + שרת מקומי פעיל ב-URL למעלה.
       </div>
     </div>
+    <div class="row">
+      <label>⚙ עקיפת firewall</label>
+      <div style="font-size:12.5px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="proxy-gemini-checkbox" style="margin:0;">
+          <span>השתמש בשרת המקומי כ-proxy ל-Gemini (לשימוש ממחשב עבודה שחוסם Google)</span>
+        </label>
+        <div style="margin-top:4px; color:#888; font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן.</div>
+      </div>
+    </div>
     <div class="row provider-row" data-provider="anthropic pipeline">
       <label>מפתח Anthropic</label>
       <input type="password" id="api-key-anthropic" placeholder="sk-ant-…" autocomplete="off">
@@ -553,6 +563,7 @@ providerSel.value = state.provider;
 
 // CLI-Hybrid: local server URL
 state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
+state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
 const localServerUrlInput = document.getElementById('local-server-url');
 if (localServerUrlInput) {
   localServerUrlInput.value = state.localServerUrl;
@@ -561,6 +572,19 @@ if (localServerUrlInput) {
     localStorage.setItem('yv_local_server_url', state.localServerUrl);
     refreshButtons();
   });
+}
+const proxyGeminiCheckbox = document.getElementById('proxy-gemini-checkbox');
+if (proxyGeminiCheckbox) {
+  proxyGeminiCheckbox.checked = state.proxyGemini;
+  proxyGeminiCheckbox.addEventListener('change', () => {
+    state.proxyGemini = proxyGeminiCheckbox.checked;
+    localStorage.setItem('yv_proxy_gemini', state.proxyGemini ? '1' : '0');
+  });
+}
+function geminiBase() {
+  return (state.proxyGemini && state.localServerUrl)
+    ? state.localServerUrl + '/api/gemini-proxy'
+    : 'https://generativelanguage.googleapis.com';
 }
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
 const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
@@ -1103,7 +1127,7 @@ async function callGemini() {
     videoPart = { file_data: { file_uri: uploadedFile.uri, mime_type: uploadedFile.mimeType || state.film.type || 'video/mp4' } };
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${getActiveModel()}:generateContent`;
+  const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
@@ -1125,7 +1149,7 @@ async function uploadToGeminiFiles(file, onProgress) {
   const apiKey = getActiveApiKey();
 
   // Step 1: Initiate resumable upload — get the upload URL
-  const startRes = await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
+  const startRes = await fetch(geminiBase() + '/upload/v1beta/files', {
     method: 'POST',
     headers: {
       'X-Goog-Upload-Protocol': 'resumable',
@@ -1141,8 +1165,11 @@ async function uploadToGeminiFiles(file, onProgress) {
     const err = await startRes.json().catch(() => ({}));
     throw new Error(`Files API התחלה נכשלה: ${err.error?.message || startRes.status}`);
   }
-  const uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
+  let uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
   if (!uploadUrl) throw new Error('Files API לא החזיר URL להעלאה');
+  if (state.proxyGemini && state.localServerUrl) {
+    uploadUrl = uploadUrl.replace('https://generativelanguage.googleapis.com', state.localServerUrl + '/api/gemini-proxy');
+  }
 
   // Step 2: Upload via XHR to track progress
   return new Promise((resolve, reject) => {
@@ -1173,7 +1200,7 @@ async function uploadToGeminiFiles(file, onProgress) {
 async function waitForFileActive(fileName, maxAttempts = 60) {
   const apiKey = getActiveApiKey();
   for (let i = 0; i < maxAttempts; i++) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
+    const res = await fetch(geminiBase() + '/v1beta/' + fileName, {
       headers: { 'x-goog-api-key': apiKey },
     });
     if (!res.ok) throw new Error(`בדיקת סטטוס נכשלה: ${res.status}`);
