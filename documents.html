@@ -246,6 +246,18 @@
         <div style="margin-top:4px; color:#888; font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן. דורש URL של שרת CLI מקומי למעלה.</div>
       </div>
     </div>
+    <div class="row">
+      <label>🔬 Docling (PDFים גדולים)</label>
+      <div style="font-size:12.5px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="use-docling-checkbox" style="margin:0;">
+          <span>השתמש ב-Docling לקבצי PDF מעל 50MB (חילוץ מקומי במחשב שלך, מעקף את מגבלת Gemini)</span>
+        </label>
+        <div style="margin-top:4px; color:#888; font-size:11px;">
+          אם מסומן: PDFים מעל 50MB יישלחו לשרת המקומי שלך → Docling יחלץ Markdown מובנה → ה-Markdown ישלח ל-Claude לקטלוג (במקום OCR של Gemini). דורש URL של שרת מקומי + Docling מותקן (<code>local-server/.docling-venv/</code>).
+        </div>
+      </div>
+    </div>
     <div class="row provider-row" data-provider="anthropic">
       <label>מפתח Anthropic</label>
       <input type="password" id="api-key-anthropic" placeholder="sk-ant-…" autocomplete="off">
@@ -802,6 +814,34 @@ if (proxyGeminiCheckbox) {
     state.proxyGemini = proxyGeminiCheckbox.checked;
     localStorage.setItem('yv_proxy_gemini', state.proxyGemini ? '1' : '0');
   });
+}
+// Docling toggle — when set, large PDFs go through the user's local Docling worker
+// instead of being uploaded to Gemini Files API.
+state.useDocling = localStorage.getItem('yv_use_docling') === '1';
+const useDoclingCheckbox = document.getElementById('use-docling-checkbox');
+if (useDoclingCheckbox) {
+  useDoclingCheckbox.checked = state.useDocling;
+  useDoclingCheckbox.addEventListener('change', () => {
+    state.useDocling = useDoclingCheckbox.checked;
+    localStorage.setItem('yv_use_docling', state.useDocling ? '1' : '0');
+  });
+}
+
+// Docling extraction — sends PDF to local server, gets back full markdown.
+// Used as a substitute for geminiOCROnly() when the PDF is too large for Gemini.
+const DOCLING_PDF_THRESHOLD_MB = 50;
+async function doclingExtract(file) {
+  if (!state.localServerUrl) throw new Error('Docling: חסר URL של שרת מקומי');
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(state.localServerUrl + '/api/docling', { method: 'POST', body: fd });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Docling: HTTP ${res.status} — ${t.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  if (!data.ok) throw new Error(`Docling error: ${data.error || 'unknown'}`);
+  return data;  // {markdown, num_pages, num_chars, has_tables, elapsed_sec}
 }
 // Helper: return the base URL to use for Gemini API.
 // If proxyGemini is enabled AND localServerUrl is set → route through /api/gemini-proxy
@@ -1693,10 +1733,29 @@ async function callHybrid() {
     throw new Error('מצב Hybrid דורש מפתח Anthropic וגם מפתח Gemini.');
   }
 
-  // STEP 1: Gemini does the OCR — returns raw text in original language(s)
-  // with [?] for unclear words, [לא קריא] for unreadable sections
-  showStatus('שלב 1/2 · Gemini מבצע OCR על המסמך…', 'info');
-  const ocrResult = await geminiOCROnly();
+  const sizeMB = state.document ? state.document.size / 1024 / 1024 : 0;
+  const useDoclingForThisFile = state.useDocling && state.localServerUrl
+    && state.document?.type === 'application/pdf'
+    && sizeMB > DOCLING_PDF_THRESHOLD_MB;
+
+  let ocrResult;
+  if (useDoclingForThisFile) {
+    // === STEP 1 (Docling) === bypass Gemini Files API, use local Docling
+    showStatus(`🔬 שלב 1/2 · קובץ גדול (${sizeMB.toFixed(0)}MB) — שולח ל-Docling במחשב המקומי…`, 'info');
+    const dResult = await doclingExtract(state.document);
+    showStatus(`Docling חילץ ${dResult.num_chars.toLocaleString()} תווים מ-${dResult.num_pages} עמודים (${dResult.elapsed_sec}s).`, 'info');
+    // Truncate if extremely large (cap at ~200K chars = ~50K tokens to leave room for prompt)
+    ocrResult = dResult.markdown || '';
+    if (ocrResult.length > 200000) {
+      const head = ocrResult.slice(0, 100000);
+      const tail = ocrResult.slice(-80000);
+      ocrResult = head + '\n\n[...טקסט מהאמצע הושמט בגלל אורך — ' + (dResult.num_chars - 180000).toLocaleString() + ' תווים...]\n\n' + tail;
+    }
+  } else {
+    // === STEP 1 (Gemini) === default path — Gemini OCR
+    showStatus('שלב 1/2 · Gemini מבצע OCR על המסמך…', 'info');
+    ocrResult = await geminiOCROnly();
+  }
 
   // STEP 2: Claude takes the OCR text + cataloging rules → structured JSON
   showStatus('שלב 2/2 · Claude מבנה את הקטלוג לפי חוקי ספיר…', 'info');
@@ -1709,8 +1768,27 @@ async function callCliHybrid() {
   if (!hasCliHybridReady()) {
     throw new Error('מצב CLI Hybrid דורש מפתח Gemini + URL של שרת CLI מקומי.');
   }
-  showStatus('שלב 1/2 · Gemini מבצע OCR על המסמך…', 'info');
-  const ocrResult = await geminiOCROnly();
+
+  const sizeMB = state.document ? state.document.size / 1024 / 1024 : 0;
+  const useDoclingForThisFile = state.useDocling && state.localServerUrl
+    && state.document?.type === 'application/pdf'
+    && sizeMB > DOCLING_PDF_THRESHOLD_MB;
+
+  let ocrResult;
+  if (useDoclingForThisFile) {
+    showStatus(`🔬 שלב 1/2 · קובץ גדול (${sizeMB.toFixed(0)}MB) — שולח ל-Docling במחשב המקומי…`, 'info');
+    const dResult = await doclingExtract(state.document);
+    showStatus(`Docling חילץ ${dResult.num_chars.toLocaleString()} תווים מ-${dResult.num_pages} עמודים (${dResult.elapsed_sec}s).`, 'info');
+    ocrResult = dResult.markdown || '';
+    if (ocrResult.length > 200000) {
+      const head = ocrResult.slice(0, 100000);
+      const tail = ocrResult.slice(-80000);
+      ocrResult = head + '\n\n[...טקסט מהאמצע הושמט בגלל אורך — ' + (dResult.num_chars - 180000).toLocaleString() + ' תווים...]\n\n' + tail;
+    }
+  } else {
+    showStatus('שלב 1/2 · Gemini מבצע OCR על המסמך…', 'info');
+    ocrResult = await geminiOCROnly();
+  }
   showStatus('שלב 2/2 · Claude CLI מקומי מבנה את הקטלוג…', 'info');
   return await claudeStructureFromOCR_viaCLI(ocrResult);
 }
