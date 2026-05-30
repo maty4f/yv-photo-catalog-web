@@ -1902,25 +1902,48 @@ ${rulesPrompt}
   // Use the model picked in the UI (default Sonnet = fast). Without this the CLI
   // falls back to its own default, which may be the slow Opus.
   const model = modelSelAnthropic.value.includes('opus') ? 'opus' : 'sonnet';
-  const url = state.localServerUrl + '/api/ask';
+
+  // Use the ASYNC endpoint + polling. A full Sapir catalog is a long Claude run
+  // that can exceed the Cloudflare quick-tunnel ~100s limit (HTTP 524 → "Failed
+  // to fetch") on the synchronous /api/ask. POST returns a jobId immediately;
+  // we poll until done. Same pattern as documents-tik.html.
+  const base = state.localServerUrl;
   let res;
   try {
-    res = await fetch(url, {
+    res = await fetch(base + '/api/ask-async', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, model }),
     });
   } catch (e) {
-    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${url}). ודא שהשרת + tunnel פעילים. (${e.message})`);
+    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${base}). ודא שהשרת + tunnel פעילים, ושכתובת ה-tunnel מעודכנת (היא מתחלפת בכל הפעלה). (${e.message})`);
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(`שרת CLI החזיר HTTP ${res.status}: ${err.error || err.stderr || ''}`);
   }
-  const data = await res.json();
-  let text = (data.text || '').trim();
-  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-  return parseJsonResponse(text, 'Claude CLI');
+  const { jobId } = await res.json();
+  if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
+
+  // Poll up to ~5 minutes. Building one structured catalog is far shorter than a
+  // multi-page תיק, but allow headroom for cold starts / slow models.
+  const started = Date.now(), maxMs = 5 * 60 * 1000;
+  while (Date.now() - started < maxMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    let pr;
+    try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; } // transient — keep polling
+    if (!pr.ok) continue;
+    const j = await pr.json();
+    const secs = Math.round((Date.now() - started) / 1000);
+    showStatus(`שלב 2/2 · Claude (CLI) בודק ובונה קטלוג… (${secs} שניות)`, 'info');
+    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
+    if (j.status === 'done') {
+      let text = (j.text || '').trim();
+      text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      return parseJsonResponse(text, 'Claude CLI');
+    }
+  }
+  throw new Error('הריצה נמשכה מעל 5 דקות ולא הסתיימה. נסה שוב, או בדוק שהשרת המקומי תקין.');
 }
 
 // Gemini step — pure vision, returns descriptive Hebrew text (no JSON)
