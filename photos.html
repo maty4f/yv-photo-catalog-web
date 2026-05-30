@@ -2357,7 +2357,20 @@ function fillResultsForm(d) {
   renderStudioResult(d.studio_id);
 }
 
-function setVal(id, v) { document.getElementById(id).value = v || ''; }
+// Strip dual-axis confidence markup that the model sometimes injects into prose
+// fields (e.g. <span class="cv c-mid">V~</span><span class="ch c-mid">H~</span>),
+// plus any bare V✓/H~ tokens. These belong in JSON, never in the text fields.
+function stripConfidenceMarkup(v) {
+  if (typeof v !== 'string') return v || '';
+  return v
+    .replace(/<span[^>]*class="(?:cv|ch)[^"]*"[^>]*>[^<]*<\/span>/g, '')
+    .replace(/<\/?span[^>]*>/g, '')
+    .replace(/[VH][✓~?]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +([,.;:)])/g, '$1')
+    .trim();
+}
+function setVal(id, v) { document.getElementById(id).value = stripConfidenceMarkup(v); }
 
 function addIdRow(row) {
   const tbody = document.getElementById('r-id-tbody');
