@@ -2483,9 +2483,16 @@ function fillResultsForm(d) {
 function stripConfidenceMarkup(v) {
   if (typeof v !== 'string') return v || '';
   return v
-    .replace(/<span[^>]*class="(?:cv|ch)[^"]*"[^>]*>[^<]*<\/span>/g, '')
-    .replace(/<\/?span[^>]*>/g, '')
-    .replace(/[VH][✓~?]/g, '')
+    // Any span-tag-like fragment ending in '>' or '&gt;' — opening or closing,
+    // with or without a leading '<' (the model sometimes drops it), and with
+    // raw or HTML-escaped angle brackets. Archival prose never contains a
+    // literal "span>" so this is safe. Catches: <span class="cv ...">,
+    // span class="ch ...">, </span>, /span>, span>, &lt;span ...&gt;.
+    .replace(/(?:<|&lt;)?\s*\/?\s*span(?:\s[^<>]*)?(?:>|&gt;)/gi, '')
+    // Bare dual-axis tokens: V✓ H~ V? in any combination.
+    .replace(/[VH]\s*[✓~?]/g, '')
+    // Orphan confidence class attributes left by mangled tags.
+    .replace(/\s*class\s*=\s*"(?:cv|ch)[^"]*"/gi, '')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/ +([,.;:)])/g, '$1')
     .trim();

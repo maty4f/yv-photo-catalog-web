@@ -2963,8 +2963,23 @@ function paintConfidenceFor(id, conf) {
   labelEl.appendChild(badge);
 }
 
+// Strip dual-axis confidence markup the model sometimes injects into prose
+// fields (e.g. <span class="cv c-mid">V~</span>, or the malformed
+// 'span class="cv c-high">V✓</span>' with a dropped leading '<'), plus bare
+// V✓/H~/V? tokens. Confidence belongs in the data, never in the copy-paste text.
+function stripConfidenceMarkup(v) {
+  if (typeof v !== 'string') return v || '';
+  return v
+    .replace(/(?:<|&lt;)?\s*\/?\s*span(?:\s[^<>]*)?(?:>|&gt;)/gi, '')
+    .replace(/[VH]\s*[✓~?]/g, '')
+    .replace(/\s*class\s*=\s*"(?:cv|ch)[^"]*"/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +([,.;:)])/g, '$1')
+    .trim();
+}
+
 function fillResults(d) {
-  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = stripConfidenceMarkup(v); };
   setVal('r-title-he', d.title_he); setVal('r-title-en', d.title_en);
   setVal('r-doc-type', d.doc_type); setVal('r-archive-id', d.archive_id); setVal('r-intake-num', d.intake_num);
   setVal('r-doc-date', d.doc_date); setVal('r-languages', d.languages); setVal('r-writing-type', d.writing_type);

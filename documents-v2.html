@@ -182,6 +182,11 @@
       </div>
     </div>
     <input type="file" id="file-input" accept="application/pdf" hidden>
+    <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
+    <div style="margin-top:10px;">
+      <button type="button" id="pick-folder-btn" class="secondary">📁 או העלה תיקיית תמונות — ייאוחדו ל-PDF אחד</button>
+      <div class="small" style="margin-top:4px; color:#666;">JPG/PNG/TIFF — כל התמונות יאוחדו לקובץ PDF אחד (יורד אוטומטית) וישמש לרישום.</div>
+    </div>
   </div>
 
   <!-- =================== הקשר =================== -->
@@ -377,13 +382,109 @@ localServerUrlInput.addEventListener('input', () => {
 });
 
 // =====================================================================
+//  Combined PDF of uploaded image scans (self-contained, no libs)
+//  v2 only understands PDF — so a folder of image scans is merged into one
+//  PDF in-browser, downloaded, and then fed into the normal analysis flow.
+// =====================================================================
+async function pdfPageFor(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('טעינת תמונה נכשלה')); im.src = url; });
+    const edge = 2000;
+    const scale = Math.min(1, edge / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    const b64 = cv.toDataURL('image/jpeg', 0.85).split(',')[1];
+    const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { bytes, width: w, height: h };
+  } finally { URL.revokeObjectURL(url); }
+}
+function buildImagesPdf(pages) {
+  const enc = s => { const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) & 0xff; return a; };
+  const parts = []; let offset = 0; const offsets = [];
+  const push = chunk => { const u = typeof chunk === 'string' ? enc(chunk) : chunk; parts.push(u); offset += u.length; };
+  const mark = n => { offsets[n] = offset; };
+  const N = pages.length;
+  const kids = []; for (let i = 0; i < N; i++) kids.push((3 + i * 3) + ' 0 R');
+  push('%PDF-1.3\n%\xff\xff\xff\xff\n');
+  mark(1); push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  mark(2); push('2 0 obj\n<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + N + ' >>\nendobj\n');
+  for (let i = 0; i < N; i++) {
+    const p = pages[i], pageN = 3 + i * 3, contentN = pageN + 1, imgN = pageN + 2, W = p.width, H = p.height;
+    mark(pageN);
+    push(pageN + ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + ']' +
+      ' /Resources << /XObject << /Im0 ' + imgN + ' 0 R >> >> /Contents ' + contentN + ' 0 R >>\nendobj\n');
+    const content = 'q ' + W + ' 0 0 ' + H + ' 0 0 cm /Im0 Do Q';
+    mark(contentN);
+    push(contentN + ' 0 obj\n<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream\nendobj\n');
+    mark(imgN);
+    push(imgN + ' 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + W + ' /Height ' + H +
+      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + p.bytes.length + ' >>\nstream\n');
+    push(p.bytes); push('\nendstream\nendobj\n');
+  }
+  const xrefStart = offset, total = 2 + N * 3;
+  push('xref\n0 ' + (total + 1) + '\n0000000000 65535 f \n');
+  for (let n = 1; n <= total; n++) push(String(offsets[n] || 0).padStart(10, '0') + ' 00000 n \n');
+  push('trailer\n<< /Size ' + (total + 1) + ' /Root 1 0 R >>\nstartxref\n' + xrefStart + '\n%%EOF');
+  let len = 0; parts.forEach(p => len += p.length);
+  const out = new Uint8Array(len); let o = 0; parts.forEach(p => { out.set(p, o); o += p.length; });
+  return out;
+}
+function triggerDownload(blob, fname) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+// Merge a folder/drop of image scans into one PDF, download it, and load it as
+// the document to be cataloged (v2's whole flow is PDF-based).
+async function loadImagesAsMergedPdf(fileList) {
+  const imgs = [...fileList]
+    .filter(f => f.type.startsWith('image/') || /\.(jpe?g|png|tiff?|webp)$/i.test(f.name))
+    .sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, undefined, { numeric: true }));
+  if (!imgs.length) { alert('לא נמצאו תמונות בתיקייה.'); return; }
+  try {
+    const pages = [];
+    for (let i = 0; i < imgs.length; i++) {
+      showStatus(`מאחד ${imgs.length} תמונות ל-PDF… ${i + 1}/${imgs.length}`, 'info');
+      pages.push(await pdfPageFor(imgs[i]));
+    }
+    const tikName = ((imgs[0].webkitRelativePath || '').split('/')[0] || 'תיק').replace(/[\\/:*?"<>|]+/g, '_');
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const fname = tikName + '_' + today + '.pdf';
+    const blob = new Blob([buildImagesPdf(pages)], { type: 'application/pdf' });
+    triggerDownload(blob, fname);
+    loadPdf(new File([blob], fname, { type: 'application/pdf' }));
+    showStatus(`✓ אוחדו ${imgs.length} תמונות ל-PDF (${fname.replace(/[<>&]/g, '')}) — מוכן לרישום.`, 'ok');
+  } catch (e) {
+    showStatus('⚠ איחוד ה-PDF נכשל: ' + e.message, 'err');
+  }
+}
+
+// =====================================================================
 //  File upload
 // =====================================================================
 drop.addEventListener('click', () => fileInput.click());
 ['dragenter', 'dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('dragover'); }));
 ['dragleave', 'drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('dragover'); }));
-drop.addEventListener('drop', ev => { const f = ev.dataTransfer.files?.[0]; if (f) loadPdf(f); });
+drop.addEventListener('drop', ev => {
+  const files = [...(ev.dataTransfer.files || [])];
+  if (!files.length) return;
+  const isPdf = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+  const imgs = files.filter(f => f.type.startsWith('image/') || /\.(jpe?g|png|tiff?|webp)$/i.test(f.name));
+  // Images (and no PDF) → merge them into one PDF; otherwise treat as a single PDF.
+  if (imgs.length && !files.some(isPdf)) loadImagesAsMergedPdf(files);
+  else loadPdf(files[0]);
+});
 fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) loadPdf(f); });
+$('pick-folder-btn').addEventListener('click', () => $('folder-input').click());
+$('folder-input').addEventListener('change', e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (files.length) loadImagesAsMergedPdf(files);
+});
 
 function loadPdf(file) {
   if (file.type && file.type !== 'application/pdf') {
@@ -756,24 +857,9 @@ ${ctx || '(לא ניתן)'}
 ${JSON.stringify(geminiDraft, null, 2)}
 \`\`\``;
 
-  const url = state.localServerUrl + '/api/ask';
-  let res;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
-    });
-  } catch (e) {
-    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${url}). ודא שהשרת + tunnel פעילים. (${e.message})`);
-  }
-  if (!res.ok) {
-    const body = await res.text();
-    let err = {}; try { err = JSON.parse(body); } catch {}
-    throw new Error(`שרת CLI החזיר HTTP ${res.status}: ${err.error || err.stderr || body.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  let text = (data.text || '').trim();
+  // Text-only refine — route through the async /api/ask-async job runner so the
+  // call survives the Cloudflare quick-tunnel ~100s limit (same as the direct read).
+  let text = (await runClaudeJobV2(prompt, [])).trim();
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
   try {
     return JSON.parse(text);
@@ -970,6 +1056,21 @@ analyzeBtn.addEventListener('click', async () => {
   }
 });
 
+// Strip dual-axis confidence markup the model sometimes injects into prose
+// fields (e.g. <span class="cv c-mid">V~</span>, or the malformed
+// 'span class="cv c-high">V✓</span>' with a dropped leading '<'), plus bare
+// V✓/H~/V? tokens. Confidence belongs in the data, never in the copy-paste text.
+function stripConfidenceMarkup(v) {
+  if (typeof v !== 'string') return v || '';
+  return v
+    .replace(/(?:<|&lt;)?\s*\/?\s*span(?:\s[^<>]*)?(?:>|&gt;)/gi, '')
+    .replace(/[VH]\s*[✓~?]/g, '')
+    .replace(/\s*class\s*=\s*"(?:cv|ch)[^"]*"/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +([,.;:)])/g, '$1')
+    .trim();
+}
+
 function fillForm(r) {
   const map = {
     'r-doc-type': r.doc_type,
@@ -999,7 +1100,7 @@ function fillForm(r) {
   };
   for (const [id, val] of Object.entries(map)) {
     const el = $(id);
-    if (el) el.value = val || '';
+    if (el) el.value = stripConfidenceMarkup(val);
   }
   $('raw-json').textContent = JSON.stringify(r, null, 2);
 }
