@@ -1834,7 +1834,7 @@ async function callCliHybrid() {
   }
   showStatus('שלב 1/2 · Gemini מנתח את התצלום ויזואלית…', 'info');
   const visualDescription = await geminiVisualExtract();
-  showStatus('שלב 2/2 · Claude CLI מקומי בונה קטלוג מובנה…', 'info');
+  showStatus('שלב 2/2 · Claude קורא את התמונה בעצמו, מצליב עם Gemini ובונה קטלוג…', 'info');
   return await claudeStructureFromVisual_viaCLI(visualDescription);
 }
 
@@ -1842,9 +1842,18 @@ async function claudeStructureFromVisual_viaCLI(visualDescription) {
   const ctxText = contextEl.value.trim();
   const studiosBrief = state.studios.map(s => `${s.id} | ${s.name} (${s.city}, ${s.country})`).join('\n');
   const rulesPrompt = buildSystemRules(ctxText, studiosBrief);
-  const prompt = `אני שולח לך **ניתוח ויזואלי שכבר בוצע ע"י Gemini** של תצלום ארכיוני. תפקידך: לקבל את הניתוח הזה + פרופיל האוסף + תיאור הפריט מטופס איסוף + חוקי הקטלוג של יד ושם, ולהפיק JSON מובנה לפי הסכימה.
 
-חשוב: אל תוסיף תוכן ויזואלי שאינו בניתוח של Gemini. אם Gemini אומר "[לא ברור]" — שמור על זה. אם Gemini לא ראה משהו — אסור להמציא.
+  // Give Claude the actual image(s) too — a real second visual pass alongside
+  // Gemini, so place identification (camps, ghettos, landmarks) is cross-checked.
+  const images = [{ mime: state.photos.front.type || 'image/jpeg', data: await fileToBase64(state.photos.front) }];
+  if (state.photos.back) images.push({ mime: state.photos.back.type || 'image/jpeg', data: await fileToBase64(state.photos.back) });
+
+  const prompt = `קיבלת תצלום ארכיוני של יד ושם (קבצי התמונה צוינו למעלה — קרא אותם). בנוסף, מצורף **ניתוח ויזואלי עצמאי של Gemini** על אותו תצלום. תפקידך לבצע שני דברים:
+
+1. **התבונן בתמונה בעצמך** והפק קריאה ויזואלית עצמאית — אל תסתמך רק על Gemini. שים לב במיוחד לזיהוי **מקום**: שערים, שלטים, צריחי שמירה, אדריכלות, כיתובים, סמלים. אם יש ראיה ויזואלית ברורה למחנה/גטו/אתר מוכר (למשל שער עם הכיתוב "Arbeit macht frei", צריחי השמירה והמסילה של אושוויץ-בירקנאו) — זהה אותו עם סימון ודאות מתאים. אם אין ראיה ברורה — "מחנה/גטו לא מזוהה" (אל תנחש).
+2. **הצלב את הקריאה שלך עם זו של Gemini**: היכן שאתם מסכימים — חזק את הביטחון. היכן שאתם נחלקים (במיוחד על מקום, אנשים, תאריך) — ציין זאת בשדה ההערות ("Gemini: ... / Claude: ..."), ובחר את הקריאה הנתמכת ביותר בראיה ויזואלית.
+
+לאחר מכן הפק JSON מובנה לפי הסכימה. שדה התיאור הויזואלי ישקף את הקריאה המשולבת (שלך + Gemini), כפרוזה נקייה בלבד ללא תגיות HTML.
 
 ## הניתוח הויזואלי של Gemini
 
@@ -1862,7 +1871,7 @@ ${rulesPrompt}
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, images }),
     });
   } catch (e) {
     throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${url}). ודא שהשרת + tunnel פעילים. (${e.message})`);
