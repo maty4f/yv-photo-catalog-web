@@ -70,8 +70,12 @@
   .pr-badge { font-size: 10.5px; padding: 1px 7px; border-radius: 10px; font-weight: 600; white-space: nowrap; }
   .pr-badge.pending { color: var(--muted); background: #ededea; border: 1px solid var(--line); }
   .pr-badge.identified { color: #155724; background: #e6f4ea; border: 1px solid #b7dfc2; }
-  #parts-rail .pr-foot { padding: 8px; border-top: 1px solid var(--line); }
+  .pr-badge.analyzing { color: #0d47a1; background: #e3f0fb; border: 1px solid #b3d4f0; }
+  .pr-badge.error { color: var(--soft); background: #fbe9e9; border: 1px solid #e6bcbc; }
+  #parts-rail .pr-foot { padding: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
   #parts-rail .pr-foot button { width: 100%; padding: 8px; font-size: 12.5px; }
+  #parts-rail .pr-foot button:disabled { opacity: .5; cursor: default; }
+  #pr-cancel-btn { background: var(--soft); }
   #parts-rail .pr-progress { padding: 0 12px 8px; color: var(--muted); font-size: 11px; }
   @media (max-width: 1400px) { #parts-rail { position: static; width: auto; max-height: none; margin: 0 0 16px;
     box-shadow: none; } }
@@ -614,6 +618,8 @@
   <div class="pr-progress" id="pr-progress"></div>
   <div class="pr-list" id="pr-list"></div>
   <div class="pr-foot">
+    <button type="button" id="pr-auto-btn">⚡ זהה הכל אוטומטית</button>
+    <button type="button" id="pr-cancel-btn" style="display:none">⛔ עצור</button>
     <button type="button" id="pr-combine-btn" disabled>🎬 זיהוי כולל</button>
   </div>
 </aside>
@@ -621,7 +627,7 @@
 <script type="module">
 const state = {
   film: null, filmMeta: null, identification: null,
-  filmParts: [], currentPartIdx: -1,
+  filmParts: [], currentPartIdx: -1, autoRunning: false,
   provider: localStorage.getItem('yv_api_provider') || 'gemini',
   apiKeys: {
     anthropic: localStorage.getItem('yv_api_key_anthropic') || '',
@@ -1033,19 +1039,26 @@ function refreshButtons() {
   identifyBtn.title = !hasFilm ? 'יש להעלות סרט' : (!hasKey ? missingMsg : '');
 }
 
-identifyBtn.addEventListener('click', async () => {
-  identifyBtn.disabled = true;
-  const providerLabel = state.provider === 'pipeline'
+function providerLabel() {
+  return state.provider === 'pipeline'
     ? 'Pipeline (Gemini → Claude)'
     : state.provider === 'cli-hybrid'
       ? 'CLI Hybrid (Gemini → Claude CLI)'
       : (state.provider === 'gemini' ? 'Gemini' : 'Claude');
-  identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel + '…';
-  showStatus('שולח את הסרט ל-' + providerLabel + ' (30-180 שניות)…', 'info');
+}
+// Run the currently selected provider against state.film and return the result.
+function callActiveProvider() {
+  return state.provider === 'pipeline'   ? callPipeline()
+    : state.provider === 'cli-hybrid' ? callCliHybrid()
+    : (state.provider === 'gemini' ? callGemini() : callAnthropic());
+}
+
+identifyBtn.addEventListener('click', async () => {
+  identifyBtn.disabled = true;
+  identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel() + '…';
+  showStatus('שולח את הסרט ל-' + providerLabel() + ' (30-180 שניות)…', 'info');
   try {
-    const result = state.provider === 'pipeline'   ? await callPipeline()
-      : state.provider === 'cli-hybrid' ? await callCliHybrid()
-      : (state.provider === 'gemini' ? await callGemini() : await callAnthropic());
+    const result = await callActiveProvider();
     state.identification = result;
     fillResults(result);
     document.getElementById('results').classList.add('show');
@@ -2016,20 +2029,24 @@ function renderPartsRail() {
   prProgress.textContent = doneCount === parts.length
     ? '✓ כל החלקים זוהו — ניתן לבצע זיהוי כולל'
     : `נותרו ${parts.length - doneCount} חלקים לזיהוי`;
+  const BADGES = {
+    identified: '<span class="pr-badge identified">✓ זוהה</span>',
+    analyzing:  '<span class="pr-badge analyzing">🔄 מנתח…</span>',
+    error:      '<span class="pr-badge error">⚠ נכשל</span>',
+    pending:    '<span class="pr-badge pending">○ טרם</span>',
+  };
   prList.innerHTML = parts.map(p => {
     const cur = p.idx === state.currentPartIdx ? ' current' : '';
-    const badge = p.status === 'identified'
-      ? '<span class="pr-badge identified">✓ זוהה</span>'
-      : '<span class="pr-badge pending">○ טרם</span>';
+    const badge = BADGES[p.status] || BADGES.pending;
     return `<div class="pr-item${cur}" data-idx="${p.idx}">
       <div class="pr-top"><span class="pr-name">חלק ${p.idx + 1}</span>${badge}</div>
       <div class="pr-tc">${formatDuration(p.startSec)} → ${formatDuration(p.endSec)}</div>
     </div>`;
   }).join('');
   prList.querySelectorAll('.pr-item').forEach(el => {
-    el.addEventListener('click', () => loadPartIntoUI(parseInt(el.dataset.idx)));
+    el.addEventListener('click', () => { if (!state.autoRunning) loadPartIntoUI(parseInt(el.dataset.idx)); });
   });
-  prCombineBtn.disabled = doneCount === 0;
+  prCombineBtn.disabled = state.autoRunning || doneCount === 0;
 }
 
 // Load a specific part as the active film and restore its identification.
@@ -2125,6 +2142,95 @@ prCombineBtn.addEventListener('click', () => {
     ? `✓ זיהוי כולל מ-${state.filmParts.length - pending} חלקים (${pending} עדיין לא זוהו)`
     : '✓ זיהוי כולל מכל החלקים הושלם.', 'ok');
   document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+// ── Auto-identify all parts sequentially (one after another) ──────────
+const prAutoBtn = document.getElementById('pr-auto-btn');
+const prCancelBtn = document.getElementById('pr-cancel-btn');
+let autoRunCancel = false;
+
+// Load a part as the active film and resolve once its metadata is ready,
+// so the provider call has correct state.film + state.filmMeta.
+function loadPartAwaitMeta(idx) {
+  return new Promise(resolve => {
+    const part = state.filmParts[idx];
+    state.currentPartIdx = idx;
+    const file = new File([part.blob], part.name, { type: part.blob.type || 'video/mp4' });
+    // loadFilm sets filmPreview.onloadedmetadata (which sets state.filmMeta);
+    // defer resolve to the next tick so that handler has already run.
+    filmPreview.addEventListener('loadedmetadata', () => setTimeout(resolve, 0), { once: true });
+    loadFilm(file);
+    renderPartsRail();
+  });
+}
+
+async function autoIdentifyAllParts() {
+  if (!state.filmParts.length) return;
+  if (!hasAllRequiredKeys()) { alert('יש להגדיר API key לפני זיהוי אוטומטי'); return; }
+  const todo = state.filmParts.filter(p => p.status !== 'identified');
+  if (!todo.length) { alert('כל החלקים כבר זוהו'); return; }
+
+  autoRunCancel = false;
+  state.autoRunning = true;
+  prAutoBtn.style.display = 'none';
+  prCancelBtn.style.display = 'block';
+  prCancelBtn.disabled = false;
+  prCancelBtn.textContent = '⛔ עצור';
+  identifyBtn.disabled = true;
+  prCombineBtn.disabled = true;
+
+  let done = 0;
+  for (let i = 0; i < state.filmParts.length; i++) {
+    if (autoRunCancel) break;
+    const part = state.filmParts[i];
+    if (part.status === 'identified') continue;
+    part.status = 'analyzing';
+    renderPartsRail();
+    showStatus(`⚡ זיהוי אוטומטי — חלק ${i + 1}/${state.filmParts.length} דרך ${providerLabel()}…`, 'info');
+    await loadPartAwaitMeta(i);
+    try {
+      const result = await callActiveProvider();
+      part.identification = result;
+      part.status = 'identified';
+      state.identification = result;
+      fillResults(result);
+      document.getElementById('results').classList.add('show');
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('download-bar').style.display = 'flex';
+      done++;
+    } catch (err) {
+      console.error('auto-identify part', i + 1, err);
+      part.status = 'error';
+      part.error = err.message;
+      showStatus(`⚠ חלק ${i + 1} נכשל: ${err.message} — ממשיך לחלק הבא`, 'err');
+    }
+    renderPartsRail();
+    // brief pacing delay between parts to ease rate limits (skip after last)
+    if (i < state.filmParts.length - 1 && !autoRunCancel) await new Promise(r => setTimeout(r, 4000));
+  }
+
+  state.autoRunning = false;
+  prAutoBtn.style.display = 'block';
+  prCancelBtn.style.display = 'none';
+  identifyBtn.disabled = false;
+  refreshButtons();
+  renderPartsRail();
+  const remaining = state.filmParts.filter(p => p.status !== 'identified').length;
+  if (autoRunCancel) {
+    showStatus(`⛔ הופסק. זוהו ${done} חלקים, נותרו ${remaining}.`, 'info');
+  } else {
+    showStatus(remaining
+      ? `✓ זיהוי אוטומטי הסתיים. ${state.filmParts.length - remaining} זוהו, ${remaining} נכשלו — נסה שוב על אלו.`
+      : '✓ כל החלקים זוהו אוטומטית. ניתן לבצע זיהוי כולל.', 'ok');
+  }
+}
+
+prAutoBtn.addEventListener('click', autoIdentifyAllParts);
+prCancelBtn.addEventListener('click', () => {
+  autoRunCancel = true;
+  prCancelBtn.disabled = true;
+  prCancelBtn.textContent = 'עוצר…';
+  showStatus('⛔ מבטל — יסתיים אחרי החלק הנוכחי…', 'info');
 });
 
 function downloadBlob(blob, name) {
