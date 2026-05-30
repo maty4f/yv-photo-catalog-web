@@ -114,9 +114,10 @@
     <div class="row">
       <label>מצב עיבוד</label>
       <select id="mode">
-        <option value="hybrid" selected>⭐ Hybrid: Gemini + Claude API (מומלץ — אימות היסטורי, בתשלום)</option>
-        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini + Claude CLI מקומי (חינם, דורש שרת מקומי)</option>
-        <option value="gemini-only">Gemini בלבד (מהיר, ללא Claude)</option>
+        <option value="claude-cli" selected>⭐ Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini, בלי חסימת תוכן שואה)</option>
+        <option value="hybrid">Hybrid: Gemini + Claude API (Gemini עלול לחסום תוכן שואה)</option>
+        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini + Claude CLI מקומי (Gemini עלול לחסום תוכן שואה)</option>
+        <option value="gemini-only">Gemini בלבד (Gemini עלול לחסום תוכן שואה)</option>
       </select>
     </div>
     <div class="row">
@@ -291,7 +292,7 @@
 //  State
 // =====================================================================
 const state = {
-  mode: localStorage.getItem('yv_v2_mode') || 'hybrid',
+  mode: localStorage.getItem('yv_v2_mode') || 'claude-cli',
   apiKey: localStorage.getItem('yv_v2_api_key') || '',
   apiKeyAnthropic: localStorage.getItem('yv_v2_api_key_anthropic') || '',
   model: localStorage.getItem('yv_v2_model') || 'gemini-3.5-flash',
@@ -300,6 +301,12 @@ const state = {
   pdf: null,
   result: null,
 };
+
+// Auto-config: when served from the local machine, talk to this same origin.
+// localhost never changes, so no tunnel URL is needed for the Claude CLI mode.
+if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+  state.localServerUrl = location.origin;
+}
 
 // =====================================================================
 //  DOM refs
@@ -393,17 +400,26 @@ function loadPdf(file) {
 }
 
 function refresh() {
-  let hasKey = !!state.apiKey;
-  if (state.mode === 'hybrid' && !state.apiKeyAnthropic) hasKey = false;
-  if (state.mode === 'cli-hybrid' && !state.localServerUrl) hasKey = false;
+  let hasKey;
+  if (state.mode === 'claude-cli') {
+    // Claude reads the PDF directly via the local server — only the server URL is needed.
+    hasKey = !!state.localServerUrl;
+  } else {
+    hasKey = !!state.apiKey;
+    if (state.mode === 'hybrid' && !state.apiKeyAnthropic) hasKey = false;
+    if (state.mode === 'cli-hybrid' && !state.localServerUrl) hasKey = false;
+  }
   analyzeBtn.disabled = !(state.pdf && hasKey);
   let missing = '';
   if (!state.pdf) missing = 'יש להעלות PDF';
-  else if (!state.apiKey) missing = 'יש להזין מפתח Gemini';
+  else if (state.mode === 'claude-cli' && !state.localServerUrl) missing = 'מצב Claude CLI דורש URL של שרת מקומי (בהרצה מ-localhost מוגדר אוטומטית)';
+  else if (state.mode !== 'claude-cli' && !state.apiKey) missing = 'יש להזין מפתח Gemini';
   else if (state.mode === 'hybrid' && !state.apiKeyAnthropic) missing = 'מצב Hybrid דורש גם מפתח Anthropic';
   else if (state.mode === 'cli-hybrid' && !state.localServerUrl) missing = 'מצב CLI Hybrid דורש URL של שרת מקומי (למטה)';
   analyzeBtn.title = missing;
-  analyzeBtn.textContent = state.mode === 'hybrid'
+  analyzeBtn.textContent = state.mode === 'claude-cli'
+    ? '🔍 הפק רישום (Claude קורא ישירות)'
+    : state.mode === 'hybrid'
     ? '🔍 הפק רישום (Gemini→Claude API)'
     : state.mode === 'cli-hybrid'
       ? '🔍 הפק רישום (Gemini→Claude CLI)'
@@ -474,6 +490,41 @@ function fileToBase64(file) {
     reader.onload = e => r(e.target.result.split(',')[1]);
     reader.readAsDataURL(file);
   });
+}
+
+// =====================================================================
+//  Claude CLI direct read — POST a job to /api/ask-async and poll until done.
+//  Async so a long Claude run survives the Cloudflare quick-tunnel ~100s limit.
+//  `images` is [{mime, data(base64)}]; the server writes each to a temp file
+//  and tells Claude to Read it — a real visual pass over the scans.
+// =====================================================================
+async function runClaudeJobV2(prompt, images) {
+  const base = state.localServerUrl;
+  if (!base) throw new Error('מצב Claude CLI דורש URL של שרת מקומי.');
+  const model = (state.claudeModel || '').includes('opus') ? 'opus' : 'sonnet';
+  let res;
+  try {
+    res = await fetch(base + '/api/ask-async', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, model, images: images || [] }),
+    });
+  } catch (e) {
+    throw new Error(`לא ניתן להגיע לשרת המקומי (${e.message}). ודא ששרת הבית רץ (node server.js), ובגישה מרחוק שגם ה-tunnel פעיל וה-URL מעודכן.`);
+  }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('שרת HTTP ' + res.status + ': ' + (e.error || '').slice(0, 400)); }
+  const { jobId } = await res.json();
+  if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
+  const started = Date.now(), maxMs = 15 * 60 * 1000;
+  while (Date.now() - started < maxMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
+    if (!pr.ok) continue;
+    const j = await pr.json();
+    showStatus('Claude קורא את המסמך ומפיק את הרישום… (' + Math.round((Date.now() - started) / 1000) + ' שׄ)');
+    if (j.status === 'done') return (j.text || '').trim();
+    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
+  }
+  throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. נסה מסמך קצר יותר.');
 }
 
 // =====================================================================
@@ -752,6 +803,44 @@ analyzeBtn.addEventListener('click', async () => {
   const INLINE_MAX = 14;
 
   try {
+    // === CLAUDE CLI DIRECT === Claude reads the PDF/scans itself via the local
+    // server's /api/ask-async (it writes the bytes to a temp file and has Claude
+    // Read them). No Gemini → no PROHIBITED_CONTENT block on Holocaust material.
+    // One pass: Claude reads the document AND produces the archival record.
+    if (state.mode === 'claude-cli') {
+      let images, sampleInfo;
+      if (sizeMB <= 18) {
+        showStatus(`מקודד את המסמך (${sizeMB.toFixed(1)}MB) ושולח ל-Claude…`);
+        images = [{ mime: 'application/pdf', data: await fileToBase64(state.pdf) }];
+      } else {
+        // Too large to send whole (server JSON limit) — sample representative
+        // pages to JPEGs in the browser and send those to Claude instead.
+        showStatus(`קובץ גדול (${sizeMB.toFixed(0)}MB) — דוגם עמודים מייצגים בדפדפן לשליחה ל-Claude…`);
+        const { totalPages, sampled } = await samplePdfAsImages(state.pdf, (done, total, allPages) => {
+          showStatus(`דוגם עמוד ${done}/${total} (מתוך ${allPages} עמודים)…`);
+        });
+        images = sampled.map(s => ({ mime: 'image/jpeg', data: s.b64 }));
+        sampleInfo = { sampled: sampled.length, total: totalPages };
+      }
+      const prompt = buildPrompt(contextEl.value.trim(), sampleInfo?.total || '', sampleInfo) +
+        '\n\n🛑 הקובץ המצורף הוא סריקה אמיתית של מסמך היסטורי מארכיון יד ושם — קרא אותו במלואו. אם זה PDF רב-עמודים, קרא את כל העמודים (בטווחים אם צריך, למשל pages:"1-10") ואל תעצור אחרי העמוד הראשון.';
+      let text = await runClaudeJobV2(prompt, images);
+      text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      let parsed;
+      try { parsed = JSON.parse(text); }
+      catch (e) {
+        const m = text.match(/\{[\s\S]*\}/);
+        if (!m) throw new Error('Claude החזיר תגובה שאינה JSON תקין:\n' + text.slice(0, 800));
+        parsed = JSON.parse(m[0]);
+      }
+      state.result = parsed;
+      fillForm(parsed);
+      resultsEl.classList.add('show');
+      showStatus('✓ הרישום הופק ע"י Claude (קריאה ישירה, בלי Gemini). סקור את השדות וערוך לפי הצורך.', 'ok');
+      resultsEl.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
     let parts;        // array of content parts to send to Gemini
     let sampleInfo;   // {sampled, total} if we sampled instead of sending the whole PDF
 

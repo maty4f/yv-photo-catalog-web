@@ -209,14 +209,15 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="hybrid" selected>⭐ Hybrid: Gemini OCR + Claude קטלוג (מומלץ — דיוק היסטורי)</option>
-        <option value="anthropic">Anthropic (Claude) בלבד (בתשלום)</option>
-        <option value="gemini">🆓 Google (Gemini) בלבד (חינם — free tier)</option>
+        <option value="claude-cli" selected>⭐ Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini, בלי חסימת תוכן שואה)</option>
+        <option value="hybrid">Hybrid: Gemini OCR + Claude קטלוג (Gemini עלול לחסום תוכן שואה)</option>
+        <option value="anthropic">Anthropic (Claude API) בלבד (קורא ישירות, בתשלום)</option>
+        <option value="gemini">🆓 Google (Gemini) בלבד (חינם — עלול לחסום תוכן שואה)</option>
         <option value="transkribus">🇪🇺 Transkribus + Claude (כתב יד אירופאי — Sütterlin, Kurrent, יידיש)</option>
-        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (חינם — דורש שרת מקומי)</option>
+        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (Gemini עלול לחסום תוכן שואה)</option>
       </select>
     </div>
-    <div class="row provider-row" data-provider="cli-hybrid">
+    <div class="row provider-row" data-provider="claude-cli">
       <label>שרת CLI מקומי (URL)</label>
       <div>
         <input type="text" id="local-server-url" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="direction:ltr; text-align:left; width:100%;">
@@ -227,6 +228,13 @@
           <button type="button" id="fill-tunnel-btn" style="padding:3px 10px; font-size:11px; background:#8a7758; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">⬇ הזן</button>
         </div>
         <div style="margin-top:4px; font-size:11px; color:#888;">⚠ URL זמני — משתנה בכל הפעלה מחדש של ה-tunnel. למשהו קבוע: <code>local-server/SETUP_CLOUDFLARE.md</code></div>
+      </div>
+    </div>
+    <div class="row provider-row" data-provider="claude-cli">
+      <label>איך זה עובד</label>
+      <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
+        Claude קורא את <b>המסמך עצמו</b> (PDF/סריקה) דרך <code>claude</code> CLI שרץ במחשב שלך — ומפיק את שדות ספיר בפעולה אחת. <b>בלי Gemini בכלל</b>, ולכן בלי חסימת תוכן שואה (<code>PROHIBITED_CONTENT</code>).<br>
+        <b>דורש:</b> שרת מקומי פעיל ב-URL למעלה. בהרצה מקומית מ-localhost הכתובת מוגדרת אוטומטית. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
       </div>
     </div>
     <div class="row provider-row" data-provider="cli-hybrid">
@@ -688,7 +696,7 @@
 <script type="module">
 const state = {
   document: null, docMeta: null, identification: null,
-  provider: localStorage.getItem('yv_api_provider') || 'gemini',
+  provider: localStorage.getItem('yv_api_provider') || 'claude-cli',
   apiKeys: {
     anthropic: localStorage.getItem('yv_api_key_anthropic') || '',
     gemini: localStorage.getItem('yv_api_key_gemini') || '',
@@ -968,19 +976,17 @@ providerSel.addEventListener('change', () => { state.provider = providerSel.valu
 apiKeyAnthropic.addEventListener('input', () => { state.apiKeys.anthropic = apiKeyAnthropic.value.trim(); localStorage.setItem('yv_api_key_anthropic', state.apiKeys.anthropic); refreshButtons(); });
 apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
 function syncProviderRows() {
+  // Which setting-rows each provider needs visible (by data-provider token).
+  const rowsFor = {
+    'claude-cli': ['claude-cli'],                  // local server URL only — no API key
+    'cli-hybrid': ['claude-cli', 'cli-hybrid', 'gemini'], // server URL + how-it-works + Gemini key
+    'hybrid':     ['anthropic', 'gemini'],
+    'transkribus':['transkribus', 'anthropic'],
+    'gemini':     ['gemini'],
+    'anthropic':  ['anthropic'],
+  }[state.provider] || [state.provider];
   document.querySelectorAll('.provider-row').forEach(row => {
-    if (state.provider === 'hybrid') {
-      // hybrid needs both keys — show anthropic + gemini rows; hide transkribus + cli-hybrid
-      row.style.display = (row.dataset.provider === 'anthropic' || row.dataset.provider === 'gemini') ? 'grid' : 'none';
-    } else if (state.provider === 'cli-hybrid') {
-      // cli-hybrid needs Gemini key + local server URL
-      row.style.display = (row.dataset.provider === 'cli-hybrid' || row.dataset.provider === 'gemini') ? 'grid' : 'none';
-    } else if (state.provider === 'transkribus') {
-      // transkribus needs transkribus creds + anthropic key (for Claude step)
-      row.style.display = (row.dataset.provider === 'transkribus' || row.dataset.provider === 'anthropic') ? 'grid' : 'none';
-    } else {
-      row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none';
-    }
+    row.style.display = rowsFor.includes(row.dataset.provider) ? 'grid' : 'none';
   });
 }
 function getActiveApiKey() {
@@ -1003,6 +1009,9 @@ function hasHybridKeys() {
 }
 function hasCliHybridReady() {
   return !!state.apiKeys.gemini && !!state.localServerUrl;
+}
+function hasClaudeCliReady() {
+  return !!state.localServerUrl;
 }
 function hasTranskribusReady() {
   const tk = state.tk_credentials;
@@ -1247,7 +1256,9 @@ async function identifyDocQueueItem(item) {
   state.document = item.file;
   state.docMeta = { mime: item.file.type, size_bytes: item.file.size, page_count: 1 };
   try {
+    if (state.provider === 'claude-cli') return await callClaudeCliDirect();
     if (state.provider === 'hybrid') return await callHybrid();
+    if (state.provider === 'cli-hybrid') return await callCliHybrid();
     if (state.provider === 'transkribus') return await callTranskribus();
     if (state.provider === 'gemini') return await callGemini();
     return await callAnthropic();
@@ -1782,6 +1793,87 @@ async function callHybrid() {
 }
 
 // CLI-Hybrid: same as callHybrid but Step 2 routes through user's local claude CLI
+// ── Claude CLI direct read ──────────────────────────────────────────────
+// Claude reads the document image/PDF DIRECTLY via the local server's
+// /api/ask-async endpoint (the server writes the bytes to a temp file and has
+// Claude Read them). No Gemini → no PROHIBITED_CONTENT block on Holocaust
+// material. One pass: Claude both reads the scan and produces the Sapir record.
+// Downscale a single image client-side so the base64 payload stays under the
+// server's 25MB JSON limit. PDFs are sent as-is (server handles page ranges).
+function docDownscaleImageB64(file, maxEdge = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(cv.toDataURL('image/jpeg', quality).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('טעינת התמונה נכשלה')); };
+    img.src = url;
+  });
+}
+
+// POST a job to /api/ask-async and poll until done — async so a long Claude run
+// survives the Cloudflare quick-tunnel ~100s limit.
+async function runClaudeJobDocs(prompt, images) {
+  const base = state.localServerUrl;
+  if (!base) throw new Error('מצב Claude CLI דורש URL של שרת מקומי.');
+  const model = (modelSelAnthropic?.value || '').includes('opus') ? 'opus' : 'sonnet';
+  let res;
+  try {
+    res = await fetch(base + '/api/ask-async', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, model, images: images || [] }),
+    });
+  } catch (e) {
+    throw new Error(`לא ניתן להגיע לשרת המקומי (${e.message}). ודא ששרת הבית רץ (node server.js), ובגישה מרחוק שגם ה-tunnel פעיל וה-URL מעודכן.`);
+  }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('שרת HTTP ' + res.status + ': ' + (e.error || '').slice(0, 400)); }
+  const { jobId } = await res.json();
+  if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
+  const started = Date.now(), maxMs = 15 * 60 * 1000;
+  while (Date.now() - started < maxMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
+    if (!pr.ok) continue;
+    const j = await pr.json();
+    showStatus('Claude קורא את המסמך ומפיק את הרישום… (' + Math.round((Date.now() - started) / 1000) + ' שׄ)', 'info');
+    if (j.status === 'done') return (j.text || '').trim();
+    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
+  }
+  throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. נסה מסמך קצר יותר או חלק אותו.');
+}
+
+async function callClaudeCliDirect() {
+  if (!state.document) throw new Error('אין מסמך');
+  if (!state.localServerUrl) throw new Error('מצב Claude CLI דורש URL של שרת מקומי.');
+  const isPdf = state.document.type === 'application/pdf' || /\.pdf$/i.test(state.document.name || '');
+  let images;
+  if (isPdf) {
+    showStatus('מקודד את המסמך ושולח ל-Claude…', 'info');
+    images = [{ mime: 'application/pdf', data: await fileToBase64(state.document) }];
+  } else {
+    showStatus('מקטין ומקודד את הסריקה ושולח ל-Claude…', 'info');
+    images = [{ mime: 'image/jpeg', data: await docDownscaleImageB64(state.document) }];
+  }
+  // Guard the server's ~25MB JSON limit (base64 inflates ~33%).
+  const approxMB = images.reduce((n, im) => n + (im.data.length * 0.75), 0) / 1024 / 1024;
+  if (approxMB > 24) {
+    throw new Error(`המסמך גדול מדי לשליחה ישירה (${approxMB.toFixed(0)}MB אחרי קידוד). חלק אותו או הקטן את הסריקה.`);
+  }
+  const prompt = buildDocPrompt() +
+    '\n\n🛑 הקובץ המצורף הוא סריקה אמיתית של מסמך היסטורי מארכיון יד ושם — קרא אותו במלואו. אם זה PDF רב-עמודים, קרא את כל העמודים (בטווחים אם צריך, למשל pages:"1-10") ואל תעצור אחרי העמוד הראשון. הפק את רשומת ספיר לפי הסכימה.\n\n⚠ החזר JSON תקין בלבד ללא code-fence ובלי טקסט הקדמה.';
+  let text = await runClaudeJobDocs(prompt, images);
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  return parseJson(text, 'Claude CLI');
+}
+
 // (via the local-server tunnel) instead of api.anthropic.com — free, uses Claude Max.
 async function callCliHybrid() {
   if (!hasCliHybridReady()) {
@@ -2170,7 +2262,10 @@ const identifyStatus = document.getElementById('identify-status');
 function refreshButtons() {
   const hasDoc = !!state.document;
   let hasKey, missingMsg = '';
-  if (state.provider === 'hybrid') {
+  if (state.provider === 'claude-cli') {
+    hasKey = hasClaudeCliReady();
+    if (!hasKey) missingMsg = 'מצב Claude CLI דורש URL של שרת מקומי (בהרצה מ-localhost מוגדר אוטומטית)';
+  } else if (state.provider === 'hybrid') {
     hasKey = hasHybridKeys();
     if (!hasKey) missingMsg = 'מצב Hybrid דורש שני מפתחות: Anthropic וגם Gemini';
   } else if (state.provider === 'cli-hybrid') {
@@ -2193,7 +2288,9 @@ function refreshButtons() {
   }
   identifyBtn.disabled = !(hasDoc && hasKey);
   identifyBtn.title = !hasDoc ? 'יש להעלות מסמך' : (!hasKey ? missingMsg : '');
-  identifyBtn.innerHTML = state.provider === 'hybrid'
+  identifyBtn.innerHTML = state.provider === 'claude-cli'
+    ? '🔍 פענח (Claude קורא ישירות)'
+    : state.provider === 'hybrid'
     ? '🔍 פענח (Gemini→Claude)'
     : state.provider === 'cli-hybrid'
       ? '🔍 פענח (Gemini→Claude CLI)'
@@ -2204,11 +2301,12 @@ function refreshButtons() {
 
 identifyBtn.addEventListener('click', async () => {
   identifyBtn.disabled = true;
-  const providerLabel = state.provider === 'hybrid' ? 'Gemini+Claude' : state.provider === 'gemini' ? 'Gemini' : 'Claude';
+  const providerLabel = state.provider === 'claude-cli' ? 'Claude (קריאה ישירה)' : state.provider === 'hybrid' ? 'Gemini+Claude' : state.provider === 'gemini' ? 'Gemini' : 'Claude';
   identifyBtn.innerHTML = '<span class="spinner"></span>מפענח דרך ' + providerLabel + '…';
   showStatus('שולח את המסמך ל-' + providerLabel + ' לפיענוח (30-90 שניות)…', 'info');
   try {
-    const result = state.provider === 'hybrid' ? await callHybrid()
+    const result = state.provider === 'claude-cli' ? await callClaudeCliDirect()
+      : state.provider === 'hybrid' ? await callHybrid()
       : state.provider === 'cli-hybrid' ? await callCliHybrid()
       : state.provider === 'transkribus' ? await callTranskribus()
       : state.provider === 'gemini' ? await callGemini() : await callAnthropic();
