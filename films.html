@@ -2174,7 +2174,57 @@ function runCombinedIdentification(auto) {
     ? `✓ סרט מאוחד מ-${state.filmParts.length - pending} חלקים (${pending} עדיין לא זוהו)`
     : '✓ סרט מאוחד — טיימליין רציף לפי זמן הסרט וסיכום אחד.', 'ok');
   document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Replace the naive concatenated summary with one coherent whole-film
+  // summary synthesized from all parts (runs in the background; the merged
+  // record is already shown). No-op without a Claude server or with one part.
+  synthesizeWholeFilmSummary(combined).catch(() => {});
   return true;
+}
+
+// Synthesize ONE continuous summary of the WHOLE film from every part's
+// summary + the merged timeline, and write it into the record + UI in place.
+// The film was only split into parts for technical analysis; the final summary
+// must read as the complete film (the sum of the parts), not part-by-part.
+async function synthesizeWholeFilmSummary(combined) {
+  if (!state.localServerUrl) return;            // keep concatenated fallback
+  const done = state.filmParts.filter(p => p.status === 'identified' && p.identification);
+  if (done.length < 2) return;                  // a single part is already whole
+  const partsBrief = done.map((p, n) =>
+    `— חלק ${n + 1} (${formatDuration(p.startSec)}–${formatDuration(p.endSec)}):\n${(p.identification.summary_he || '').trim()}`
+  ).join('\n\n');
+  const tlBrief = (combined.timeline || []).map(s =>
+    `${s.start}–${s.end}: ${stripConfidenceMarkup(s.description_he || '').trim()}`
+  ).join('\n');
+  const prompt = `סרט ארכיוני אחד פוצל ל-${done.length} חלקים טכניים לצורך ניתוח, וכל חלק נותח בנפרד. כתוב תקציר אחד רציף של **הסרט השלם** — לא תקציר נפרד לכל חלק, אלא טקסט אחד המתאר את הסרט כמכלול מתחילתו ועד סופו, על בסיס סך כל החלקים.
+
+תקצירי החלקים (לפי הסדר הכרונולוגי):
+${partsBrief}
+
+ציר הזמן הרציף המאוחד של הסרט השלם:
+${tlBrief}
+
+הנחיות:
+- כתוב 4–5 שורות בעברית ו-4–5 שורות באנגלית.
+- תאר את הסרט כיחידה אחת רציפה (ההתקדמות, המקומות, האישים, האירועים המרכזיים) — אל תחלק ל"חלק 1/2/3".
+- שמור על סימוני הוודאות (✓ / ~ / ?) שהופיעו בחלקים; אל תעלה ודאות שאינה קיימת.
+- אל תמציא פרטים שלא הופיעו בחלקים.
+- בעת תעתוק שמות/מקומות לעברית — שמור את הכתיב המקורי בלועזית בסוגריים מיד אחרי התעתיק.
+
+החזר JSON בלבד: {"summary_he":"...","summary_en":"..."}`;
+  showStatus('מסכם את הסרט השלם מכלל החלקים דרך Claude…', 'info');
+  let rec;
+  try { rec = parseJson(await runClaudeJob(prompt, []), 'Claude (סיכום סרט שלם)'); }
+  catch (e) { showStatus('הסיכום המאוחד נכשל — מוצג איחוד תקצירי החלקים. ' + e.message, 'info'); return; }
+  if (!rec || (!rec.summary_he && !rec.summary_en)) return;
+  if (rec.summary_he) {
+    state.identification.summary_he = rec.summary_he;
+    const el = document.getElementById('r-summary-he'); if (el) el.value = stripConfidenceMarkup(rec.summary_he);
+  }
+  if (rec.summary_en) {
+    state.identification.summary_en = rec.summary_en;
+    const el = document.getElementById('r-summary-en'); if (el) el.value = stripConfidenceMarkup(rec.summary_en);
+  }
+  showStatus('✓ תקציר הסרט השלם עודכן מכלל החלקים.', 'ok');
 }
 
 prCombineBtn.addEventListener('click', () => runCombinedIdentification(false));
