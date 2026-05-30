@@ -129,12 +129,13 @@
     <div class="row2">
       <div>
         <label>דפים למנה (chunk)</label>
-        <input type="number" id="chunk-size" value="10" min="1" max="100" style="width:90px">
+        <input type="number" id="chunk-size" value="15" min="1" max="100" style="width:90px">
         <div class="hint">Gemini קורא את כל דפי התיק במנות בגודל זה (כיסוי מלא, לא דגימה).</div>
       </div>
       <div>
-        <label>חלוקת תפקידים</label>
-        <div class="hint" style="margin-top:6px">Gemini = קריאה חזותית של כל הדפים → טקסט מובנה. Claude = עובר על הטקסט של Gemini, מאמת נכונות, מאחד ומסמן ודאות. Claude אינו רואה תמונות.</div>
+        <label>רזולוציית קריאה (px לצד הארוך)</label>
+        <input type="number" id="img-edge" value="1100" min="500" max="2200" step="100" style="width:110px">
+        <div class="hint">סריקות מוקטנות לגודל זה לפני שליחה ל-Gemini — חוסך טוקנים ומונע נפילה על מגבלות. אם כתב יד לא נקרא, העלה ל-1500–1800.</div>
       </div>
     </div>
   </div>
@@ -173,6 +174,23 @@ const state = { files: [] };
 
 /* ---------- helpers ---------- */
 function fileToBase64(file){return new Promise(r=>{const fr=new FileReader();fr.onload=e=>r(e.target.result.split(',')[1]);fr.readAsDataURL(file);});}
+// Downscale a scan client-side before sending to Gemini. Full-res archive scans
+// are ~5000 vision-tokens/page and bust the 20MB inline limit; shrinking to a
+// modest long-edge gets each page to ~one 768px tile (~258 tokens) so a whole
+// תיק fits inside Gemini's rate/token limits. Handwriting stays legible ~1100px.
+function imgMaxEdge(){return Math.max(500,Math.min(2200,parseInt($('img-edge')?.value,10)||1100));}
+async function downscaledB64(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('טעינת תמונה נכשלה'));i.src=url;});
+    const edge=imgMaxEdge();
+    const scale=Math.min(1,edge/Math.max(img.naturalWidth,img.naturalHeight));
+    const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+    cv.getContext('2d').drawImage(img,0,0,w,h);
+    return cv.toDataURL('image/jpeg',0.72).split(',')[1];
+  }finally{URL.revokeObjectURL(url);}
+}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function mimeOf(f){const n=(f.name||'').toLowerCase();
   if(n.endsWith('.pdf'))return'application/pdf';
@@ -277,7 +295,11 @@ function chunkArr(arr,size){const out=[];for(let i=0;i<arr.length;i+=size)out.pu
 
 async function geminiPartsFor(files){
   const parts=[];
-  for(const f of files){const b64=await fileToBase64(f);parts.push({inline_data:{mime_type:mimeOf(f),data:b64}});}
+  for(const f of files){
+    const mime=mimeOf(f);
+    if(mime==='application/pdf'){const b64=await fileToBase64(f);parts.push({inline_data:{mime_type:mime,data:b64}});}
+    else{const b64=await downscaledB64(f);parts.push({inline_data:{mime_type:'image/jpeg',data:b64}});}
+  }
   return parts;
 }
 /* ---------- API callers ---------- */
@@ -296,6 +318,19 @@ async function callGeminiOnParts(parts,promptText){
   const data=await res.json();
   // Free text (not JSON) — robust against truncation; Claude turns it into the record.
   return (data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim();
+}
+// Retry on rate-limit (429 / RESOURCE_EXHAUSTED) with backoff, so a momentary
+// quota spike on a long תיק doesn't drop a chunk.
+async function callGeminiRetry(parts,promptText,onWait){
+  const tries=4;
+  for(let a=0;a<tries;a++){
+    try{return await callGeminiOnParts(parts,promptText);}
+    catch(e){
+      const rate=/HTTP 429|RESOURCE_EXHAUSTED|quota|rate/i.test(e.message);
+      if(rate&&a<tries-1){const wait=15000*(a+1);if(onWait)onWait(wait);await new Promise(r=>setTimeout(r,wait));continue;}
+      throw e;
+    }
+  }
 }
 async function callClaudeAPI(parts,promptText,maxTok){
   let res;
@@ -440,7 +475,7 @@ $('run').addEventListener('click',async()=>{
   if(!state.keyGemini){showStatus('דרוש מפתח Gemini (הקריאה החזותית של כל הדפים).','err');return;}
   if(mode==='api' && !state.keyClaude){showStatus('מצב API דורש מפתח Claude (או עבור ל-CLI).','err');return;}
   if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return;}
-  const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||10);
+  const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||15);
   const chunks=chunkArr(state.files,chunkSize);
   $('run').disabled=true;
   try{
@@ -454,13 +489,14 @@ $('run').addEventListener('click',async()=>{
       const parts=await geminiPartsFor(chunks[i]);
       const prompt=`${CHUNK_EXTRACT_RULES}\n\n(טווח דפים: ${range} מתוך ${state.files.length})${contextBlock()}`;
       try{
-        const txt=await callGeminiOnParts(parts,prompt);
+        const txt=await callGeminiRetry(parts,prompt,wait=>showStatus(`<span class="spinner"></span>שלב 1 · מגבלת קצב של Gemini בדפים ${range} — ממתין ${wait/1000} שׄ ומנסה שוב…`,'info'));
         notes.push({range,text:txt||'(אין טקסט)'});
       }catch(chunkErr){
         // Don't abort a long run over one bad chunk — log it and continue.
         failed.push(range);
         notes.push({range,text:`⚠ מנה זו נכשלה בקריאה (${chunkErr.message}). דרושה קריאה חוזרת ידנית של דפים ${range}.`});
       }
+      if(i<chunks.length-1)await new Promise(r=>setTimeout(r,1200)); // pace requests to respect RPM
     }
     if(failed.length===chunks.length)throw new Error('כל המנות נכשלו בקריאת Gemini. בדוק מפתח/מודל/חיבור.');
 
@@ -487,7 +523,7 @@ $('claude-mode').addEventListener('change',syncModeUI);
 syncModeUI();
 
 /* ---------- persist settings locally (so keys aren't re-entered each time) ---------- */
-const PERSIST=['key-claude','key-gemini','model-claude','model-gemini','claude-mode','server-url','chunk-size'];
+const PERSIST=['key-claude','key-gemini','model-claude','model-gemini','claude-mode','server-url','chunk-size','img-edge'];
 const STORE_KEY='yv-tik-settings';
 function setSaveState(msg,color){const el=$('save-state');if(el){el.textContent=msg;el.style.color=color||'#2e7d32';}}
 function loadSettings(){
@@ -533,7 +569,7 @@ $('check-models').addEventListener('click',async()=>{
 /* ---------- file handling ---------- */
 function renderFiles(){
   const n=state.files.length;
-  const cs=Math.max(1,parseInt($('chunk-size').value,10)||25);
+  const cs=Math.max(1,parseInt($('chunk-size').value,10)||15);
   const note=n?`<div class="f" style="font-weight:600">📁 ${n} דפים — ייקראו במלואם ב-${Math.ceil(n/cs)} מנות (Gemini)</div>`:'';
   const rows=state.files.slice(0,60).map(f=>
     `<div class="f"><span>${esc(f.name)}</span><span>${(f.size/1024/1024).toFixed(1)}MB</span></div>`).join('');
