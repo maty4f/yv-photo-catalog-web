@@ -30,6 +30,23 @@
   header.doc { border-bottom: 2px solid var(--accent); padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
   header.doc h1 { font-size: 22px; margin: 0 0 4px 0; color: var(--accent); }
   header.doc .sub { font-size: 13px; color: var(--muted); }
+  /* Confidence legend */
+  .conf-legend { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+  .conf-legend > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; color: var(--accent); list-style: none; user-select: none; }
+  .conf-legend > summary::-webkit-details-marker { display: none; }
+  .conf-legend > summary::before { content: "\25B8"; margin-inline-end: 6px; font-size: 11px; }
+  .conf-legend[open] > summary::before { content: "\25BE"; }
+  .conf-legend .cl-body { padding: 0 14px 12px; color: var(--muted); }
+  .cl-intro { margin: 0 0 10px; line-height: 1.6; }
+  .cl-block { margin-top: 8px; }
+  .cl-head { font-weight: 600; color: var(--ink); font-size: 12px; border-bottom: 1px solid var(--line); padding-bottom: 3px; margin-bottom: 6px; }
+  .cl-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; line-height: 1.4; }
+  .cl-row small { color: var(--muted); font-weight: 400; }
+  .cl-mark { display: inline-block; font-weight: 700; font-size: 0.85em; padding: 1px 5px; border-radius: 3px; background: rgba(107,91,62,0.06); unicode-bidi: isolate; margin: 0 1px; }
+  .cl-high { color: var(--good); }
+  .cl-mid  { color: var(--warn); }
+  .cl-low  { color: var(--soft); }
+  .cl-note { margin: 10px 0 0; line-height: 1.7; font-size: 12px; }
   header.doc .actions-top { display: flex; gap: 8px; align-items: center; }
 
   /* Steps as cards */
@@ -330,6 +347,26 @@
       <button class="gear" id="settings-toggle" type="button">⚙ הגדרות API</button>
     </div>
   </header>
+
+  <!-- Confidence legend -->
+  <details class="conf-legend">
+    <summary>📊 מקרא סימוני ודאות / Confidence markers</summary>
+    <div class="cl-body">
+      <p class="cl-intro">כל זיהוי מדורג בשני צירים — <b>סוג הראיה</b> (אות) ו<b>רמת הוודאות</b> (צבע וסימן).</p>
+      <div class="cl-block">
+        <div class="cl-head">סוג הראיה / Evidence type</div>
+        <div class="cl-row"><span class="cl-mark cl-mid">V</span><span><b>ויזואלי</b> — מה שנראה בתצלום עצמו <small>Visual — what the photo shows</small></span></div>
+        <div class="cl-row"><span class="cl-mark cl-mid">H</span><span><b>היסטורי</b> — התאמה למקורות ולמידע מתועד <small>Historical — match to documented sources</small></span></div>
+      </div>
+      <div class="cl-block">
+        <div class="cl-head">רמת ודאות / Confidence level</div>
+        <div class="cl-row"><span class="cl-mark cl-high">✓</span><span><b>ודאי</b> — עדות חד-משמעית <small>Confirmed — decisive evidence</small></span></div>
+        <div class="cl-row"><span class="cl-mark cl-mid">~</span><span><b>סביר</b> — מתיישב עם הרמזים <small>Probable — consistent with cues</small></span></div>
+        <div class="cl-row"><span class="cl-mark cl-low">?</span><span><b>משוער</b> — דמיון או הסקה בלבד <small>Tentative — resemblance/inference only</small></span></div>
+      </div>
+      <p class="cl-note"><b>דוגמאות:</b> <span class="cl-mark cl-high">V✓</span><span class="cl-mark cl-high">H✓</span> שלט קריא בתצלום שתואם מקור מתועד · <span class="cl-mark cl-low">V?</span><span class="cl-mark cl-high">H✓</span> פנים מטושטשות אך הקונטקסט ההיסטורי ודאי.</p>
+    </div>
+  </details>
 
   <!-- API Settings -->
   <div class="settings-panel" id="settings-panel">

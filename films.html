@@ -29,6 +29,23 @@
   header.doc { border-bottom: 2px solid var(--accent); padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
   header.doc h1 { font-size: 22px; margin: 0 0 4px 0; color: var(--accent); }
   header.doc .sub { font-size: 13px; color: var(--muted); }
+  /* Confidence legend */
+  .conf-legend { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+  .conf-legend > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; color: var(--accent); list-style: none; user-select: none; }
+  .conf-legend > summary::-webkit-details-marker { display: none; }
+  .conf-legend > summary::before { content: "\25B8"; margin-inline-end: 6px; font-size: 11px; }
+  .conf-legend[open] > summary::before { content: "\25BE"; }
+  .conf-legend .cl-body { padding: 0 14px 12px; color: var(--muted); }
+  .cl-intro { margin: 0 0 10px; line-height: 1.6; }
+  .cl-block { margin-top: 8px; }
+  .cl-head { font-weight: 600; color: var(--ink); font-size: 12px; border-bottom: 1px solid var(--line); padding-bottom: 3px; margin-bottom: 6px; }
+  .cl-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; line-height: 1.4; }
+  .cl-row small { color: var(--muted); font-weight: 400; }
+  .cl-mark { display: inline-block; font-weight: 700; font-size: 0.85em; padding: 1px 5px; border-radius: 3px; background: rgba(107,91,62,0.06); unicode-bidi: isolate; margin: 0 1px; }
+  .cl-high { color: var(--good); }
+  .cl-mid  { color: var(--warn); }
+  .cl-low  { color: var(--soft); }
+  .cl-note { margin: 10px 0 0; line-height: 1.7; font-size: 12px; }
   header.doc .actions-top { display: flex; gap: 8px; align-items: center; }
 
   section.step { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
@@ -201,6 +218,26 @@
       <button class="gear" id="settings-toggle" type="button">⚙ הגדרות API</button>
     </div>
   </header>
+
+  <!-- Confidence legend -->
+  <details class="conf-legend">
+    <summary>📊 מקרא סימוני ודאות / Confidence markers</summary>
+    <div class="cl-body">
+      <p class="cl-intro">כל זיהוי מדורג בשני צירים — <b>סוג הראיה</b> (אות) ו<b>רמת הוודאות</b> (צבע וסימן).</p>
+      <div class="cl-block">
+        <div class="cl-head">סוג הראיה / Evidence type</div>
+        <div class="cl-row"><span class="cl-mark cl-mid">V</span><span><b>ויזואלי</b> — מה שנראה בסרט עצמו <small>Visual — what the film shows</small></span></div>
+        <div class="cl-row"><span class="cl-mark cl-mid">H</span><span><b>היסטורי</b> — התאמה למקורות ולמידע מתועד <small>Historical — match to documented sources</small></span></div>
+      </div>
+      <div class="cl-block">
+        <div class="cl-head">רמת ודאות / Confidence level</div>
+        <div class="cl-row"><span class="cl-mark cl-high">✓</span><span><b>ודאי</b> — עדות חד-משמעית <small>Confirmed — decisive evidence</small></span></div>
+        <div class="cl-row"><span class="cl-mark cl-mid">~</span><span><b>סביר</b> — מתיישב עם הרמזים <small>Probable — consistent with cues</small></span></div>
+        <div class="cl-row"><span class="cl-mark cl-low">?</span><span><b>משוער</b> — דמיון או הסקה בלבד <small>Tentative — resemblance/inference only</small></span></div>
+      </div>
+      <p class="cl-note"><b>דוגמאות:</b> <span class="cl-mark cl-high">V✓</span><span class="cl-mark cl-high">H✓</span> כיתוב-ביניים קריא בסרט שתואם מקור מתועד · <span class="cl-mark cl-low">V?</span><span class="cl-mark cl-high">H✓</span> פנים מטושטשות אך הקונטקסט ההיסטורי ודאי.</p>
+    </div>
+  </details>
 
   <div class="settings-panel" id="settings-panel">
     <div class="row">
@@ -1303,6 +1340,39 @@ async function callPipeline() {
   return revised;
 }
 
+// POST a job to /api/ask-async and poll until done. Async so a long Claude run
+// survives the Cloudflare quick-tunnel ~100s limit (the synchronous /api/ask
+// hits "Failed to fetch" once the tunnel cuts the connection). Returns raw text.
+async function runClaudeJob(prompt, images) {
+  const base = state.localServerUrl;
+  if (!base) throw new Error('מצב Claude CLI דורש URL של שרת מקומי.');
+  const modelSel = document.getElementById('api-model-anthropic');
+  const model = (modelSel && modelSel.value.includes('opus')) ? 'opus' : 'sonnet';
+  let res;
+  try {
+    res = await fetch(base + '/api/ask-async', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, model, images: images || [] }),
+    });
+  } catch (e) {
+    throw new Error(`לא ניתן להגיע לשרת המקומי (${e.message}). ודא ששרת הבית רץ (node server.js), ובגישה מרחוק שגם ה-tunnel פעיל וה-URL מעודכן.`);
+  }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('שרת HTTP ' + res.status + ': ' + (e.error || '').slice(0, 400)); }
+  const { jobId } = await res.json();
+  if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
+  const started = Date.now(), maxMs = 15 * 60 * 1000;
+  while (Date.now() - started < maxMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
+    if (!pr.ok) continue;
+    const j = await pr.json();
+    showStatus('שלב 2/2 · Claude CLI מאמת היסטורית… (' + Math.round((Date.now() - started) / 1000) + ' שׄ)', 'info');
+    if (j.status === 'done') return (j.text || '').trim();
+    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
+  }
+  throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. נסה סרט קצר יותר.');
+}
+
 // CLI-Hybrid: Gemini analyzes video, then Claude CLI validates *text-only*
 // (no frames sent — local /api/ask endpoint accepts only text prompts).
 async function callCliHybrid() {
@@ -1336,23 +1406,9 @@ ${validatorPrompt}
 
 החזר JSON תקין בלבד (ללא קוד-בלוק markdown, ללא טקסט הקדמה).`;
 
-  const url = state.localServerUrl + '/api/ask';
-  let res;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
-    });
-  } catch (e) {
-    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${url}). ודא שהשרת + tunnel פעילים. (${e.message})`);
-  }
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`שרת CLI החזיר HTTP ${res.status}: ${err.error || err.stderr || ''}`);
-  }
-  const data = await res.json();
-  let text = (data.text || '').trim();
+  // Text-only validation — route through the async /api/ask-async job runner so
+  // the call survives the Cloudflare quick-tunnel ~100s limit.
+  let text = (await runClaudeJob(prompt, [])).trim();
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
   const revised = parseJson(text, 'Claude CLI (validator)');
 
