@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>קטלוג תיק — יד ושם (Claude קורא ומסנתז)</title>
+<style>
+  :root{
+    --bg:#f7f5f0; --card:#fff; --ink:#1a1a1a; --muted:#5a5a5a; --line:#d8d4cc;
+    --accent:#2e7d4e; --accent-2:#1f5c38; --he-tint:#fbf9f3; --en-tint:#f3f6fb;
+    --high:#2e7d32; --mid:#b07000; --low:#b22222; --diamond:#6b3f9b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",Arial,sans-serif;
+       direction:rtl;text-align:right;line-height:1.6;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:20px 16px 80px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  .card h2{font-size:15px;margin:0 0 12px;color:var(--accent-2)}
+  label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
+  input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;
+       font-family:inherit;font-size:14px;background:#fff}
+  input[type=password],input.ltr{direction:ltr;text-align:left}
+  textarea{min-height:70px;resize:vertical}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .hint{font-size:11.5px;color:#888;margin-top:3px}
+  .drop{border:2px dashed var(--line);border-radius:8px;padding:22px;text-align:center;color:var(--muted);
+        background:#fcfbf8;cursor:pointer}
+  .drop.over{background:#e9f2ec;border-color:var(--accent)}
+  .filelist{margin-top:10px;font-size:13px}
+  .filelist .f{display:flex;justify-content:space-between;padding:4px 8px;background:#f5f3ee;border-radius:5px;margin:3px 0}
+  button.go{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:11px 20px;font-size:15px;
+       font-weight:600;cursor:pointer;font-family:inherit}
+  button.go:disabled{background:#aebcae;cursor:not-allowed}
+  .status{margin-top:12px;font-size:13.5px;padding:8px 12px;border-radius:6px;display:none}
+  .status.show{display:block}
+  .status.info{background:#eef4f7;color:#234}
+  .status.ok{background:#e8f5e9;color:#1b5e20}
+  .status.err{background:#fdecea;color:#8a1c12;white-space:pre-wrap}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid #fff;border-top-color:transparent;
+       border-radius:50%;animation:sp .7s linear infinite;margin-left:7px;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* results */
+  #results{display:none}
+  #results.show{display:block}
+  .field{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;overflow:hidden;background:#fff}
+  .field .head{display:flex;justify-content:space-between;align-items:center;background:#f3f1ec;
+       padding:6px 12px;border-bottom:1px solid var(--line)}
+  .field .label{font-weight:600;font-size:13px}
+  .field .body{padding:10px 14px;direction:rtl;text-align:right;unicode-bidi:isolate;white-space:pre-wrap}
+  .copy-btn{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:12px;
+       cursor:pointer;font-family:inherit}
+  .copy-btn:hover{background:var(--accent-2)}
+  .copy-btn.copied{background:#2e7d32}
+  .section-bar{background:var(--accent-2);color:#fff;padding:6px 14px;border-radius:6px;font-weight:600;
+       font-size:13px;margin:18px 0 10px}
+  .cmark{font-weight:700;font-size:12px;padding:0 3px;border-radius:3px}
+  .cmark.high{color:var(--high)} .cmark.mid{color:var(--mid)} .cmark.low{color:var(--low)}
+  .diamond{border-right:4px solid var(--diamond);background:#f7f2fb;padding:8px 12px;margin:6px 0;border-radius:4px}
+  .diamond b{color:var(--diamond)}
+  .disagree{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 14px;margin-bottom:14px}
+  .disagree h3{margin:0 0 8px;color:#8a6d00;font-size:14px}
+  .disagree .d{padding:6px 0;border-bottom:1px dashed #ffe082;font-size:13px}
+  .disagree .d:last-child{border:none}
+  .disagree .src{display:inline-block;min-width:62px;font-weight:600;color:#5a5a5a}
+  .none{color:#999;font-style:italic}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;
+       padding:8px 18px;border-radius:20px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
+  .toast.show{opacity:.95}
+  @media(max-width:640px){.row2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="index.html" style="text-decoration:none;display:inline-block;margin-bottom:10px">
+    <button type="button" style="background:#f5f3ee;color:#234;border:1px solid var(--line);border-radius:7px;padding:8px 16px;font-size:14px;cursor:pointer;font-family:inherit">← דף הבית</button>
+  </a>
+  <h1>קטלוג תיק — מקורות פרטיים (ספיר)</h1>
+  <div class="sub">רשומה אחת לכל תיק · Claude קורא את כל דפי התיק (במנות) ואז מסנתז רשומת-תיק אחת · סימוני ודאות ונקודות לבדיקת אנוש</div>
+
+  <!-- CONFIG -->
+  <div class="card">
+    <h2>הגדרות <span id="save-state" class="hint" style="font-weight:400;margin-right:8px"></span></h2>
+    <div class="row2">
+      <div>
+        <label>מנוע קריאה (שלב 1)</label>
+        <select id="engine-mode">
+          <option value="claude" selected>Claude בלבד — Claude קורא את הסריקות ומסנתז (מנוי, בלי מפתח)</option>
+          <option value="dual">דו-מנועי — Gemini קורא ויזואלית, Claude מסנתז (הצלבה, דורש מפתח Gemini)</option>
+        </select>
+        <div class="hint">Claude בלבד: פשוט, מנוע אחד, בלי תלות במכסת Gemini. דו-מנועי: שני מנועים מצליבים — דיוק רב יותר אך תלוי במכסת Gemini.</div>
+      </div>
+      <div id="gemini-key-wrap" style="display:none">
+        <label>מפתח Gemini API</label>
+        <input type="password" id="key-gemini" class="ltr" placeholder="AIza…" autocomplete="off">
+        <div class="hint">נדרש רק במצב דו-מנועי. נשמר מקומית במכשיר זה בלבד.</div>
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>מודל Claude</label>
+        <select id="model-claude">
+          <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (מומלץ)</option>
+          <option value="claude-opus-4-6">Claude Opus 4.6 (מדויק יותר)</option>
+        </select>
+        <div class="hint">Claude רץ דרך שרת הבית (claude -p) במנוי — בלי מפתח ובלי עלות API.</div>
+      </div>
+      <div id="model-gemini-wrap" style="display:none">
+        <label>מודל Gemini</label>
+        <select id="model-gemini">
+          <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (מומלץ — יציב)</option>
+          <option value="gemini-2.5-pro">Gemini 2.5 Pro (איטי, מדויק)</option>
+          <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+        </select>
+        <div class="hint">משמש רק במצב דו-מנועי לקריאה הויזואלית של הדפים.</div>
+      </div>
+      <div>
+        <label>כתובת שרת מקומי / tunnel</label>
+        <input type="text" id="server-url" class="ltr" value="" placeholder="http://localhost:3000 או https://….trycloudflare.com">
+        <div class="hint">בהרצה מקומית מוגדר אוטומטית ל-localhost. בגישה מרחוק — הדבק את כתובת ה-tunnel (מתחלפת בכל הפעלה).</div>
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>דפים למנה (chunk)</label>
+        <input type="number" id="chunk-size" value="8" min="1" max="40" style="width:90px">
+        <div class="hint">Claude קורא את כל דפי התיק במנות בגודל זה (כיסוי מלא, לא דגימה). מנה קטנה = קריאה מדויקת יותר אך יותר מנות.</div>
+      </div>
+      <div>
+        <label>רזולוציית קריאה (px לצד הארוך)</label>
+        <input type="number" id="img-edge" value="1500" min="500" max="2200" step="100" style="width:110px">
+        <div class="hint">סריקות מוקטנות לגודל זה לפני שליחה. אם כתב יד לא נקרא — העלה ל-1800–2000.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPLOAD -->
+  <div class="card">
+    <h2>התיק</h2>
+    <div class="drop" id="drop">גרור לכאן את התיק — PDF אחד או כמה סריקות (JPG/PNG/TIFF)<br><small>או לחץ לבחירה</small></div>
+    <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" style="display:none">
+    <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+      <button type="button" id="pick-folder" class="copy-btn" style="background:#2c5d8a">📁 העלה תיקייה שלמה</button>
+      <button type="button" id="clear-files" class="copy-btn" style="background:#8a3a2c">נקה</button>
+    </div>
+    <div class="hint">תיקייה = תיק אחד. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
+    <div class="filelist" id="filelist"></div>
+    <label>מידע מוקדם / דף איסוף (אופציונלי)</label>
+    <textarea id="context" placeholder="הערות מוסר החומר, שם החטיבה, רקע משפחתי, סימול…"></textarea>
+    <div class="hint">המידע הזה ישמש ל"הערות מוסר החומר" ולהקשר — לא יוצג כעובדה מהתיק.</div>
+  </div>
+
+  <button class="go" id="run" disabled>קטלג תיק</button>
+  <div class="status" id="status"></div>
+  <div id="pdf-bar" style="display:none;margin-top:10px;font-size:13.5px;padding:8px 12px;border-radius:6px;background:#eef4f7;color:#234"></div>
+
+  <!-- RESULTS -->
+  <div id="results">
+    <div id="tik-export-bar" style="display:none; margin-bottom:12px;">
+      <button type="button" id="notebooklm-btn" class="copy-btn" style="background:#6b3f9b" title="ייצוא שמות · תאריכים · הקשר של התיק — קובץ Markdown להעלאה כמקור ב-NotebookLM">🧠 ייצוא ל-NotebookLM</button>
+    </div>
+    <div id="disagree-box"></div>
+    <div id="record"></div>
+  </div>
+</div>
+<div class="toast" id="toast">הועתק</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = { files: [] };
+
+/* ---------- helpers ---------- */
+function fileToBase64(file){return new Promise(r=>{const fr=new FileReader();fr.onload=e=>r(e.target.result.split(',')[1]);fr.readAsDataURL(file);});}
+// Downscale a scan client-side before sending. Full-res archive scans are huge;
+// shrinking to a modest long-edge keeps each /api/ask-async request under the
+// 25MB JSON limit and speeds Claude's Read. Handwriting stays legible ~1500px.
+function imgMaxEdge(){return Math.max(500,Math.min(2200,parseInt($('img-edge')?.value,10)||1100));}
+async function downscaledB64(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('טעינת תמונה נכשלה'));i.src=url;});
+    const edge=imgMaxEdge();
+    const scale=Math.min(1,edge/Math.max(img.naturalWidth,img.naturalHeight));
+    const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+    cv.getContext('2d').drawImage(img,0,0,w,h);
+    return cv.toDataURL('image/jpeg',0.72).split(',')[1];
+  }finally{URL.revokeObjectURL(url);}
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function mimeOf(f){const n=(f.name||'').toLowerCase();
+  if(n.endsWith('.pdf'))return'application/pdf';
+  if(n.endsWith('.png'))return'image/png';
+  if(n.endsWith('.tif')||n.endsWith('.tiff'))return'image/tiff';
+  if(n.endsWith('.webp'))return'image/webp';
+  return'image/jpeg';}
+function showStatus(msg,kind){const s=$('status');s.innerHTML=msg;s.className='status show '+(kind||'info');}
+function parseJson(text,label){
+  let s=String(text||'').trim();
+  const fence=s.match(/```(?:json)?\s*([\s\S]*?)```/); if(fence)s=fence[1].trim();
+  if(!s.startsWith('{')){const m=s.match(/\{[\s\S]*\}/);if(m)s=m[0];}
+  try{return JSON.parse(s);}catch(e1){
+    const fixed=repairJson(s);
+    if(fixed!=null)return fixed;
+    const err=new Error(label+' החזיר תגובה שאינה JSON תקין');err.rawText=text;throw err;
+  }
+}
+// Repair a truncated JSON object by walking it with a proper bracket stack,
+// then cutting back to the most complete structural boundary that parses.
+function repairJson(s){
+  let inStr=false,esc=false; const stack=[]; const safe=[];
+  for(let i=0;i<s.length;i++){const c=s[i];
+    if(inStr){ if(esc)esc=false; else if(c==='\\')esc=true; else if(c==='"')inStr=false; continue; }
+    if(c==='"')inStr=true;
+    else if(c==='{'||c==='[')stack.push(c==='{'?'}':']');
+    else if(c==='}'||c===']')stack.pop();
+    if(!inStr&&(c==='}'||c===']'||c===','))safe.push([i,stack.slice()]);
+  }
+  for(let k=safe.length-1;k>=0;k--){
+    const [i,st]=safe[k];
+    const frag=s.slice(0,i+1).replace(/,\s*$/,'');
+    let close=''; for(let j=st.length-1;j>=0;j--)close+=st[j];
+    try{return JSON.parse(frag+close);}catch(e){}
+  }
+  return null;
+}
+const cmark = c => { const m={'✓':'high','~':'mid','?':'low'}; const cls=m[c]||'mid'; return `<span class="cmark ${cls}">${c||'~'}</span>`; };
+
+/* ---------- the cataloging rules embedded in the prompt (from the two YV procedures) ---------- */
+const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפניך **תיק שלם** (כל הדפים מצורפים). עליך להפיק **רשומת-תיק אחת** לפי נהלי ספיר לקטלוג תיעוד ממקורות פרטיים.
+
+עקרונות-על:
+- יחידת התיאור היא התיק כולו ("פריט תוכן/לוגי"), לא כל מסמך בנפרד.
+- אסור לנחש. אם משהו לא קריא — ציין זאת. אל תמציא שמות/מקומות/תאריכים.
+- אל תתקן עובדות סותרות בתיק — הצג את שתיהן ("במסמך X רשום…, באחר…").
+- התמקד בתקופת השואה ובמה שרלוונטי לחיפוש (שמות, מקומות, אירועים). אל תפרט חומר טרום/בתר-מלחמתי לא רלוונטי.
+
+"יהלומים" — מסמכים ייחודיים שמישהו עשוי לחפש ספציפית, שאסור שייבלעו בתיאור כללי: מכתב אישי של ניצול על גורלו; תצהיר/עדות; יומן; רשימת נספים/מגורשים/תושבים יהודים; תעודה רשמית ממחנה/גטו (גם "סטנדרטית"); מסמך על זהות בדויה. סמן כל יהלום.
+
+כותר: משפט אחד תמציתי בעברית — סוג החומר המרכזי + נושא + עד 2-3 שמות (אחר כך "ועוד") + טווח שנים. בלי נקודות, רק פסיקים. דוגמה: "מכתבים שנשלחו אל לסלו וייס בפלוגות עבודה בהונגריה בידי בני משפחה ב-1943–1944".
+
+מידע נוסף: פסקאות לפי קבוצות החומר. יהלום מצוין במפורש בתוך הפסקה. עדות/יומן/זיכרונות → ראשי פרקים מופרדים בנקודה-פסיק (לא נרטיב). חומר משני → "בתיק גם". לא לכפול את הכותר.
+
+מקומות קשורים: רק מקומות רלוונטיים לשואה (מגורים בתקופה, גטאות, מחנות, עבודת כפייה, גירוש, מסתור, שחרור). שם כפי שבמסמך; שם מקובל היום בסוגריים.
+
+תאריכים: אותנטי = כפי שבמסמך. משוחזר = DD/MM/YYYY (אם רק שנה: 01/01 עד 31/12).
+מקוריות: "מקורי" (כתב יד/דפוס מקורי/מכונת כתיבה) או "לא מקורי" (סריקה/הדפסה מודרנית).
+מיועד להקלדת שמות: true אם יש בתיק שמות מלאים של נספים/מגורשים/תושבים יהודים.
+סיווג: "בלתי מסווג" כברירת מחדל; "מוגבל"/"שמור" רק עם סיבה.
+
+החזר אך ורק JSON תקין בסכימה:
+{
+ "title": "",
+ "additional_info_paragraphs": [ {"heading": "", "body": "", "contains_diamond": false} ],
+ "also_in_file": [ "" ],
+ "related_places": [ "" ],
+ "date_authentic_start": "", "date_authentic_end": "",
+ "date_reconstructed_start": "", "date_reconstructed_end": "",
+ "originality": "מקורי",
+ "creator_person": "", "creator_org": "",
+ "content_note": "",
+ "languages": [ "" ],
+ "designate_name_typing": false, "name_typing_reason": "",
+ "classification": "בלתי מסווג", "classification_reason": "",
+ "diamonds": [ {"type": "", "description": "", "location": ""} ]
+}`;
+
+/* ---------- chunk extraction (Claude reads every page) & synthesis prompts ---------- */
+const CHUNK_EXTRACT_RULES = `אתה מקטלג ארכיוני ביד ושם הקורא **חלק** מתיק ארכיוני (טווח דפים שיצוין). הקבצים המצורפים הם סריקות אמיתיות של תיעוד מתקופת השואה — קרא כל אחד מהם בעיון. אלו לא כל דפי התיק — תאר את מה שאתה רואה בדפים שלפניך בלבד. הסיכום הזה ישמש אחר כך לסינתזה של רשומת-תיק אחת.
+
+החזר **טקסט חופשי קצר ומובנה** (לא JSON, לא טבלאות). השתמש בכותרות קצרות:
+- **סוגי המסמכים** — איזה סוגי דפים יש בקטע (פרוטוקול חקירה, תעודה, מכתב, רשימה, שער תיק וכו').
+- **תוכן עיקרי** — 2–4 משפטים: על מה הדפים, מי מעורב, מה מתואר.
+- **שמות** — שמות אנשים שמופיעים (כל שם פעם אחת בלבד, גם אם חזר הרבה; אל תחזור על אותו שם).
+- **מקומות ותאריכים** — כפי שמופיעים בפועל.
+- **שפות** — אילו שפות.
+- **יהלומים** — אם יש: עדות/תצהיר, מכתב ניצול, יומן, רשימת נספים/מגורשים/תושבים יהודים, תעודת מחנה/גטו, מסמך זהות בדויה. אם אין — כתוב "אין".
+
+אסור לנחש. אם דף לא קריא — ציין זאת. היה תמציתי — זו רק נקודת ביניים, לא הרשומה הסופית.`;
+
+const SYNTH_RULES = `אתה מקטלג ארכיוני בכיר ביד ושם. לפניך סיכומי-טקסט שכתבת קודם אחרי שקראת את **כל דפי התיק** (מנה אחר מנה, לפי טווחי דפים). תפקידך עכשיו: לסנתז מהם **רשומת-תיק אחת** לפי נהלי ספיר — לאחד כפילויות, לזהות סתירות בין מנות, ולסמן ודאות. הסתמך על הסיכומים; אם משהו חסר/לא ברור סמן זאת.
+${TIK_SCHEMA_RULES}
+
+בנוסף לשדות הסכימה, החזר:
+ "field_confidence": { "title":"✓", "related_places":"~", ... },
+ "review_flags": [ {"field":"", "issue":"", "note":""} ]
+היכן שהממצאים עקביים וברורים → "✓"; חלקיים/מבוסס מנה אחת → "~"; לא קריא/מוטל בספק → "?". רשום ב-review_flags כל סתירה בין מנות, דף לא-קריא, או פער שדורש בדיקת אנוש לפני הדבקה לספיר.`;
+
+function contextBlock(){const c=$('context').value.trim();return c?`\n\n## מידע מוקדם / דף איסוף\n${c}`:'\n\n## מידע מוקדם\n(אין)';}
+function chunkArr(arr,size){const out=[];for(let i=0;i<arr.length;i+=size)out.push(arr.slice(i,i+size));return out;}
+
+// Build the images[] payload for /api/ask-async — base64 each page. Images are
+// downscaled client-side (saves bandwidth + keeps the request under the 25MB
+// JSON limit); PDFs are sent as-is. The server materializes each to a temp file
+// and tells Claude to Read it, giving Claude a real visual pass over the scans.
+async function imagesForChunk(files){
+  const imgs=[];
+  for(const f of files){
+    const mime=mimeOf(f);
+    if(mime==='application/pdf'){imgs.push({mime,data:await fileToBase64(f)});}
+    else{imgs.push({mime:'image/jpeg',data:await downscaledB64(f)});}
+  }
+  return imgs;
+}
+
+/* ---------- Gemini engine (dual-mode stage 1: visual reading) ---------- */
+// Build inline_data parts for a chunk. PDFs sent as-is; images downscaled.
+async function geminiPartsFor(files){
+  const parts=[];
+  for(const f of files){
+    const mime=mimeOf(f);
+    if(mime==='application/pdf'){const b64=await fileToBase64(f);parts.push({inline_data:{mime_type:mime,data:b64}});}
+    else{const b64=await downscaledB64(f);parts.push({inline_data:{mime_type:'image/jpeg',data:b64}});}
+  }
+  return parts;
+}
+// On localhost, route Gemini through the local proxy (same-origin, no CORS).
+// Off localhost, call Google directly.
+function geminiBase(){
+  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))
+    return location.origin+'/api/gemini-proxy/v1beta/models/';
+  return 'https://generativelanguage.googleapis.com/v1beta/models/';
+}
+async function callGeminiOnParts(parts,promptText){
+  const url=geminiBase()+$('model-gemini').value+':generateContent';
+  let res;
+  try{
+    res=await fetch(url,{method:'POST',
+      headers:{'Content-Type':'application/json','x-goog-api-key':state.keyGemini},
+      body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:promptText}]}],
+        generationConfig:{temperature:0,maxOutputTokens:8192}})});
+  }catch(netErr){
+    throw new Error('לא ניתן להגיע ל-Gemini ('+netErr.message+'). בדוק חיבור רשת/חסימה.');
+  }
+  if(!res.ok){const t=await res.text();throw new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));}
+  const data=await res.json();
+  // Free text (not JSON) — robust against truncation; Claude turns it into the record.
+  return (data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim();
+}
+// Retry on rate-limit (429 / RESOURCE_EXHAUSTED) with backoff.
+async function callGeminiRetry(parts,promptText,onWait){
+  const tries=4;
+  for(let a=0;a<tries;a++){
+    try{return await callGeminiOnParts(parts,promptText);}
+    catch(e){
+      const rate=/HTTP 429|RESOURCE_EXHAUSTED|quota|rate/i.test(e.message);
+      if(rate&&a<tries-1){const wait=15000*(a+1);if(onWait)onWait(wait);await new Promise(r=>setTimeout(r,wait));continue;}
+      throw e;
+    }
+  }
+}
+
+/* ---------- Claude CLI engine (single engine: reads scans + synthesizes) ---------- */
+// On localhost we talk to this same origin (localhost never changes). Off
+// localhost (remote access) we use the tunnel URL the archivist pasted.
+function serverBase(){
+  const v=$('server-url').value.trim().replace(/\/$/,'');
+  if(v)return v;
+  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))return location.origin;
+  throw new Error('חסרה כתובת שרת מקומי / tunnel.');
+}
+const NET_HINT='ודא ששרת הבית רץ (node server.js), ובגישה מרחוק שגם המנהרה (cloudflared) רצה ושכתובת ה-tunnel מעודכנת — היא מתחלפת בכל הפעלה.';
+
+// POST a job to /api/ask-async and poll until done. Async POST returns a jobId
+// immediately so a long Claude run survives the Cloudflare quick-tunnel ~100s
+// limit. `onTick(secs)` updates the status line. Returns the raw text.
+async function runClaudeJob({prompt,images,onTick}){
+  const base=serverBase();
+  const model=$('model-claude').value.includes('opus')?'opus':'sonnet';
+  let res;
+  try{
+    res=await fetch(base+'/api/ask-async',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt,model,images:images||[]})});
+  }catch(netErr){throw new Error('לא ניתן להגיע לשרת המקומי ('+netErr.message+'). '+NET_HINT);}
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('שרת HTTP '+res.status+': '+(e.error||'').slice(0,400));}
+  const {jobId}=await res.json();
+  if(!jobId)throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
+  // Poll up to ~15 minutes (a big chunk of scans can take a while for Claude to Read).
+  const started=Date.now(), maxMs=15*60*1000;
+  while(Date.now()-started<maxMs){
+    await new Promise(r=>setTimeout(r,3000));
+    let pr;
+    try{pr=await fetch(base+'/api/ask-async/'+jobId);}catch(e){continue;} // transient — keep polling
+    if(!pr.ok)continue;
+    const j=await pr.json();
+    if(onTick)onTick(Math.round((Date.now()-started)/1000));
+    if(j.status==='done')return (j.text||'').trim();
+    if(j.status==='error')throw new Error('Claude נכשל: '+(j.error||'').slice(0,400));
+  }
+  throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. צמצם את "דפים למנה" או את גודל התיק ונסה שוב.');
+}
+
+// Stage 1 — Claude READS one chunk of scans and returns free-text notes.
+async function claudeReadChunk(files,promptText,onTick){
+  const images=await imagesForChunk(files);
+  return await runClaudeJob({prompt:promptText,images,onTick});
+}
+// Stage 2 — Claude SYNTHESIZES the per-chunk notes into one JSON record (no images).
+async function claudeSynthesize(promptText,onTick){
+  const text=await runClaudeJob({prompt:promptText,images:[],onTick});
+  return parseJson(text,'Claude');
+}
+
+/* ---------- render ---------- */
+function fieldBlock(label,id,html){
+  return `<div class="field"><div class="head"><span class="label">${esc(label)}</span>`+
+    `<button class="copy-btn" data-copy="${id}">העתק</button></div>`+
+    `<div class="body" id="${id}">${html}</div></div>`;
+}
+function conf(rec,key){const c=rec.field_confidence?.[key];return c?(' '+cmark(c)):'';}
+
+function renderRecord(rec){
+  state.lastRecord=rec;
+  const fc=rec.field_confidence||{};
+  // review flags — points Claude marked as needing human verification before Sapir
+  const dz=$('disagree-box'); dz.innerHTML='';
+  if((rec.review_flags||[]).length){
+    dz.innerHTML=`<div class="disagree"><h3>⚠ נקודות לבדיקת המקטלג לפני הדבקה לספיר</h3>`+
+      rec.review_flags.map(d=>`<div class="d"><b>${esc(d.field)}</b><br>`+
+        `${esc(d.issue)}`+
+        (d.note?`<br><small>${esc(d.note)}</small>`:'')+`</div>`).join('')+`</div>`;
+  }
+  // additional info (assembled)
+  let info='';
+  (rec.additional_info_paragraphs||[]).forEach(p=>{
+    const body=esc(p.body);
+    if(p.contains_diamond) info+=`<div class="diamond">${p.heading?`<b>${esc(p.heading)}</b><br>`:''}${body}</div>`;
+    else info+=`${p.heading?`<b>${esc(p.heading)}</b><br>`:''}${body}\n\n`;
+  });
+  if((rec.also_in_file||[]).length){
+    info+=`<b>בתיק גם:</b>\n`+rec.also_in_file.map(x=>'• '+esc(x)).join('\n')+'\n\n';
+  }
+  if(rec.donor_notes||$('context').value.trim()){
+    const dn=rec.donor_notes||$('context').value.trim();
+    info+=`<b>הערות מוסר החומר:</b>\n${esc(dn)}`;
+  }
+  // diamonds summary
+  const dia=(rec.diamonds||[]).length
+    ? rec.diamonds.map(d=>`<div class="diamond"><b>${esc(d.type)}</b> — ${esc(d.description)}${d.location?` <small>(${esc(d.location)})</small>`:''}</div>`).join('')
+    : '<span class="none">— לא זוהו יהלומים —</span>';
+  const places=(rec.related_places||[]).filter(Boolean).join('; ')||'<span class="none">—</span>';
+  const langs=(rec.languages||[]).filter(Boolean).join(', ')||'<span class="none">—</span>';
+  const dAuth=`${esc(rec.date_authentic_start||'—')} – ${esc(rec.date_authentic_end||'—')}`;
+  const dRec=`${esc(rec.date_reconstructed_start||'—')} – ${esc(rec.date_reconstructed_end||'—')}`;
+  const nameType=rec.designate_name_typing
+    ? `כן${rec.name_typing_reason?' — '+esc(rec.name_typing_reason):''}`
+    : 'לא';
+  const cls=`${esc(rec.classification||'בלתי מסווג')}${rec.classification_reason?' — '+esc(rec.classification_reason):''}`;
+
+  $('record').innerHTML=
+    `<div class="section-bar">דפית ראשית</div>`+
+    fieldBlock('כותר'+conf(rec,'title'), 'f-title', esc(rec.title))+
+    fieldBlock('מקומות קשורים', 'f-places', places)+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('תאריך אותנטי (תחילה–סיום)','f-dauth',dAuth)+
+      fieldBlock('תאריך משוחזר (תחילה–סיום)','f-drec',dRec)+
+    `</div>`+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('מקוריות','f-orig',esc(rec.originality||'—'))+
+      fieldBlock('שפות','f-lang',langs)+
+    `</div>`+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('שם יוצר החומר','f-cperson',esc(rec.creator_person||'—'))+
+      fieldBlock('יוצר החומר (גוף)','f-corg',esc(rec.creator_org||'—'))+
+    `</div>`+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('מיועד להקלדת שמות','f-nt',nameType)+
+      fieldBlock('סיווג','f-cls',cls)+
+    `</div>`+
+    fieldBlock('הערת תוכן','f-cnote',esc(rec.content_note||'—'))+
+
+    `<div class="section-bar">מידע נוסף</div>`+
+    fieldBlock('מידע נוסף (להדבקה לספיר)','f-info',info.trim()||'<span class="none">—</span>')+
+
+    `<div class="section-bar">יהלומים — מסמכים לרישום פרטני</div>`+
+    `<div class="field"><div class="body">${dia}</div></div>`;
+
+  // bind copy
+  document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
+    b.addEventListener('click',async()=>{
+      const el=$(b.getAttribute('data-copy')); if(!el)return;
+      try{await navigator.clipboard.writeText(el.innerText.trim());}catch(e){}
+      const o=b.textContent;b.classList.add('copied');b.textContent='✓';
+      $('toast').classList.add('show');
+      setTimeout(()=>{b.classList.remove('copied');b.textContent=o;$('toast').classList.remove('show');},1100);
+    });
+  });
+  $('results').classList.add('show');
+  $('tik-export-bar').style.display='block';
+}
+
+/* ---------- NotebookLM export — names · dates · context of this תיק record ---------- */
+function buildTikNotebookLMExport(){
+  const rec=state.lastRecord; if(!rec) return null;
+  const strip=t=>String(t||'').replace(/<[^>]+>/g,'').trim();
+  const L=[];
+  L.push(`# יד ושם — רשומת תיק לייצוא ל-NotebookLM`);
+  L.push(`נוצר ${new Date().toLocaleDateString('he-IL')}`);
+  L.push('');
+  L.push(`> רשומת תיק אחת שפוענחה (Claude קרא את כל דפי התיק). העלה כמקור ב-NotebookLM כדי לחפש שמות, תאריכים ומקומות ולהצליב מידע. השמות מופיעים בתוך "מידע נוסף".`);
+  L.push('');
+  const add=(label,val)=>{const v=strip(val);if(v)L.push(`- **${label}:** ${v}`);};
+  add('כותר', rec.title);
+  add('מקומות קשורים', (rec.related_places||[]).filter(Boolean).join('; '));
+  add('תאריך אותנטי', [rec.date_authentic_start,rec.date_authentic_end].filter(Boolean).join(' – '));
+  add('תאריך משוחזר', [rec.date_reconstructed_start,rec.date_reconstructed_end].filter(Boolean).join(' – '));
+  add('שפות', (rec.languages||[]).filter(Boolean).join(', '));
+  add('מקוריות', rec.originality);
+  add('יוצר החומר (אדם)', rec.creator_person);
+  add('יוצר החומר (גוף)', rec.creator_org);
+  add('מיועד להקלדת שמות', rec.designate_name_typing?('כן'+(rec.name_typing_reason?' — '+rec.name_typing_reason:'')):'');
+  add('סיווג', (rec.classification||'')+(rec.classification_reason?' — '+rec.classification_reason:''));
+  add('הערת תוכן', rec.content_note);
+  const infoParts=[];
+  (rec.additional_info_paragraphs||[]).forEach(p=>{const b=strip(p.body); if(b)infoParts.push((p.heading?strip(p.heading)+': ':'')+b);});
+  if((rec.also_in_file||[]).length) infoParts.push('בתיק גם: '+rec.also_in_file.map(strip).filter(Boolean).join('; '));
+  if(rec.donor_notes) infoParts.push('הערות מוסר: '+strip(rec.donor_notes));
+  if(infoParts.length){ L.push(''); L.push(`## מידע נוסף (כולל שמות)`); infoParts.forEach(t=>L.push(t)); }
+  if((rec.diamonds||[]).length){ L.push(''); L.push(`## יהלומים — מסמכים לרישום פרטני`); rec.diamonds.forEach(d=>{const t=strip(d.type),de=strip(d.description); if(t||de)L.push(`- **${t}** — ${de}${d.location?' ('+strip(d.location)+')':''}`);}); }
+  if((rec.review_flags||[]).length){ L.push(''); L.push(`## נקודות לבדיקת המקטלג`); rec.review_flags.forEach(d=>L.push(`- **${strip(d.field)}**: ${strip(d.issue)}${d.note?' — '+strip(d.note):''}`)); }
+  return L.join('\n');
+}
+$('notebooklm-btn').addEventListener('click',()=>{
+  const md=buildTikNotebookLMExport();
+  if(!md){showStatus('אין רשומת תיק לייצוא','err');return;}
+  const today=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const fname=`notebooklm_tik_${today}.md`;
+  const blob=new Blob([md],{type:'text/markdown;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=fname;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  showStatus(`✓ הורד ל-NotebookLM: ${fname}`,'ok');
+});
+
+/* ---------- combined PDF of all uploaded image pages (self-contained, no libs) ---------- */
+// Decode one image file, downscale to a sane edge, and return baseline JPEG bytes
+// + pixel dimensions. Re-encoding to JPEG keeps every page in one color space
+// (DeviceRGB) and keeps the merged PDF small enough for big תיקים (156+ scans).
+async function pdfPageFor(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('טעינת תמונה נכשלה'));im.src=url;});
+    const edge=2000;
+    const scale=Math.min(1,edge/Math.max(img.naturalWidth,img.naturalHeight));
+    const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+    cv.getContext('2d').drawImage(img,0,0,w,h);
+    const b64=cv.toDataURL('image/jpeg',0.85).split(',')[1];
+    const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+    return {bytes,width:w,height:h};
+  }finally{URL.revokeObjectURL(url);}
+}
+// Assemble a minimal valid PDF: one page per image, each JPEG embedded as a
+// DCTDecode XObject so no re-compression happens on the PDF side. Objects:
+// 1=Catalog, 2=Pages, then 3 objects per page (page, content, image xobject).
+function buildImagesPdf(pages){
+  const enc=s=>{const a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i)&0xff;return a;};
+  const parts=[];let offset=0;const offsets=[];
+  const push=chunk=>{const u=typeof chunk==='string'?enc(chunk):chunk;parts.push(u);offset+=u.length;};
+  const mark=n=>{offsets[n]=offset;};
+  const N=pages.length;
+  const kids=[];for(let i=0;i<N;i++)kids.push((3+i*3)+' 0 R');
+  push('%PDF-1.3\n%\xff\xff\xff\xff\n');
+  mark(1);push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  mark(2);push('2 0 obj\n<< /Type /Pages /Kids ['+kids.join(' ')+'] /Count '+N+' >>\nendobj\n');
+  for(let i=0;i<N;i++){
+    const p=pages[i],pageN=3+i*3,contentN=pageN+1,imgN=pageN+2,W=p.width,H=p.height;
+    mark(pageN);
+    push(pageN+' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+W+' '+H+']'+
+         ' /Resources << /XObject << /Im0 '+imgN+' 0 R >> >> /Contents '+contentN+' 0 R >>\nendobj\n');
+    const content='q '+W+' 0 0 '+H+' 0 0 cm /Im0 Do Q';
+    mark(contentN);
+    push(contentN+' 0 obj\n<< /Length '+content.length+' >>\nstream\n'+content+'\nendstream\nendobj\n');
+    mark(imgN);
+    push(imgN+' 0 obj\n<< /Type /XObject /Subtype /Image /Width '+W+' /Height '+H+
+         ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+p.bytes.length+' >>\nstream\n');
+    push(p.bytes);push('\nendstream\nendobj\n');
+  }
+  const xrefStart=offset,total=2+N*3;
+  push('xref\n0 '+(total+1)+'\n0000000000 65535 f \n');
+  for(let n=1;n<=total;n++)push(String(offsets[n]||0).padStart(10,'0')+' 00000 n \n');
+  push('trailer\n<< /Size '+(total+1)+' /Root 1 0 R >>\nstartxref\n'+xrefStart+'\n%%EOF');
+  let len=0;parts.forEach(p=>len+=p.length);
+  const out=new Uint8Array(len);let o=0;parts.forEach(p=>{out.set(p,o);o+=p.length;});
+  return out;
+}
+function triggerDownload(blob,fname){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=fname;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+// When the תיק is made of image scans (not a single PDF), merge them into one
+// PDF alongside the cataloging. Runs in parallel with the analysis; failures are
+// surfaced in the PDF bar only and never abort the catalog run.
+async function maybeBuildCombinedPdf(){
+  const imgs=state.files.filter(f=>mimeOf(f)!=='application/pdf');
+  if(!imgs.length)return;
+  const bar=$('pdf-bar');bar.style.display='block';
+  bar.textContent='⏳ בונה PDF מאוחד מ-'+imgs.length+' תמונות…';
+  try{
+    const pages=[];
+    for(let i=0;i<imgs.length;i++){
+      pages.push(await pdfPageFor(imgs[i]));
+      bar.textContent='⏳ בונה PDF מאוחד… '+(i+1)+'/'+imgs.length;
+    }
+    const tikName=((imgs[0].webkitRelativePath||'').split('/')[0]||'תיק').replace(/[\\/:*?"<>|]+/g,'_');
+    const today=new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const fname=tikName+'_'+today+'.pdf';
+    state.pdfBlob=new Blob([buildImagesPdf(pages)],{type:'application/pdf'});
+    state.pdfName=fname;
+    triggerDownload(state.pdfBlob,fname);
+    bar.innerHTML='✓ PDF מאוחד מוכן ('+imgs.length+' עמ׳) — '+esc(fname)+' ';
+    const b=document.createElement('button');b.className='copy-btn';b.style.background='#2c5d8a';b.textContent='⬇ הורד שוב';
+    b.addEventListener('click',()=>triggerDownload(state.pdfBlob,state.pdfName));
+    bar.appendChild(b);
+  }catch(e){bar.innerHTML='⚠ בניית ה-PDF המאוחד נכשלה: '+esc(e.message);}
+}
+
+/* ---------- run (chunked: Claude reads every page, then synthesizes one record) ---------- */
+$('run').addEventListener('click',async()=>{
+  if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return;}
+  try{serverBase();}catch(e){showStatus(e.message,'err');return;}
+  const engine=$('engine-mode').value;  // 'claude' | 'dual'
+  if(engine==='dual'){
+    state.keyGemini=$('key-gemini').value.trim();
+    if(!state.keyGemini){showStatus('מצב דו-מנועי דורש מפתח Gemini (הקריאה הויזואלית של הדפים).','err');return;}
+  }
+  const reader=engine==='dual'?'Gemini':'Claude';
+  const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||8);
+  const chunks=chunkArr(state.files,chunkSize);
+  $('run').disabled=true;
+  // In parallel with cataloging: if the תיק is image scans, merge them into one PDF.
+  maybeBuildCombinedPdf();
+  try{
+    // Stage 1 — the chosen reader reads every chunk (full coverage) → free-text notes.
+    // Precompute each chunk's page-range label up front so chunks can be read in
+    // any order (Claude mode reads several at once; see the bounded pool below).
+    const meta=chunks.map((c,i)=>{
+      const from=chunks.slice(0,i).reduce((n,cc)=>n+cc.length,0)+1;
+      const to=from+c.length-1;
+      // A PDF is ONE uploaded file but contains MANY pages — don't label it "page 1–1".
+      const hasPdf=c.some(f=>mimeOf(f)==='application/pdf');
+      const range=hasPdf?`מסמך PDF מלא (קובץ ${from}${c.length>1?`–${to}`:''})`:`${from}–${to}`;
+      return {from,to,hasPdf,range};
+    });
+    const notes=new Array(chunks.length); const failed=[];
+    function chunkPrompt(i){
+      const m=meta[i];
+      const coverage = m.hasPdf
+        ? (engine==='dual'
+            ? `\n\n🛑 המצורף הוא מסמך PDF שלם המכיל **דפים רבים** (לא דף בודד). קרא את **כל הדפים** מהראשון עד האחרון — לא רק את דף השער/המנהלה. סכם את תוכן כל הדפים וציין כמה דפים יש במסמך. אל תעצור אחרי הדף הראשון.`
+            : `\n\n🛑 המצורף הוא מסמך PDF שלם המכיל **דפים רבים** (לא דף בודד). עליך לקרוא את **כל הדפים** במסמך — מהראשון עד האחרון — ולא רק את דף השער/דף המנהלה הראשון. כלי ה-Read על PDF ארוך עשוי לדרוש קריאה בטווחי דפים (למשל pages:"1-10", אחר כך pages:"11-20" וכן הלאה) — חזור על הקריאה עד שכיסית את כל הדפים. בסיכום ציין כמה דפים סך הכול יש במסמך ואילו סוגי דפים מופיעים לאורכו. אל תעצור אחרי הדף הראשון.`)
+        : `\n\n(טווח דפים: ${m.range} מתוך ${state.files.length})`;
+      return `${CHUNK_EXTRACT_RULES}${coverage}${contextBlock()}`;
+    }
+    // Don't abort a long run over one bad chunk — record it and keep going.
+    function recordFailure(i,err){
+      failed.push(meta[i].range);
+      notes[i]={range:meta[i].range,text:`⚠ מנה זו נכשלה בקריאה (${err.message}). דרושה קריאה חוזרת ידנית של דפים ${meta[i].range}.`};
+    }
+
+    if(engine==='dual'){
+      // Gemini free tier is rate-limited (5 RPM) → read sequentially with pacing.
+      for(let i=0;i<chunks.length;i++){
+        const m=meta[i];
+        showStatus(`<span class="spinner"></span>שלב 1 · Gemini קורא ${m.hasPdf?'את כל דפי ה-PDF':`דפים ${m.range} מתוך ${state.files.length}`} (מנה ${i+1}/${chunks.length})…`,'info');
+        try{
+          const parts=await geminiPartsFor(chunks[i]);
+          const txt=await callGeminiRetry(parts,chunkPrompt(i),wait=>showStatus(`<span class="spinner"></span>שלב 1 · מגבלת קצב של Gemini (${m.range}) — ממתין ${wait/1000} שׄ ומנסה שוב…`,'info'));
+          notes[i]={range:m.range,text:txt||'(אין טקסט)'};
+        }catch(err){recordFailure(i,err);}
+        if(i<chunks.length-1)await new Promise(r=>setTimeout(r,1200)); // pace Gemini RPM
+      }
+    }else{
+      // Claude mode: chunks are independent, and the server spawns one CLI process
+      // per job with no lock — so read several at once. Bounded to stay within the
+      // Claude subscription's limits and the machine's resources.
+      const CONCURRENCY=3;
+      let started=0, completed=0;
+      const tick=()=>showStatus(`<span class="spinner"></span>שלב 1 · Claude קורא ${chunks.length} מנות במקביל (${completed}/${chunks.length} הושלמו, עד ${CONCURRENCY} בו-זמנית)…`,'info');
+      tick();
+      async function worker(){
+        while(started<chunks.length){
+          const i=started++;
+          try{
+            const txt=await claudeReadChunk(chunks[i],chunkPrompt(i));
+            notes[i]={range:meta[i].range,text:txt||'(אין טקסט)'};
+          }catch(err){recordFailure(i,err);}
+          completed++; tick();
+        }
+      }
+      await Promise.all(Array.from({length:Math.min(CONCURRENCY,chunks.length)},worker));
+    }
+    if(failed.length===chunks.length)throw new Error(`כל המנות נכשלו בקריאת ${reader}. `+(engine==='dual'?'בדוק מפתח/מודל/מכסת Gemini.':NET_HINT));
+
+    // Stage 2 — Claude synthesizes ALL chunk notes into ONE record (text-only; no images).
+    showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז ${chunks.length} מנות לרשומת-תיק אחת…`,'info');
+    const findingsText=notes.map(n=>`### דפים ${n.range}\n${n.text}`).join('\n\n');
+    const synthPrompt=`${SYNTH_RULES}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}\n\nהחזר JSON סופי בלבד.`;
+    const final=await claudeSynthesize(synthPrompt,secs=>showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק… (${secs} שׄ)`,'info'));
+    renderRecord(final);
+    const warn=failed.length?` ⚠ ${failed.length} מנות נכשלו (דפים ${failed.join(', ')}) — דרושה קריאה חוזרת ידנית.`:'';
+    showStatus(`✓ הקטלוג הושלם — נקראו ${state.files.length} הדפים ב-${chunks.length} מנות.${warn} בדוק את נקודות הבדיקה והיהלומים לפני הדבקה לספיר.`,failed.length?'info':'ok');
+    $('results').scrollIntoView({behavior:'smooth'});
+  }catch(err){
+    console.error(err);
+    showStatus('שגיאה: '+err.message+(err.rawText?'\n\n=== תגובה גולמית ===\n'+err.rawText.slice(0,1200):''),'err');
+  }finally{$('run').disabled=false;}
+});
+
+/* ---------- engine-mode toggle: reveal Gemini fields only in dual mode ---------- */
+function syncEngineUI(){
+  const dual=$('engine-mode').value==='dual';
+  $('gemini-key-wrap').style.display=dual?'block':'none';
+  $('model-gemini-wrap').style.display=dual?'block':'none';
+}
+$('engine-mode').addEventListener('change',syncEngineUI);
+syncEngineUI();
+
+/* ---------- persist settings locally ---------- */
+const PERSIST=['engine-mode','key-gemini','model-gemini','model-claude','server-url','chunk-size','img-edge'];
+const STORE_KEY='yv-tik-settings';
+function setSaveState(msg,color){const el=$('save-state');if(el){el.textContent=msg;el.style.color=color||'#2e7d32';}}
+function loadSettings(){
+  let s={};
+  try{s=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
+    PERSIST.forEach(id=>{if(s[id]!=null&&$(id)&&$(id).value!==s[id])$(id).value=s[id];});}catch(e){}
+  // Auto-config: when served from the local machine, use this same origin —
+  // localhost never changes, so no tunnel URL is needed.
+  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&$('server-url')&&!$('server-url').value.trim()){
+    $('server-url').value=location.origin;
+  }
+  syncEngineUI();
+  setSaveState('🔒 הגדרות נטענו מהמכשיר','#2e7d32');
+}
+function saveSettings(){
+  try{const s={};PERSIST.forEach(id=>{if($(id))s[id]=$(id).value;});
+    localStorage.setItem(STORE_KEY,JSON.stringify(s));
+    setSaveState('🔒 נשמר במכשיר זה','#2e7d32');}catch(e){setSaveState('⚠ לא ניתן לשמור (אחסון חסום בדפדפן)','#b22222');}
+}
+PERSIST.forEach(id=>{const el=$(id);if(el){el.addEventListener('change',saveSettings);el.addEventListener('input',saveSettings);el.addEventListener('blur',saveSettings);}});
+loadSettings();
+window.addEventListener('pageshow',loadSettings);
+
+/* ---------- file handling ---------- */
+function renderFiles(){
+  const n=state.files.length;
+  const cs=Math.max(1,parseInt($('chunk-size').value,10)||8);
+  const note=n?`<div class="f" style="font-weight:600">📁 ${n} דפים — ייקראו במלואם ב-${Math.ceil(n/cs)} מנות (Claude)</div>`:'';
+  const rows=state.files.slice(0,60).map(f=>
+    `<div class="f"><span>${esc(f.name)}</span><span>${(f.size/1024/1024).toFixed(1)}MB</span></div>`).join('');
+  const more=n>60?`<div class="f"><span>… ועוד ${n-60}</span><span></span></div>`:'';
+  $('filelist').innerHTML=note+rows+more;
+  $('run').disabled=!n;
+}
+function addFiles(list){
+  const files=Array.from(list)
+    .filter(f=>/\.(pdf|jpe?g|png|tiff?|webp)$/i.test(f.name))
+    .sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name,undefined,{numeric:true}));
+  state.files=[...state.files,...files];renderFiles();
+}
+const drop=$('drop');
+drop.addEventListener('click',()=>$('file-input').click());
+$('file-input').addEventListener('change',e=>{addFiles(e.target.files);e.target.value='';});
+$('pick-folder').addEventListener('click',()=>$('folder-input').click());
+$('folder-input').addEventListener('change',e=>{
+  if(!e.target.files.length){alert('לא נבחרו קבצים.');return;}
+  addFiles(e.target.files);e.target.value='';
+});
+$('clear-files').addEventListener('click',()=>{state.files=[];renderFiles();});
+$('chunk-size').addEventListener('change',renderFiles);
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
+drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
+drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files);});
+</script>
+</body>
+</html>
