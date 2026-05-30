@@ -197,6 +197,12 @@
   .timeline-editor .tc-cell { width: 100px; padding: 5px 6px; }
   .timeline-editor .tc-cell input { text-align: center; direction: ltr; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; padding: 4px 2px; white-space: nowrap; }
   .timeline-editor .del-cell { width: 38px; text-align: center; padding: 5px 4px; }
+  .timeline-editor .conf-cell { width: 86px; padding: 5px 5px; text-align: center; }
+  .conf-sel { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: var(--card);
+    font-size: 11.5px; padding: 3px 2px; font-weight: 700; cursor: pointer; }
+  .conf-sel.conf-high { color: var(--good); border-color: #b7dfc2; }
+  .conf-sel.conf-medium { color: var(--warn); border-color: #ecd9a8; }
+  .conf-sel.conf-low { color: var(--soft); border-color: #e6bcbc; }
 
   /* Split button on film drop */
   .split-btn-wrap { display: none; margin-top: 10px; text-align: center; }
@@ -545,10 +551,11 @@
               <th style="width:80px">עד</th>
               <th>תיאור עברית</th>
               <th>Description English</th>
+              <th style="width:86px">ודאות</th>
               <th class="del-cell"></th>
             </tr></thead>
             <tbody id="r-timeline-tbody">
-              <tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:14px">לחץ "זהה את הסרט" לטיימליין אוטומטי</td></tr>
+              <tr><td colspan="6" style="text-align:center; color:var(--muted); font-style:italic; padding:14px">לחץ "זהה את הסרט" לטיימליין אוטומטי</td></tr>
             </tbody>
           </table>
           <button type="button" class="ghost" id="timeline-add-row" style="margin-top:6px; font-size:12px; padding:5px 10px;">+ הוסף שורה</button>
@@ -1193,7 +1200,7 @@ ${thesaurusBrief}
   "summary_he": "תקציר 4-5 שורות בעברית",
   "summary_en": "Summary 4-5 lines in English",
   "timeline": [
-    { "start": "00:00:00", "end": "00:01:30", "description_he": "תיאור בעברית", "description_en": "Description in English" }
+    { "start": "00:00:00", "end": "00:01:30", "description_he": "תיאור בעברית", "description_en": "Description in English", "confidence": "high | medium | low" }
   ],
   "persons_he": "תיאור אישים עם רמת ודאות ו-timecode",
   "persons_en": "Same in English",
@@ -1204,6 +1211,7 @@ ${thesaurusBrief}
   "admin_notes": "הערות פנים-ארכיוניות"
 }
 \`\`\`
+לכל סצנה ב-timeline חובה לציין שדה \`confidence\` המבטא את רמת הוודאות של זיהוי הסצנה: \`high\` (ודאי — זיהוי חד-משמעי על סמך מה שנראה בפועל), \`medium\` (סביר — עקבי עם מספר רמזים אך ללא ראיה מכרעת), \`low\` (משוער — דמיון חזותי או הסקה כללית בלבד). אל תכניס סימוני ודאות לתוך טקסט התיאור — רק בשדה \`confidence\` הנפרד.
 החזר JSON בלבד, ללא code fence.`;
 }
 
@@ -1607,7 +1615,7 @@ function fillResults(d) {
   tbody.innerHTML = '';
   (d.timeline || []).forEach(scene => addTimelineRow(scene));
   if (!(d.timeline || []).length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--muted); font-style:italic; padding:14px">אין סצנות. הוסף ידנית.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted); font-style:italic; padding:14px">אין סצנות. הוסף ידנית.</td></tr>';
   }
   const subjects = (d.subjects_he || []).map((he, i) => ({ he, en: (d.subjects_en || [])[i] || '' }));
   renderSubjects(subjects);
@@ -1628,11 +1636,24 @@ function stripConfidenceMarkup(v) {
     .trim();
 }
 
+// Per-scene confidence selector (separate column — never inside the prose).
+function confSelectHTML(val) {
+  const v = (val === 'high' || val === 'medium' || val === 'low') ? val : 'medium';
+  const opt = (value, label) => `<option value="${value}"${v === value ? ' selected' : ''}>${label}</option>`;
+  return `<select class="conf-sel conf-${v}" title="רמת הוודאות של זיהוי הסצנה">`
+    + opt('high', '✓ ודאי') + opt('medium', '~ סביר') + opt('low', '? משוער') + '</select>';
+}
+// Keep the select's color in sync with the chosen level.
+document.getElementById('r-timeline-tbody').addEventListener('change', e => {
+  const sel = e.target.closest('.conf-sel');
+  if (sel) sel.className = 'conf-sel conf-' + sel.value;
+});
+
 function addTimelineRow(scene) {
   const tbody = document.getElementById('r-timeline-tbody');
   if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
   const tr = document.createElement('tr');
-  tr.innerHTML = `<td class="tc-cell"><input type="text" value="${esc(scene?.start || '00:00:00')}"></td><td class="tc-cell"><input type="text" value="${esc(scene?.end || '00:00:00')}"></td><td><textarea rows="2">${esc(stripConfidenceMarkup(scene?.description_he))}</textarea></td><td><textarea rows="2" style="direction:ltr; text-align:left; font-family:Georgia,serif">${esc(stripConfidenceMarkup(scene?.description_en))}</textarea></td><td class="del-cell"><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tr.innerHTML = `<td class="tc-cell"><input type="text" value="${esc(scene?.start || '00:00:00')}"></td><td class="tc-cell"><input type="text" value="${esc(scene?.end || '00:00:00')}"></td><td><textarea rows="2">${esc(stripConfidenceMarkup(scene?.description_he))}</textarea></td><td><textarea rows="2" style="direction:ltr; text-align:left; font-family:Georgia,serif">${esc(stripConfidenceMarkup(scene?.description_en))}</textarea></td><td class="conf-cell">${confSelectHTML(scene?.confidence)}</td><td class="del-cell"><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove()">✕</button></td>`;
   tbody.appendChild(tr);
 }
 document.getElementById('timeline-add-row').addEventListener('click', () => addTimelineRow());
@@ -1695,13 +1716,20 @@ function buildFilmHTML() {
   const timelineRows = [...document.querySelectorAll('#r-timeline-tbody tr')].map(tr => {
     const inputs = [...tr.querySelectorAll('input, textarea')];
     if (inputs.length < 4) return null;
-    return { start: inputs[0].value, end: inputs[1].value, he: inputs[2].value, en: inputs[3].value };
+    return { start: inputs[0].value, end: inputs[1].value, he: inputs[2].value, en: inputs[3].value,
+      confidence: tr.querySelector('.conf-sel')?.value || '' };
   }).filter(s => s && s.he);
+  // Confidence cell for the exported timeline (separate column, never in prose).
+  const confCell = c => {
+    const map = { high: ['✓ ודאי', '#2e7d32'], medium: ['~ סביר', '#b07000'], low: ['? משוער', '#b22222'] };
+    const [label, color] = map[c] || ['—', '#888'];
+    return `<td class="tc" style="color:${color}; font-weight:700; white-space:nowrap">${label}</td>`;
+  };
   const tlHE = timelineRows.length
-    ? `<table class="tl"><thead><tr><th>החל</th><th>עד</th><th>תיאור</th></tr></thead><tbody>${timelineRows.map(s => `<tr><td class="tc">${esc(s.start)}</td><td class="tc">${esc(s.end)}</td><td>${esc(s.he).replace(/\n/g, '<br>')}</td></tr>`).join('')}</tbody></table>`
+    ? `<table class="tl"><thead><tr><th>החל</th><th>עד</th><th>תיאור</th><th>ודאות</th></tr></thead><tbody>${timelineRows.map(s => `<tr><td class="tc">${esc(s.start)}</td><td class="tc">${esc(s.end)}</td><td>${esc(s.he).replace(/\n/g, '<br>')}</td>${confCell(s.confidence)}</tr>`).join('')}</tbody></table>`
     : '<div style="color:#888; font-style:italic">— אין סצנות —</div>';
   const tlEN = timelineRows.length
-    ? `<table class="tl"><thead><tr><th>Start</th><th>End</th><th>Description</th></tr></thead><tbody>${timelineRows.map(s => `<tr><td class="tc">${esc(s.start)}</td><td class="tc">${esc(s.end)}</td><td>${esc(s.en).replace(/\n/g, '<br>')}</td></tr>`).join('')}</tbody></table>`
+    ? `<table class="tl"><thead><tr><th>Start</th><th>End</th><th>Description</th><th>Conf.</th></tr></thead><tbody>${timelineRows.map(s => `<tr><td class="tc">${esc(s.start)}</td><td class="tc">${esc(s.end)}</td><td>${esc(s.en).replace(/\n/g, '<br>')}</td>${confCell(s.confidence)}</tr>`).join('')}</tbody></table>`
     : '<div style="color:#888; font-style:italic">— No scenes —</div>';
   const chipsHTML = activeSubjects.map(s => `<span style="display:inline-block; background:#cee0f3; color:#1d4666; padding:3px 10px; margin:2px; border-radius:12px; font-size:12.5px; border:1px solid #a1bbd9;">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}</span>`).join('');
   return FILM_TEMPLATE
@@ -2092,6 +2120,7 @@ function buildCombinedFilmRecord() {
         end: formatDuration(part.startSec + tcToSec(scene.end)),
         description_he: scene.description_he,
         description_en: scene.description_en,
+        confidence: scene.confidence,
       });
     });
     const lbl = `— חלק ${part.idx + 1} —`;
