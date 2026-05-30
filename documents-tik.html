@@ -110,6 +110,32 @@
         <div class="hint" id="model-check-status"></div>
       </div>
     </div>
+    <div class="row2">
+      <div>
+        <label>אופן הרצת Claude (שלב הסינתזה)</label>
+        <select id="claude-mode">
+          <option value="api" selected>API (מפתח sk-ant — בתשלום)</option>
+          <option value="cli">CLI מקומי (מנוי — בלי מפתח, דרך שרת הבית)</option>
+        </select>
+        <div class="hint">CLI מריץ את Claude דרך השרת המקומי (claude -p) — חוסך עלות API. Claude לא רואה תמונות במצב זה; Gemini מבצע את הקריאה החזותית.</div>
+      </div>
+      <div id="server-url-wrap" style="display:none">
+        <label>כתובת שרת מקומי / tunnel</label>
+        <input type="text" id="server-url" class="ltr" value="https://bryant-widespread-building-fingers.trycloudflare.com" placeholder="https://….trycloudflare.com או http://localhost:3000">
+        <div class="hint">כתובת ה-tunnel מתחלפת בכל הפעלה. ודא שהשרת רץ.</div>
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>דפים למנה (chunk)</label>
+        <input type="number" id="chunk-size" value="25" min="1" max="100" style="width:90px">
+        <div class="hint">Gemini קורא את כל דפי התיק במנות בגודל זה (כיסוי מלא, לא דגימה).</div>
+      </div>
+      <div>
+        <label>חלוקת תפקידים</label>
+        <div class="hint" style="margin-top:6px">Gemini = קריאה חזותית של כל הדפים → טקסט מובנה. Claude = עובר על הטקסט של Gemini, מאמת נכונות, מאחד ומסמן ודאות. Claude אינו רואה תמונות.</div>
+      </div>
+    </div>
   </div>
 
   <!-- UPLOAD -->
@@ -121,10 +147,8 @@
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
       <button type="button" id="pick-folder" class="copy-btn" style="background:#2c5d8a">📁 העלה תיקייה שלמה</button>
       <button type="button" id="clear-files" class="copy-btn" style="background:#8a3a2c">נקה</button>
-      <span style="margin-inline-start:auto;font-size:12.5px">מקס' דפים לשליחה
-        <input type="number" id="max-pages" value="40" min="1" max="500" style="width:70px;display:inline-block;padding:4px 6px"></span>
     </div>
-    <div class="hint">תיק עם מאות סריקות: נשלח מדגם אחיד לאורך התיק (כולל הדף הראשון והאחרון) עד למספר המקסימלי. הגדל אם צריך כיסוי מלא.</div>
+    <div class="hint">תיקייה = תיק אחד. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
     <div class="filelist" id="filelist"></div>
     <label>מידע מוקדם / דף איסוף (אופציונלי)</label>
     <textarea id="context" placeholder="הערות מוסר החומר, שם החטיבה, רקע משפחתי, סימול…"></textarea>
@@ -208,64 +232,47 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפנ
  "diamonds": [ {"type": "", "description": "", "location": ""} ]
 }`;
 
-const MERGE_RULES = `קיבלת תיק שלם (כל הדפים מצורפים) ושתי טיוטות רשומה שהופקו בנפרד: אחת ע"י Gemini, אחת ע"י Claude.
-תפקידך: להפיק **רשומת-תיק סופית אחת** מאוחדת, מדויקת ונאמנה לנהלי ספיר, ולסמן ודאות לכל שדה לפי מידת ההסכמה בין שתי הטיוטות והתאמתן לתיק עצמו.
+/* ---------- chunk extraction (Gemini reads every page) & synthesis prompts ---------- */
+const CHUNK_EXTRACT_RULES = `אתה קורא **חלק** מתיק ארכיוני (טווח דפים שיצוין). אלו לא כל דפי התיק — חלץ ממצאים מהדפים שלפניך בלבד, שישמשו אחר כך לסינתזה של רשומת-תיק אחת.
+לכל מסמך/קבוצת דפים: סוג החומר, תקציר קצר, שמות אנשים (מלאים אם אפשר), מקומות, תאריכים (כפי שמופיעים), שפות, כיתובים/חתימות בולטים, וסימון "יהלומים" (מכתב ניצול, תצהיר/עדות, יומן, רשימת נספים/מגורשים/תושבים יהודים, תעודת מחנה/גטו, מסמך זהות בדויה).
+אסור לנחש. אם לא קריא — ציין. החזר אך ורק JSON:
+{
+ "page_range": "",
+ "documents": [ {"kind":"", "summary":"", "dates":[""], "languages":[""]} ],
+ "names": [ "" ],
+ "places": [ "" ],
+ "diamonds": [ {"type":"", "description":"", "location":""} ],
+ "notes": ""
+}`;
 
-כללי הצלבה:
-- שתי הטיוטות מסכימות + תואם לתיק → ודאות "✓".
-- חלוקות בעובדה (שם/תאריך/מקום) → בחר את הנתמך בתיק, ודאות "~", ורשום ב-disagreements את שתי הקריאות.
-- רק טיוטה אחת מצאה משהו → כלול בזהירות, ודאות "?".
-- אל תמציא. אל תכריע "מי צודק" בלי תמיכה בתיק — הצג את שתי הקריאות.
+const SYNTH_RULES = `אתה מקטלג ארכיוני בכיר ביד ושם. לפניך ממצאים שחולצו ע"י Gemini מ**כל דפי התיק** (במנות עוקבות). תפקידך: לסנתז **רשומת-תיק אחת** לפי נהלי ספיר, ולבקר את הממצאים — לאחד כפילויות, לזהות סתירות, ולסמן ודאות.
+${TIK_SCHEMA_RULES}
 
-החזר JSON תקין בסכימה של רשומת-תיק (אותם שדות) + שני שדות נוספים:
- "field_confidence": { "title":"✓", "related_places":"~", ... },   // ✓ / ~ / ? לכל שדה רלוונטי
- "disagreements": [ {"field":"", "gemini":"", "claude":"", "resolved":"", "note":""} ]`;
+בנוסף לשדות הסכימה, החזר:
+ "field_confidence": { "title":"✓", "related_places":"~", ... },
+ "disagreements": [ {"field":"", "gemini":"", "claude":"", "resolved":"", "note":""} ]
+היכן שהממצאים עקביים וברורים → "✓"; חלקיים/מבוסס מנה אחת → "~"; לא קריא/מוטל בספק → "?". רשום ב-disagreements כל סתירה בין מנות או פער שדורש בדיקת אנוש.`;
 
-/* ---------- build document parts for each engine ---------- */
-function sampledFiles(){
-  const cap=Math.max(1,parseInt($('max-pages').value,10)||40);
-  const n=state.files.length;
-  if(n<=cap)return state.files;
-  // even sampling across the file, always include first & last
-  const out=[];
-  for(let i=0;i<cap;i++){out.push(state.files[Math.round(i*(n-1)/(cap-1))]);}
-  return [...new Set(out)];
-}
-async function geminiParts(){
-  const parts=[];
-  for(const f of sampledFiles()){
-    const b64=await fileToBase64(f);
-    parts.push({inline_data:{mime_type:mimeOf(f),data:b64}});
-  }
-  return parts;
-}
-async function claudeParts(){
-  const parts=[];
-  for(const f of sampledFiles()){
-    const b64=await fileToBase64(f);
-    const mime=mimeOf(f);
-    parts.push(mime==='application/pdf'
-      ? {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}}
-      : {type:'image',source:{type:'base64',media_type:mime,data:b64}});
-  }
-  return parts;
-}
 function contextBlock(){const c=$('context').value.trim();return c?`\n\n## מידע מוקדם / דף איסוף\n${c}`:'\n\n## מידע מוקדם\n(אין)';}
+function chunkArr(arr,size){const out=[];for(let i=0;i<arr.length;i+=size)out.push(arr.slice(i,i+size));return out;}
 
+async function geminiPartsFor(files){
+  const parts=[];
+  for(const f of files){const b64=await fileToBase64(f);parts.push({inline_data:{mime_type:mimeOf(f),data:b64}});}
+  return parts;
+}
 /* ---------- API callers ---------- */
-async function callGemini(){
-  const parts=await geminiParts();
+async function callGeminiOnParts(parts,promptText){
   const url='https://generativelanguage.googleapis.com/v1beta/models/'+$('model-gemini').value+':generateContent';
   const res=await fetch(url,{method:'POST',
     headers:{'Content-Type':'application/json','x-goog-api-key':state.keyGemini},
-    body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:TIK_SCHEMA_RULES+contextBlock()}]}],
+    body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:promptText}]}],
       generationConfig:{temperature:0,maxOutputTokens:16384,responseMimeType:'application/json'}})});
   if(!res.ok){const t=await res.text();throw new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));}
   const data=await res.json();
-  const text=(data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim();
-  return parseJson(text,'Gemini');
+  return parseJson((data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim(),'Gemini');
 }
-async function callClaude(parts,promptText,maxTok){
+async function callClaudeAPI(parts,promptText,maxTok){
   const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':state.keyClaude,
       'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
@@ -275,11 +282,16 @@ async function callClaude(parts,promptText,maxTok){
   const data=await res.json();
   return parseJson((data.content?.[0]?.text||'').trim(),'Claude');
 }
-
-/* ---------- merge (Claude as senior reconciler) ---------- */
-async function mergeRecords(parts,gem,cla){
-  const prompt=`${MERGE_RULES}\n\n## טיוטת Gemini\n\`\`\`json\n${JSON.stringify(gem)}\n\`\`\`\n\n## טיוטת Claude\n\`\`\`json\n${JSON.stringify(cla)}\n\`\`\`${contextBlock()}\n\nהחזר JSON סופי בלבד.`;
-  return callClaude(parts,prompt,20000);
+async function callClaudeCLI(promptText){
+  const base=$('server-url').value.trim().replace(/\/$/,'');
+  if(!base)throw new Error('חסרה כתובת שרת מקומי (CLI).');
+  const model=$('model-claude').value.includes('opus')?'opus':'sonnet';
+  const res=await fetch(base+'/api/ask',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({prompt:promptText,model})});
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('CLI HTTP '+res.status+': '+(e.error||e.stderr||'').slice(0,400));}
+  const data=await res.json();
+  return parseJson((data.text||'').trim(),'Claude CLI');
 }
 
 /* ---------- render ---------- */
@@ -370,28 +382,51 @@ function renderRecord(rec){
   $('results').classList.add('show');
 }
 
-/* ---------- run ---------- */
+/* ---------- run (chunked: Gemini reads every page, Claude synthesizes) ---------- */
 $('run').addEventListener('click',async()=>{
   state.keyClaude=$('key-claude').value.trim();
   state.keyGemini=$('key-gemini').value.trim();
-  if(!state.keyClaude||!state.keyGemini){showStatus('דרושים שני המפתחות — Claude וגם Gemini.','err');return;}
+  const mode=$('claude-mode').value;            // api | cli
+  if(!state.keyGemini){showStatus('דרוש מפתח Gemini (הקריאה החזותית של כל הדפים).','err');return;}
+  if(mode==='api' && !state.keyClaude){showStatus('מצב API דורש מפתח Claude (או עבור ל-CLI).','err');return;}
   if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return;}
+  const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||25);
+  const chunks=chunkArr(state.files,chunkSize);
   $('run').disabled=true;
   try{
-    showStatus('<span class="spinner"></span>שלב 1/2 · Gemini ו-Claude קוראים את כל דפי התיק…','info');
-    const cParts=await claudeParts();
-    const [gem,cla]=await Promise.all([ callGemini(), callClaude(cParts,TIK_SCHEMA_RULES+contextBlock(),16000) ]);
-    showStatus('<span class="spinner"></span>שלב 2/2 · Claude מצליב את שתי הקריאות ומפיק רשומה סופית…','info');
-    const final=await mergeRecords(cParts,gem,cla);
-    final._gemini=gem; final._claude=cla;
+    // Stage 1 — Gemini reads EVERY chunk (full coverage)
+    const partials=[];
+    let done=0;
+    for(let i=0;i<chunks.length;i++){
+      const from=done+1, to=done+chunks[i].length; done=to;
+      showStatus(`<span class="spinner"></span>שלב 1 · Gemini קורא דפים ${from}–${to} מתוך ${state.files.length} (מנה ${i+1}/${chunks.length})…`,'info');
+      const parts=await geminiPartsFor(chunks[i]);
+      const prompt=`${CHUNK_EXTRACT_RULES}\n\n(טווח דפים: ${from}–${to} מתוך ${state.files.length})${contextBlock()}`;
+      const p=await callGeminiOnParts(parts,prompt);
+      p.page_range=p.page_range||`${from}–${to}`;
+      partials.push(p);
+    }
+
+    // Stage 2 — Claude verifies Gemini's text findings & synthesizes ONE record (text-only; no images)
+    showStatus(`<span class="spinner"></span>שלב 2 · ${mode==='cli'?'Claude (CLI מקומי)':'Claude'} בודק את ממצאי Gemini ומסנתז ${chunks.length} מנות לרשומת-תיק אחת…`,'info');
+    const synthPrompt=`${SYNTH_RULES}\n\n## ממצאי Gemini מכל מנות התיק\n\`\`\`json\n${JSON.stringify(partials)}\n\`\`\`${contextBlock()}\n\nהחזר JSON סופי בלבד.`;
+    const final = mode==='cli' ? await callClaudeCLI(synthPrompt) : await callClaudeAPI([],synthPrompt,20000);
+    final._partials=partials;
     renderRecord(final);
-    showStatus('✓ הקטלוג הושלם. בדוק את נקודות אי-ההסכמה ואת היהלומים לפני הדבקה לספיר.','ok');
+    showStatus(`✓ הקטלוג הושלם — נקראו כל ${state.files.length} הדפים ב-${chunks.length} מנות. בדוק את אי-ההסכמות והיהלומים לפני הדבקה לספיר.`,'ok');
     $('results').scrollIntoView({behavior:'smooth'});
   }catch(err){
     console.error(err);
     showStatus('שגיאה: '+err.message+(err.rawText?'\n\n=== תגובה גולמית ===\n'+err.rawText.slice(0,1200):''),'err');
   }finally{$('run').disabled=false;}
 });
+
+/* ---------- mode toggle: show server URL only for CLI ---------- */
+function syncModeUI(){
+  $('server-url-wrap').style.display=$('claude-mode').value==='cli'?'block':'none';
+}
+$('claude-mode').addEventListener('change',syncModeUI);
+syncModeUI();
 
 /* ---------- model availability check (fixes the 400 by confirming a real model) ---------- */
 $('check-models').addEventListener('click',async()=>{
@@ -415,10 +450,9 @@ $('check-models').addEventListener('click',async()=>{
 
 /* ---------- file handling ---------- */
 function renderFiles(){
-  const n=state.files.length, sent=sampledFiles().length;
-  const note=n>sent
-    ?`<div class="f" style="background:#fff8e1;font-weight:600">📁 ${n} דפים בתיק — יישלחו ${sent} דפים מדגמיים (אחיד לאורך התיק)</div>`
-    :(n?`<div class="f" style="font-weight:600">📁 ${n} דפים — כולם יישלחו</div>`:'');
+  const n=state.files.length;
+  const cs=Math.max(1,parseInt($('chunk-size').value,10)||25);
+  const note=n?`<div class="f" style="font-weight:600">📁 ${n} דפים — ייקראו במלואם ב-${Math.ceil(n/cs)} מנות (Gemini)</div>`:'';
   const rows=state.files.slice(0,60).map(f=>
     `<div class="f"><span>${esc(f.name)}</span><span>${(f.size/1024/1024).toFixed(1)}MB</span></div>`).join('');
   const more=n>60?`<div class="f"><span>… ועוד ${n-60}</span><span></span></div>`:'';
@@ -440,7 +474,7 @@ $('folder-input').addEventListener('change',e=>{
   addFiles(e.target.files);e.target.value='';
 });
 $('clear-files').addEventListener('click',()=>{state.files=[];renderFiles();});
-$('max-pages').addEventListener('change',renderFiles);
+$('chunk-size').addEventListener('change',renderFiles);
 drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
 drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
 drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files);});
