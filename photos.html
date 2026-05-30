@@ -1649,6 +1649,7 @@ copyPromptBtn.addEventListener('click', async () => {
 identifyBtn.addEventListener('click', async () => {
   identifyBtn.disabled = true;
   const providerLabel = state.provider === 'hybrid' ? 'Hybrid (Gemini→Claude)'
+    : state.provider === 'cli-hybrid' ? 'Gemini→Claude CLI'
     : state.provider === 'gemini' ? 'Gemini' : 'Claude';
   identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel + '…';
   showStatus(`שולח ל-${providerLabel}…`, 'info');
