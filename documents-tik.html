@@ -69,6 +69,18 @@
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;
        padding:8px 18px;border-radius:20px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
   .toast.show{opacity:.95}
+
+  /* chat about the תיק */
+  #chat-panel{display:none}
+  #chat-panel.show{display:block}
+  .chat-log{display:flex;flex-direction:column;gap:10px;max-height:440px;overflow-y:auto;
+       padding:6px 2px;margin-bottom:10px}
+  .msg{max-width:85%;padding:9px 13px;border-radius:12px;font-size:14px;line-height:1.55;
+       white-space:pre-wrap;direction:rtl;text-align:right;unicode-bidi:isolate}
+  .msg.user{align-self:flex-start;background:#e9f2ec;border:1px solid #cfe3d6;border-bottom-right-radius:4px}
+  .msg.bot{align-self:flex-end;background:#f3f1ec;border:1px solid var(--line);border-bottom-left-radius:4px}
+  .chat-bar{display:flex;gap:8px;align-items:flex-end}
+  .chat-bar textarea{min-height:46px}
   @media(max-width:640px){.row2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -164,6 +176,16 @@
     </div>
     <div id="disagree-box"></div>
     <div id="record"></div>
+
+    <div id="chat-panel" class="card">
+      <h2>💬 שיחה על התיק</h2>
+      <div class="hint" style="margin-bottom:10px">שאל את Claude שאלות על תוכן התיק — שמות, תאריכים, מסמכים, הקשר. התשובות מבוססות על קריאת כל דפי התיק; אם משהו אינו בתיק — Claude יציין זאת ולא ימציא.</div>
+      <div class="chat-log" id="chat-log"></div>
+      <div class="chat-bar">
+        <textarea id="chat-input" placeholder="למשל: אילו שמות של נספים מופיעים בתיק? מה תוכן המכתב מ-1943? (Ctrl/⌘+Enter לשליחה)"></textarea>
+        <button type="button" id="chat-send" class="go" style="padding:11px 18px">שלח</button>
+      </div>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast">הועתק</div>
@@ -491,6 +513,10 @@ function renderRecord(rec){
   });
   $('results').classList.add('show');
   $('tik-export-bar').style.display='block';
+  // open a fresh chat about this newly-cataloged תיק
+  state.chatHistory=[];
+  $('chat-log').innerHTML='';
+  $('chat-panel').classList.add('show');
 }
 
 /* ---------- NotebookLM export — names · dates · context of this תיק record ---------- */
@@ -536,6 +562,50 @@ $('notebooklm-btn').addEventListener('click',()=>{
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   showStatus(`✓ הורד ל-NotebookLM: ${fname}`,'ok');
 });
+
+/* ---------- chat about the תיק (grounded in what Claude already read) ---------- */
+// Context = the per-chunk reading notes (Claude's full pass over every page) +
+// the synthesized record. No images are re-sent; the chat reasons over text only.
+function chatContext(){
+  const notes=(state.chunkNotes||[]).map(n=>`### דפים ${n.range}\n${n.text}`).join('\n\n');
+  const record=buildTikNotebookLMExport()||'';
+  return `## סיכומי קריאה של כל דפי התיק (לפי טווחי דפים)\n${notes||'(אין)'}\n\n## רשומת התיק המסונתזת\n${record}`;
+}
+function appendMsg(role,text){
+  const log=$('chat-log');
+  const d=document.createElement('div');
+  d.className='msg '+(role==='user'?'user':'bot');
+  d.textContent=text;
+  log.appendChild(d); log.scrollTop=log.scrollHeight;
+  return d;
+}
+async function sendChat(){
+  const input=$('chat-input'); const q=input.value.trim(); if(!q)return;
+  try{serverBase();}catch(e){appendMsg('bot','⚠ '+e.message);return;}
+  input.value=''; $('chat-send').disabled=true;
+  appendMsg('user',q);
+  state.chatHistory=state.chatHistory||[];
+  const thinking=appendMsg('bot','…');
+  const history=state.chatHistory.map(m=>`${m.role==='user'?'מקטלג':'Claude'}: ${m.text}`).join('\n\n');
+  const prompt=`אתה עוזר מחקר ארכיוני ביד ושם. עיינת בתיק ארכיוני שלם וכעת אתה עונה על שאלות המקטלג לגביו.
+ענה אך ורק על סמך תוכן התיק שלהלן. אם מידע אינו מופיע בתיק או שדף לא היה קריא — אמור זאת במפורש; אל תמציא ואל תוסיף ידע חיצוני כעובדה. ענה בעברית, תמציתי וברור. כשרלוונטי, ציין באילו דפים/מנה נמצא המידע.
+
+${chatContext()}${history?`\n\n## השיחה עד כה\n${history}`:''}
+
+## שאלת המקטלג
+${q}
+
+## תשובתך`;
+  try{
+    const ans=await runClaudeJob({prompt,images:[]});
+    thinking.textContent=ans||'(אין תשובה)';
+    state.chatHistory.push({role:'user',text:q},{role:'bot',text:ans});
+  }catch(err){
+    thinking.textContent='⚠ שגיאה: '+err.message;
+  }finally{$('chat-send').disabled=false; input.focus();}
+}
+$('chat-send').addEventListener('click',sendChat);
+$('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendChat();}});
 
 /* ---------- combined PDF of all uploaded image pages (self-contained, no libs) ---------- */
 // Decode one image file, downscale to a sane edge, and return baseline JPEG bytes
@@ -705,6 +775,7 @@ $('run').addEventListener('click',async()=>{
     const findingsText=notes.map(n=>`### דפים ${n.range}\n${n.text}`).join('\n\n');
     const synthPrompt=`${SYNTH_RULES}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}\n\nהחזר JSON סופי בלבד.`;
     const final=await claudeSynthesize(synthPrompt,secs=>showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק… (${secs} שׄ)`,'info'));
+    state.chunkNotes=notes;  // grounding context for the תיק chat
     renderRecord(final);
     const warn=failed.length?` ⚠ ${failed.length} מנות נכשלו (דפים ${failed.join(', ')}) — דרושה קריאה חוזרת ידנית.`:'';
     showStatus(`✓ הקטלוג הושלם — נקראו ${state.files.length} הדפים ב-${chunks.length} מנות.${warn} בדוק את נקודות הבדיקה והיהלומים לפני הדבקה לספיר.`,failed.length?'info':'ok');
