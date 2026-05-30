@@ -70,6 +70,8 @@
   .tbl th,.tbl td{border:1px solid var(--line);padding:5px 8px;text-align:right;vertical-align:top;unicode-bidi:isolate}
   .tbl th{background:#f3f1ec;font-weight:600;color:var(--accent-2);white-space:nowrap}
   .tbl tr:nth-child(even) td{background:#faf9f5}
+  .chip{display:inline-block;background:#eef4f0;border:1px solid #cfe3d6;color:#1f5c38;border-radius:14px;
+       padding:3px 11px;margin:3px 4px 3px 0;font-size:12.5px;unicode-bidi:isolate}
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;
        padding:8px 18px;border-radius:20px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
   .toast.show{opacity:.95}
@@ -287,6 +289,10 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפנ
 
 מפתח שמות (names_index): שורה לכל אדם המופיע בתיק (לא רק נספים — גם בני משפחה, פקידים, חותמים). אחד אותו אדם לשורה אחת גם אם מופיע בכמה מסמכים. name=שם בעברית; name_original=הכתיב המקורי בלועזית; role=תפקיד/קרבה; birth/death=תאריכים אם מצוינים; place=מקום קשור; fate=גורל אם מצוין (נספה/שרד/גורש/לא ידוע); source_pages=הדפים שבהם מופיע. מזין את מאגר שמות קורבנות השואה.
 
+ציר זמן ביוגרפי (timeline): אירועים בעלי תאריך מתוך התיק, מסודרים כרונולוגית — גירוש, מאסר, העברה למחנה, שחרור, לידה/פטירה, הגירה וכו'. date=תאריך כפי שניתן לקבוע (שנה לפחות); event=תיאור קצר; place=מקום (עם כתיב מקורי בסוגריים); source_pages=דפים; confidence=✓/~/? לפי ודאות. רק אירועים המעוגנים בתיק — אל תמציא.
+
+נושאים (subjects_he / subjects_en): בחר עד 10 נושאים רלוונטיים **רק מרשימת התזאורוס הסגורה** שתופיע בהמשך הבקשה. תרגום אחד-לאחד בין עברית לאנגלית לפי הרשימה. אם לא ניתנה רשימה — השאר מערכים ריקים.
+
 החזר אך ורק JSON תקין בסכימה:
 {
  "title": "",
@@ -303,7 +309,10 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפנ
  "classification": "בלתי מסווג", "classification_reason": "",
  "diamonds": [ {"type": "", "description": "", "location": ""} ],
  "document_inventory": [ {"pages": "", "doc_type": "", "date": "", "languages": "", "description": ""} ],
- "names_index": [ {"name": "", "name_original": "", "role": "", "birth": "", "death": "", "place": "", "fate": "", "source_pages": ""} ]
+ "names_index": [ {"name": "", "name_original": "", "role": "", "birth": "", "death": "", "place": "", "fate": "", "source_pages": ""} ],
+ "timeline": [ {"date": "", "event": "", "place": "", "source_pages": "", "confidence": ""} ],
+ "subjects_he": [ "" ],
+ "subjects_en": [ "" ]
 }`;
 
 /* ---------- chunk extraction (Claude reads every page) & synthesis prompts ---------- */
@@ -314,6 +323,7 @@ const CHUNK_EXTRACT_RULES = `אתה מקטלג ארכיוני ביד ושם הק
 - **תוכן עיקרי** — 2–4 משפטים: על מה הדפים, מי מעורב, מה מתואר.
 - **שמות** — כל אדם שמופיע פעם אחת בלבד (אל תחזור על אותו שם). לכל אדם, שורה אחת: שם בעברית עם הכתיב המקורי בסוגריים · תפקיד/קרבה · תאריכי לידה/פטירה אם מצוינים · מקום · גורל אם מצוין (נספה/שרד/גורש/לא ידוע) · באיזה דף בקטע מופיע.
 - **מקומות ותאריכים** — כפי שמופיעים בפועל.
+- **אירועים מתוארכים** — אירועים בעלי תאריך (גירוש, מאסר, העברה, שחרור, לידה/פטירה, הגירה) עם התאריך והמקום, אם מופיעים.
 - **שפות** — אילו שפות.
 - **יהלומים** — אם יש: עדות/תצהיר, מכתב ניצול, יומן, רשימת נספים/מגורשים/תושבים יהודים, תעודת מחנה/גטו, מסמך זהות בדויה. אם אין — כתוב "אין".
 
@@ -327,7 +337,7 @@ ${TIK_SCHEMA_RULES}
  "review_flags": [ {"field":"", "issue":"", "note":""} ]
 היכן שהממצאים עקביים וברורים → "✓"; חלקיים/מבוסס מנה אחת → "~"; לא קריא/מוטל בספק → "?". רשום ב-review_flags כל סתירה בין מנות, דף לא-קריא, או פער שדורש בדיקת אנוש לפני הדבקה לספיר.
 
-איחוד בין מנות לאינוונטר ולמפתח השמות: document_inventory — מזג את המסמכים מכל המנות והסדר אותם לפי טווחי הדפים לרצף אחד. names_index — אם אותו אדם הופיע בכמה מנות, מזג לשורה אחת ואחד את כל הדפים (source_pages); אל תיצור שורות כפולות לאותו אדם.`;
+איחוד בין מנות לאינוונטר ולמפתח השמות: document_inventory — מזג את המסמכים מכל המנות והסדר אותם לפי טווחי הדפים לרצף אחד. names_index — אם אותו אדם הופיע בכמה מנות, מזג לשורה אחת ואחד את כל הדפים (source_pages); אל תיצור שורות כפולות לאותו אדם. timeline — מזג אירועים מכל המנות, הסר כפילויות וסדר כרונולוגית.`;
 
 // Read an uploaded intake form (טופס איסוף) and pull the donor/archival info as
 // structured Hebrew text. This is מידע מוקדם ABOUT the תיק — never evidence FROM it.
@@ -353,6 +363,15 @@ function contextBlock(){
   if(intake)parts.push('### מתוך טופס האיסוף / דף מלווה (קריאת Claude)\n'+intake);
   if(typed)parts.push('### הערות נוספות שהוקלדו\n'+typed);
   return parts.length?`\n\n## מידע מוקדם / דף איסוף\n${parts.join('\n\n')}`:'\n\n## מידע מוקדם\n(אין)';
+}
+// Closed-vocabulary subject list (same one films.html uses). Loaded once; injected
+// into the synthesis prompt so Claude picks subjects ONLY from this thesaurus.
+state.thesaurus=[];
+fetch('data/thesaurus_top300.json').then(r=>r.ok?r.json():[]).then(d=>{state.thesaurus=Array.isArray(d)?d:[];}).catch(()=>{});
+function thesaurusBlock(){
+  const t=state.thesaurus||[];
+  if(!t.length)return '';
+  return `\n\n## רשימת תזאורוס סגורה — בחר עד 10 נושאים **רק מכאן** (החזר ב-subjects_he ובמקביל subjects_en):\n`+t.map(x=>`${x.he} | ${x.en}`).join('\n');
 }
 function chunkArr(arr,size){const out=[];for(let i=0;i<arr.length;i+=size)out.push(arr.slice(i,i+size));return out;}
 
@@ -522,6 +541,18 @@ function renderRecord(rec){
           return `<tr><td>${name||'—'}</td><td>${esc(p.role||'—')}</td><td>${esc(p.birth||'—')}</td><td>${esc(p.death||'—')}</td><td>${esc(p.place||'—')}</td><td>${esc(p.fate||'—')}</td><td>${esc(p.source_pages||'—')}</td></tr>`;}).join('')+
       `</tbody></table>`
     : '<span class="none">— לא זוהו שמות —</span>';
+  // biographical timeline (chronological events)
+  const tl=(rec.timeline||[]).filter(t=>t&&(t.event||t.date));
+  const tlHtml=tl.length
+    ? `<table class="tbl"><thead><tr><th>תאריך</th><th>אירוע</th><th>מקום</th><th>דפים</th></tr></thead><tbody>`+
+        tl.map(t=>`<tr><td>${esc(t.date||'—')}${t.confidence?' '+cmark(t.confidence):''}</td><td>${esc(t.event||'')}</td><td>${esc(t.place||'—')}</td><td>${esc(t.source_pages||'—')}</td></tr>`).join('')+
+      `</tbody></table>`
+    : '<span class="none">— לא נבנה ציר זמן —</span>';
+  // controlled-vocabulary subjects (thesaurus) as chips
+  const sh=(rec.subjects_he||[]).filter(Boolean), sen=rec.subjects_en||[];
+  const subjHtml=sh.length
+    ? sh.map((he,i)=>`<span class="chip">${esc(he)}${sen[i]?` · ${esc(sen[i])}`:''}</span>`).join('')
+    : '<span class="none">— לא נבחרו נושאים —</span>';
   const places=(rec.related_places||[]).filter(Boolean).join('; ')||'<span class="none">—</span>';
   const langs=(rec.languages||[]).filter(Boolean).join(', ')||'<span class="none">—</span>';
   const dAuth=`${esc(rec.date_authentic_start||'—')} – ${esc(rec.date_authentic_end||'—')}`;
@@ -563,7 +594,13 @@ function renderRecord(rec){
     fieldBlock('אינוונטר מסמכים','f-inv',invHtml)+
 
     `<div class="section-bar">מפתח שמות — להזנת מאגר שמות הקורבנות</div>`+
-    fieldBlock('מפתח שמות','f-names',nmHtml);
+    fieldBlock('מפתח שמות','f-names',nmHtml)+
+
+    `<div class="section-bar">ציר זמן ביוגרפי</div>`+
+    fieldBlock('ציר זמן','f-timeline',tlHtml)+
+
+    `<div class="section-bar">נושאים — תזאורוס</div>`+
+    fieldBlock('נושאים','f-subjects',subjHtml);
 
   // bind copy
   document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
@@ -613,6 +650,8 @@ function buildTikNotebookLMExport(){
   if((rec.diamonds||[]).length){ L.push(''); L.push(`## יהלומים — מסמכים לרישום פרטני`); rec.diamonds.forEach(d=>{const t=strip(d.type),de=strip(d.description); if(t||de)L.push(`- **${t}** — ${de}${d.location?' ('+strip(d.location)+')':''}`);}); }
   if((rec.document_inventory||[]).length){ L.push(''); L.push(`## אינוונטר מסמכים — מפת התיק`); rec.document_inventory.forEach(d=>{const pg=strip(d.pages),ty=strip(d.doc_type),de=strip(d.description),dt=strip(d.date),lg=strip(d.languages); if(ty||de)L.push(`- **${pg||'—'}** · ${ty}${dt?' · '+dt:''}${lg?' · '+lg:''}${de?' — '+de:''}`);}); }
   if((rec.names_index||[]).length){ L.push(''); L.push(`## מפתח שמות`); rec.names_index.forEach(p=>{const nm=strip(p.name),or=strip(p.name_original); if(!nm&&!or)return; const bits=[strip(p.role),[strip(p.birth),strip(p.death)].filter(Boolean).join('–'),strip(p.place),strip(p.fate),strip(p.source_pages)?'דפים '+strip(p.source_pages):''].filter(Boolean).join(' · '); L.push(`- **${nm}${or?' ('+or+')':''}**${bits?' — '+bits:''}`);}); }
+  if((rec.timeline||[]).length){ L.push(''); L.push(`## ציר זמן ביוגרפי`); rec.timeline.forEach(t=>{const dt=strip(t.date),ev=strip(t.event); if(!dt&&!ev)return; L.push(`- **${dt||'—'}** — ${ev}${strip(t.place)?' ('+strip(t.place)+')':''}${strip(t.source_pages)?' [דפים '+strip(t.source_pages)+']':''}`);}); }
+  if((rec.subjects_he||[]).filter(Boolean).length){ L.push(''); L.push(`## נושאים`); L.push(rec.subjects_he.map(s=>strip(s)).filter(Boolean).join(' · ')); }
   if((rec.review_flags||[]).length){ L.push(''); L.push(`## נקודות לבדיקת המקטלג`); rec.review_flags.forEach(d=>L.push(`- **${strip(d.field)}**: ${strip(d.issue)}${d.note?' — '+strip(d.note):''}`)); }
   return L.join('\n');
 }
@@ -847,7 +886,7 @@ $('run').addEventListener('click',async()=>{
     // Stage 2 — Claude synthesizes ALL chunk notes into ONE record (text-only; no images).
     showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז ${chunks.length} מנות לרשומת-תיק אחת…`,'info');
     const findingsText=notes.map(n=>`### דפים ${n.range}\n${n.text}`).join('\n\n');
-    const synthPrompt=`${SYNTH_RULES}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}\n\nהחזר JSON סופי בלבד.`;
+    const synthPrompt=`${SYNTH_RULES}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
     const final=await claudeSynthesize(synthPrompt,secs=>showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק… (${secs} שׄ)`,'info'));
     state.chunkNotes=notes;  // grounding context for the תיק chat
     renderRecord(final);
