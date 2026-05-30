@@ -209,12 +209,12 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="claude-cli" selected>⭐ Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini, בלי חסימת תוכן שואה)</option>
-        <option value="hybrid">Hybrid: Gemini OCR + Claude קטלוג (Gemini עלול לחסום תוכן שואה)</option>
+        <option value="claude-cli" selected>⭐ Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini)</option>
+        <option value="hybrid">Hybrid: Gemini OCR + Claude קטלוג</option>
         <option value="anthropic">Anthropic (Claude API) בלבד (קורא ישירות, בתשלום)</option>
-        <option value="gemini">🆓 Google (Gemini) בלבד (חינם — עלול לחסום תוכן שואה)</option>
+        <option value="gemini">🆓 Google (Gemini) בלבד (חינם)</option>
         <option value="transkribus">🇪🇺 Transkribus + Claude (כתב יד אירופאי — Sütterlin, Kurrent, יידיש)</option>
-        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (Gemini עלול לחסום תוכן שואה)</option>
+        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי</option>
       </select>
     </div>
     <div class="row provider-row" data-provider="claude-cli">
@@ -233,7 +233,7 @@
     <div class="row provider-row" data-provider="claude-cli">
       <label>איך זה עובד</label>
       <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        Claude קורא את <b>המסמך עצמו</b> (PDF/סריקה) דרך <code>claude</code> CLI שרץ במחשב שלך — ומפיק את שדות ספיר בפעולה אחת. <b>בלי Gemini בכלל</b>, ולכן בלי חסימת תוכן שואה (<code>PROHIBITED_CONTENT</code>).<br>
+        Claude קורא את <b>המסמך עצמו</b> (PDF/סריקה) דרך <code>claude</code> CLI שרץ במחשב שלך — ומפיק את שדות ספיר בפעולה אחת. <b>בלי Gemini בכלל</b>.<br>
         <b>דורש:</b> שרת מקומי פעיל ב-URL למעלה. בהרצה מקומית מ-localhost הכתובת מוגדרת אוטומטית. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
       </div>
     </div>
