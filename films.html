@@ -2123,11 +2123,11 @@ function buildCombinedFilmRecord() {
         confidence: scene.confidence,
       });
     });
-    const lbl = `— חלק ${part.idx + 1} —`;
-    if (d.persons_he) personsHe.push(lbl + '\n' + d.persons_he);
-    if (d.persons_en) personsEn.push(`— Part ${part.idx + 1} —\n` + d.persons_en);
-    if (d.inscriptions_he) inscrHe.push(lbl + '\n' + d.inscriptions_he);
-    if (d.inscriptions_en) inscrEn.push(`— Part ${part.idx + 1} —\n` + d.inscriptions_en);
+    // No per-part headers — the final record reads as one film.
+    if (d.persons_he) personsHe.push(stripConfidenceMarkup(d.persons_he).trim());
+    if (d.persons_en) personsEn.push(stripConfidenceMarkup(d.persons_en).trim());
+    if (d.inscriptions_he) inscrHe.push(stripConfidenceMarkup(d.inscriptions_he).trim());
+    if (d.inscriptions_en) inscrEn.push(stripConfidenceMarkup(d.inscriptions_en).trim());
   });
   // Union of subjects across parts (dedup by Hebrew term)
   const subjHe = [], subjEn = [];
@@ -2144,21 +2144,24 @@ function buildCombinedFilmRecord() {
     title_he: first.title_he,
     title_en: first.title_en,
     duration: totalDur,
-    summary_he: done.map((p, n) => `חלק ${p.idx + 1}: ${stripConfidenceMarkup(p.identification.summary_he || '')}`).filter(Boolean).join('\n'),
-    summary_en: done.map((p, n) => `Part ${p.idx + 1}: ${stripConfidenceMarkup(p.identification.summary_en || '')}`).filter(Boolean).join('\n'),
-    persons_he: personsHe.join('\n\n'),
-    persons_en: personsEn.join('\n\n'),
-    inscriptions_he: inscrHe.join('\n\n'),
-    inscriptions_en: inscrEn.join('\n\n'),
+    // One continuous film summary — not split by parts.
+    summary_he: done.map(p => stripConfidenceMarkup(p.identification.summary_he || '').trim()).filter(Boolean).join(' '),
+    summary_en: done.map(p => stripConfidenceMarkup(p.identification.summary_en || '').trim()).filter(Boolean).join(' '),
+    persons_he: [...new Set(personsHe.filter(Boolean))].join('\n'),
+    persons_en: [...new Set(personsEn.filter(Boolean))].join('\n'),
+    inscriptions_he: [...new Set(inscrHe.filter(Boolean))].join('\n'),
+    inscriptions_en: [...new Set(inscrEn.filter(Boolean))].join('\n'),
     timeline: combinedTimeline,
     subjects_he: subjHe,
     subjects_en: subjEn,
   };
 }
 
-prCombineBtn.addEventListener('click', () => {
+// Build the unified single-film record and load it into the results form.
+// `auto` suppresses the "no parts" alert when called automatically.
+function runCombinedIdentification(auto) {
   const combined = buildCombinedFilmRecord();
-  if (!combined) { alert('עדיין לא זוהה אף חלק'); return; }
+  if (!combined) { if (!auto) alert('עדיין לא זוהה אף חלק'); return false; }
   state.currentPartIdx = -1;
   state.identification = combined;
   fillResults(combined);
@@ -2168,10 +2171,13 @@ prCombineBtn.addEventListener('click', () => {
   renderPartsRail();
   const pending = state.filmParts.filter(p => p.status !== 'identified').length;
   showStatus(pending
-    ? `✓ זיהוי כולל מ-${state.filmParts.length - pending} חלקים (${pending} עדיין לא זוהו)`
-    : '✓ זיהוי כולל מכל החלקים הושלם.', 'ok');
+    ? `✓ סרט מאוחד מ-${state.filmParts.length - pending} חלקים (${pending} עדיין לא זוהו)`
+    : '✓ סרט מאוחד — טיימליין רציף לפי זמן הסרט וסיכום אחד.', 'ok');
   document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
-});
+  return true;
+}
+
+prCombineBtn.addEventListener('click', () => runCombinedIdentification(false));
 
 // ── Auto-identify all parts sequentially (one after another) ──────────
 const prAutoBtn = document.getElementById('pr-auto-btn');
@@ -2247,10 +2253,13 @@ async function autoIdentifyAllParts() {
   const remaining = state.filmParts.filter(p => p.status !== 'identified').length;
   if (autoRunCancel) {
     showStatus(`⛔ הופסק. זוהו ${done} חלקים, נותרו ${remaining}.`, 'info');
+  } else if (done > 0) {
+    // Automatically produce the unified single-film record (continuous
+    // timeline by real film time + one summary, not by parts).
+    runCombinedIdentification(true);
+    if (remaining) showStatus(`✓ זיהוי אוטומטי הסתיים ומוזג לסרט אחד. ${remaining} חלקים נכשלו — נסה שוב עליהם.`, 'ok');
   } else {
-    showStatus(remaining
-      ? `✓ זיהוי אוטומטי הסתיים. ${state.filmParts.length - remaining} זוהו, ${remaining} נכשלו — נסה שוב על אלו.`
-      : '✓ כל החלקים זוהו אוטומטית. ניתן לבצע זיהוי כולל.', 'ok');
+    showStatus('⚠ אף חלק לא זוהה. בדוק את ה-API ונסה שוב.', 'err');
   }
 }
 
