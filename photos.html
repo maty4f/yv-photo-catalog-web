@@ -1865,13 +1865,16 @@ ${rulesPrompt}
 
 החזר JSON תקין בלבד (ללא קוד-בלוק markdown, ללא טקסט הקדמה).`;
 
+  // Use the model picked in the UI (default Sonnet = fast). Without this the CLI
+  // falls back to its own default, which may be the slow Opus.
+  const model = modelSelAnthropic.value.includes('opus') ? 'opus' : 'sonnet';
   const url = state.localServerUrl + '/api/ask';
   let res;
   try {
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, images }),
+      body: JSON.stringify({ prompt, images, model }),
     });
   } catch (e) {
     throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${url}). ודא שהשרת + tunnel פעילים. (${e.message})`);
