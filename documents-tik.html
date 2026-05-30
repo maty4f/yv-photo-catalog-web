@@ -128,7 +128,7 @@
     <div class="row2">
       <div>
         <label>דפים למנה (chunk)</label>
-        <input type="number" id="chunk-size" value="25" min="1" max="100" style="width:90px">
+        <input type="number" id="chunk-size" value="10" min="1" max="100" style="width:90px">
         <div class="hint">Gemini קורא את כל דפי התיק במנות בגודל זה (כיסוי מלא, לא דגימה).</div>
       </div>
       <div>
@@ -185,16 +185,29 @@ function parseJson(text,label){
   const fence=s.match(/```(?:json)?\s*([\s\S]*?)```/); if(fence)s=fence[1].trim();
   if(!s.startsWith('{')){const m=s.match(/\{[\s\S]*\}/);if(m)s=m[0];}
   try{return JSON.parse(s);}catch(e1){
-    let r=s;
-    // If truncated mid-string (odd count of unescaped quotes), drop the dangling
-    // partial element back to the last completed token (closing quote/brace/bracket).
-    const quotes=(r.match(/(?<!\\)"/g)||[]).length;
-    if(quotes%2!==0){const cut=Math.max(r.lastIndexOf('",'),r.lastIndexOf('"]'),r.lastIndexOf('"}'),r.lastIndexOf('},'),r.lastIndexOf(']'));if(cut>0)r=r.slice(0,cut+1);}
-    r=r.replace(/,\s*$/,'').replace(/,(\s*[}\]])/g,'$1');
-    const ob=(r.match(/\{/g)||[]).length,cb=(r.match(/\}/g)||[]).length,os=(r.match(/\[/g)||[]).length,cs=(r.match(/\]/g)||[]).length;
-    let nB=cb,nS=cs; while(nS<os){r+=']';nS++;} while(nB<ob){r+='}';nB++;}
-    try{return JSON.parse(r);}catch(e2){const err=new Error(label+' החזיר תגובה שאינה JSON תקין');err.rawText=text;throw err;}
+    const fixed=repairJson(s);
+    if(fixed!=null)return fixed;
+    const err=new Error(label+' החזיר תגובה שאינה JSON תקין');err.rawText=text;throw err;
   }
+}
+// Repair a truncated JSON object by walking it with a proper bracket stack,
+// then cutting back to the most complete structural boundary that parses.
+function repairJson(s){
+  let inStr=false,esc=false; const stack=[]; const safe=[];
+  for(let i=0;i<s.length;i++){const c=s[i];
+    if(inStr){ if(esc)esc=false; else if(c==='\\')esc=true; else if(c==='"')inStr=false; continue; }
+    if(c==='"')inStr=true;
+    else if(c==='{'||c==='[')stack.push(c==='{'?'}':']');
+    else if(c==='}'||c===']')stack.pop();
+    if(!inStr&&(c==='}'||c===']'||c===','))safe.push([i,stack.slice()]);
+  }
+  for(let k=safe.length-1;k>=0;k--){
+    const [i,st]=safe[k];
+    const frag=s.slice(0,i+1).replace(/,\s*$/,'');
+    let close=''; for(let j=st.length-1;j>=0;j--)close+=st[j];
+    try{return JSON.parse(frag+close);}catch(e){}
+  }
+  return null;
 }
 const cmark = c => { const m={'✓':'high','~':'mid','?':'low'}; const cls=m[c]||'mid'; return `<span class="cmark ${cls}">${c||'~'}</span>`; };
 
@@ -238,21 +251,19 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפנ
 }`;
 
 /* ---------- chunk extraction (Gemini reads every page) & synthesis prompts ---------- */
-const CHUNK_EXTRACT_RULES = `אתה קורא **חלק** מתיק ארכיוני (טווח דפים שיצוין). אלו לא כל דפי התיק — חלץ ממצאים מהדפים שלפניך בלבד, שישמשו אחר כך לסינתזה של רשומת-תיק אחת.
-לכל מסמך/קבוצת דפים: סוג החומר, תקציר קצר, שמות אנשים (מלאים אם אפשר), מקומות, תאריכים (כפי שמופיעים), שפות, כיתובים/חתימות בולטים, וסימון "יהלומים" (מכתב ניצול, תצהיר/עדות, יומן, רשימת נספים/מגורשים/תושבים יהודים, תעודת מחנה/גטו, מסמך זהות בדויה).
-אסור לנחש. אם לא קריא — ציין.
-**חשוב — ללא כפילויות:** כל שם מופיע **פעם אחת בלבד** במערך names (גם אם הוזכר עשרות פעמים בטקסט), וכל מקום פעם אחת ב-places. אל תחזור על אותו ערך. names מוגבל ל-40 שמות ייחודיים לכל היותר; places ל-30. תקצירים קצרים.
-החזר אך ורק JSON תקין ומלא (נסגר כראוי):
-{
- "page_range": "",
- "documents": [ {"kind":"", "summary":"", "dates":[""], "languages":[""]} ],
- "names": [ "" ],
- "places": [ "" ],
- "diamonds": [ {"type":"", "description":"", "location":""} ],
- "notes": ""
-}`;
+const CHUNK_EXTRACT_RULES = `אתה קורא **חלק** מתיק ארכיוני (טווח דפים שיצוין). אלו לא כל דפי התיק — תאר את מה שאתה רואה בדפים שלפניך בלבד. הסיכום הזה ישמש אחר כך לסינתזה של רשומת-תיק אחת.
 
-const SYNTH_RULES = `אתה מקטלג ארכיוני בכיר ביד ושם. לפניך ממצאים שחולצו ע"י Gemini מ**כל דפי התיק** (במנות עוקבות). תפקידך: לסנתז **רשומת-תיק אחת** לפי נהלי ספיר, ולבקר את הממצאים — לאחד כפילויות, לזהות סתירות, ולסמן ודאות.
+החזר **טקסט חופשי קצר ומובנה** (לא JSON, לא טבלאות). השתמש בכותרות קצרות:
+- **סוגי המסמכים** — איזה סוגי דפים יש בקטע (פרוטוקול חקירה, תעודה, מכתב, רשימה, שער תיק וכו').
+- **תוכן עיקרי** — 2–4 משפטים: על מה הדפים, מי מעורב, מה מתואר.
+- **שמות** — שמות אנשים שמופיעים (כל שם פעם אחת בלבד, גם אם חזר הרבה; אל תחזור על אותו שם).
+- **מקומות ותאריכים** — כפי שמופיעים בפועל.
+- **שפות** — אילו שפות.
+- **יהלומים** — אם יש: עדות/תצהיר, מכתב ניצול, יומן, רשימת נספים/מגורשים/תושבים יהודים, תעודת מחנה/גטו, מסמך זהות בדויה. אם אין — כתוב "אין".
+
+אסור לנחש. אם דף לא קריא — ציין זאת. היה תמציתי — זו רק נקודת ביניים, לא הרשומה הסופית.`;
+
+const SYNTH_RULES = `אתה מקטלג ארכיוני בכיר ביד ושם. לפניך סיכומי-טקסט חופשיים שכתב Gemini אחרי שקרא את **כל דפי התיק** (מנה אחר מנה, לפי טווחי דפים). תפקידך: לסנתז מהם **רשומת-תיק אחת** לפי נהלי ספיר, ולבקר את הממצאים — לאחד כפילויות, לזהות סתירות בין מנות, ולסמן ודאות. אתה לא רואה את הדפים עצמם — הסתמך על הסיכומים, ואם משהו חסר/לא ברור סמן זאת.
 ${TIK_SCHEMA_RULES}
 
 בנוסף לשדות הסכימה, החזר:
@@ -274,10 +285,11 @@ async function callGeminiOnParts(parts,promptText){
   const res=await fetch(url,{method:'POST',
     headers:{'Content-Type':'application/json','x-goog-api-key':state.keyGemini},
     body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:promptText}]}],
-      generationConfig:{temperature:0,maxOutputTokens:32768,responseMimeType:'application/json'}})});
+      generationConfig:{temperature:0,maxOutputTokens:8192}})});
   if(!res.ok){const t=await res.text();throw new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));}
   const data=await res.json();
-  return parseJson((data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim(),'Gemini');
+  // Free text (not JSON) — robust against truncation; Claude turns it into the record.
+  return (data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim();
 }
 async function callClaudeAPI(parts,promptText,maxTok){
   const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
@@ -397,12 +409,12 @@ $('run').addEventListener('click',async()=>{
   if(!state.keyGemini){showStatus('דרוש מפתח Gemini (הקריאה החזותית של כל הדפים).','err');return;}
   if(mode==='api' && !state.keyClaude){showStatus('מצב API דורש מפתח Claude (או עבור ל-CLI).','err');return;}
   if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return;}
-  const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||25);
+  const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||10);
   const chunks=chunkArr(state.files,chunkSize);
   $('run').disabled=true;
   try{
-    // Stage 1 — Gemini reads EVERY chunk (full coverage)
-    const partials=[]; const failed=[];
+    // Stage 1 — Gemini reads EVERY chunk (full coverage) and returns FREE TEXT notes
+    const notes=[]; const failed=[];
     let done=0;
     for(let i=0;i<chunks.length;i++){
       const from=done+1, to=done+chunks[i].length; done=to;
@@ -411,22 +423,21 @@ $('run').addEventListener('click',async()=>{
       const parts=await geminiPartsFor(chunks[i]);
       const prompt=`${CHUNK_EXTRACT_RULES}\n\n(טווח דפים: ${range} מתוך ${state.files.length})${contextBlock()}`;
       try{
-        const p=await callGeminiOnParts(parts,prompt);
-        p.page_range=p.page_range||range;
-        partials.push(p);
+        const txt=await callGeminiOnParts(parts,prompt);
+        notes.push({range,text:txt||'(אין טקסט)'});
       }catch(chunkErr){
-        // Don't abort a 157-page run over one bad chunk — log it and continue.
+        // Don't abort a long run over one bad chunk — log it and continue.
         failed.push(range);
-        partials.push({page_range:range,documents:[],names:[],places:[],diamonds:[],notes:`⚠ מנה זו נכשלה בקריאה (${chunkErr.message}). דרושה קריאה חוזרת ידנית של דפים ${range}.`});
+        notes.push({range,text:`⚠ מנה זו נכשלה בקריאה (${chunkErr.message}). דרושה קריאה חוזרת ידנית של דפים ${range}.`});
       }
     }
     if(failed.length===chunks.length)throw new Error('כל המנות נכשלו בקריאת Gemini. בדוק מפתח/מודל/חיבור.');
 
     // Stage 2 — Claude verifies Gemini's text findings & synthesizes ONE record (text-only; no images)
     showStatus(`<span class="spinner"></span>שלב 2 · ${mode==='cli'?'Claude (CLI מקומי)':'Claude'} בודק את ממצאי Gemini ומסנתז ${chunks.length} מנות לרשומת-תיק אחת…`,'info');
-    const synthPrompt=`${SYNTH_RULES}\n\n## ממצאי Gemini מכל מנות התיק\n\`\`\`json\n${JSON.stringify(partials)}\n\`\`\`${contextBlock()}\n\nהחזר JSON סופי בלבד.`;
+    const findingsText=notes.map(n=>`### דפים ${n.range}\n${n.text}`).join('\n\n');
+    const synthPrompt=`${SYNTH_RULES}\n\n## ממצאי Gemini מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}\n\nהחזר JSON סופי בלבד.`;
     const final = mode==='cli' ? await callClaudeCLI(synthPrompt) : await callClaudeAPI([],synthPrompt,20000);
-    final._partials=partials;
     renderRecord(final);
     const warn=failed.length?` ⚠ ${failed.length} מנות נכשלו (דפים ${failed.join(', ')}) — דרושה קריאה חוזרת ידנית.`:'';
     showStatus(`✓ הקטלוג הושלם — נקראו ${state.files.length} הדפים ב-${chunks.length} מנות.${warn} בדוק את אי-ההסכמות והיהלומים לפני הדבקה לספיר.`,failed.length?'info':'ok');
