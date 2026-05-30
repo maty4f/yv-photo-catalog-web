@@ -155,6 +155,7 @@
 
   <button class="go" id="run" disabled>קטלג תיק</button>
   <div class="status" id="status"></div>
+  <div id="pdf-bar" style="display:none;margin-top:10px;font-size:13.5px;padding:8px 12px;border-radius:6px;background:#eef4f7;color:#234"></div>
 
   <!-- RESULTS -->
   <div id="results">
@@ -536,6 +537,92 @@ $('notebooklm-btn').addEventListener('click',()=>{
   showStatus(`✓ הורד ל-NotebookLM: ${fname}`,'ok');
 });
 
+/* ---------- combined PDF of all uploaded image pages (self-contained, no libs) ---------- */
+// Decode one image file, downscale to a sane edge, and return baseline JPEG bytes
+// + pixel dimensions. Re-encoding to JPEG keeps every page in one color space
+// (DeviceRGB) and keeps the merged PDF small enough for big תיקים (156+ scans).
+async function pdfPageFor(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('טעינת תמונה נכשלה'));im.src=url;});
+    const edge=2000;
+    const scale=Math.min(1,edge/Math.max(img.naturalWidth,img.naturalHeight));
+    const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+    cv.getContext('2d').drawImage(img,0,0,w,h);
+    const b64=cv.toDataURL('image/jpeg',0.85).split(',')[1];
+    const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+    return {bytes,width:w,height:h};
+  }finally{URL.revokeObjectURL(url);}
+}
+// Assemble a minimal valid PDF: one page per image, each JPEG embedded as a
+// DCTDecode XObject so no re-compression happens on the PDF side. Objects:
+// 1=Catalog, 2=Pages, then 3 objects per page (page, content, image xobject).
+function buildImagesPdf(pages){
+  const enc=s=>{const a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i)&0xff;return a;};
+  const parts=[];let offset=0;const offsets=[];
+  const push=chunk=>{const u=typeof chunk==='string'?enc(chunk):chunk;parts.push(u);offset+=u.length;};
+  const mark=n=>{offsets[n]=offset;};
+  const N=pages.length;
+  const kids=[];for(let i=0;i<N;i++)kids.push((3+i*3)+' 0 R');
+  push('%PDF-1.3\n%\xff\xff\xff\xff\n');
+  mark(1);push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  mark(2);push('2 0 obj\n<< /Type /Pages /Kids ['+kids.join(' ')+'] /Count '+N+' >>\nendobj\n');
+  for(let i=0;i<N;i++){
+    const p=pages[i],pageN=3+i*3,contentN=pageN+1,imgN=pageN+2,W=p.width,H=p.height;
+    mark(pageN);
+    push(pageN+' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+W+' '+H+']'+
+         ' /Resources << /XObject << /Im0 '+imgN+' 0 R >> >> /Contents '+contentN+' 0 R >>\nendobj\n');
+    const content='q '+W+' 0 0 '+H+' 0 0 cm /Im0 Do Q';
+    mark(contentN);
+    push(contentN+' 0 obj\n<< /Length '+content.length+' >>\nstream\n'+content+'\nendstream\nendobj\n');
+    mark(imgN);
+    push(imgN+' 0 obj\n<< /Type /XObject /Subtype /Image /Width '+W+' /Height '+H+
+         ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+p.bytes.length+' >>\nstream\n');
+    push(p.bytes);push('\nendstream\nendobj\n');
+  }
+  const xrefStart=offset,total=2+N*3;
+  push('xref\n0 '+(total+1)+'\n0000000000 65535 f \n');
+  for(let n=1;n<=total;n++)push(String(offsets[n]||0).padStart(10,'0')+' 00000 n \n');
+  push('trailer\n<< /Size '+(total+1)+' /Root 1 0 R >>\nstartxref\n'+xrefStart+'\n%%EOF');
+  let len=0;parts.forEach(p=>len+=p.length);
+  const out=new Uint8Array(len);let o=0;parts.forEach(p=>{out.set(p,o);o+=p.length;});
+  return out;
+}
+function triggerDownload(blob,fname){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=fname;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+// When the תיק is made of image scans (not a single PDF), merge them into one
+// PDF alongside the cataloging. Runs in parallel with the analysis; failures are
+// surfaced in the PDF bar only and never abort the catalog run.
+async function maybeBuildCombinedPdf(){
+  const imgs=state.files.filter(f=>mimeOf(f)!=='application/pdf');
+  if(!imgs.length)return;
+  const bar=$('pdf-bar');bar.style.display='block';
+  bar.textContent='⏳ בונה PDF מאוחד מ-'+imgs.length+' תמונות…';
+  try{
+    const pages=[];
+    for(let i=0;i<imgs.length;i++){
+      pages.push(await pdfPageFor(imgs[i]));
+      bar.textContent='⏳ בונה PDF מאוחד… '+(i+1)+'/'+imgs.length;
+    }
+    const tikName=((imgs[0].webkitRelativePath||'').split('/')[0]||'תיק').replace(/[\\/:*?"<>|]+/g,'_');
+    const today=new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const fname=tikName+'_'+today+'.pdf';
+    state.pdfBlob=new Blob([buildImagesPdf(pages)],{type:'application/pdf'});
+    state.pdfName=fname;
+    triggerDownload(state.pdfBlob,fname);
+    bar.innerHTML='✓ PDF מאוחד מוכן ('+imgs.length+' עמ׳) — '+esc(fname)+' ';
+    const b=document.createElement('button');b.className='copy-btn';b.style.background='#2c5d8a';b.textContent='⬇ הורד שוב';
+    b.addEventListener('click',()=>triggerDownload(state.pdfBlob,state.pdfName));
+    bar.appendChild(b);
+  }catch(e){bar.innerHTML='⚠ בניית ה-PDF המאוחד נכשלה: '+esc(e.message);}
+}
+
 /* ---------- run (chunked: Claude reads every page, then synthesizes one record) ---------- */
 $('run').addEventListener('click',async()=>{
   if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return;}
@@ -549,6 +636,8 @@ $('run').addEventListener('click',async()=>{
   const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||8);
   const chunks=chunkArr(state.files,chunkSize);
   $('run').disabled=true;
+  // In parallel with cataloging: if the תיק is image scans, merge them into one PDF.
+  maybeBuildCombinedPdf();
   try{
     // Stage 1 — the chosen reader reads every chunk (full coverage) → free-text notes.
     // Precompute each chunk's page-range label up front so chunks can be read in
