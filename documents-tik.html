@@ -82,12 +82,36 @@
     <h2>הגדרות <span id="save-state" class="hint" style="font-weight:400;margin-right:8px"></span></h2>
     <div class="row2">
       <div>
+        <label>מנוע קריאה (שלב 1)</label>
+        <select id="engine-mode">
+          <option value="claude" selected>Claude בלבד — Claude קורא את הסריקות ומסנתז (מנוי, בלי מפתח)</option>
+          <option value="dual">דו-מנועי — Gemini קורא ויזואלית, Claude מסנתז (הצלבה, דורש מפתח Gemini)</option>
+        </select>
+        <div class="hint">Claude בלבד: פשוט, מנוע אחד, בלי תלות במכסת Gemini. דו-מנועי: שני מנועים מצליבים — דיוק רב יותר אך תלוי במכסת Gemini.</div>
+      </div>
+      <div id="gemini-key-wrap" style="display:none">
+        <label>מפתח Gemini API</label>
+        <input type="password" id="key-gemini" class="ltr" placeholder="AIza…" autocomplete="off">
+        <div class="hint">נדרש רק במצב דו-מנועי. נשמר מקומית במכשיר זה בלבד.</div>
+      </div>
+    </div>
+    <div class="row2">
+      <div>
         <label>מודל Claude</label>
         <select id="model-claude">
           <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (מומלץ)</option>
           <option value="claude-opus-4-6">Claude Opus 4.6 (מדויק יותר)</option>
         </select>
-        <div class="hint">Claude רץ דרך שרת הבית (claude -p) במנוי — בלי מפתח ובלי עלות API. הוא קורא את הסריקות עצמן.</div>
+        <div class="hint">Claude רץ דרך שרת הבית (claude -p) במנוי — בלי מפתח ובלי עלות API.</div>
+      </div>
+      <div id="model-gemini-wrap" style="display:none">
+        <label>מודל Gemini</label>
+        <select id="model-gemini">
+          <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (מומלץ — יציב)</option>
+          <option value="gemini-2.5-pro">Gemini 2.5 Pro (איטי, מדויק)</option>
+          <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+        </select>
+        <div class="hint">משמש רק במצב דו-מנועי לקריאה הויזואלית של הדפים.</div>
       </div>
       <div>
         <label>כתובת שרת מקומי / tunnel</label>
@@ -126,7 +150,7 @@
     <div class="hint">המידע הזה ישמש ל"הערות מוסר החומר" ולהקשר — לא יוצג כעובדה מהתיק.</div>
   </div>
 
-  <button class="go" id="run" disabled>קטלג תיק (בדיקה כפולה)</button>
+  <button class="go" id="run" disabled>קטלג תיק</button>
   <div class="status" id="status"></div>
 
   <!-- RESULTS -->
@@ -275,6 +299,53 @@ async function imagesForChunk(files){
   return imgs;
 }
 
+/* ---------- Gemini engine (dual-mode stage 1: visual reading) ---------- */
+// Build inline_data parts for a chunk. PDFs sent as-is; images downscaled.
+async function geminiPartsFor(files){
+  const parts=[];
+  for(const f of files){
+    const mime=mimeOf(f);
+    if(mime==='application/pdf'){const b64=await fileToBase64(f);parts.push({inline_data:{mime_type:mime,data:b64}});}
+    else{const b64=await downscaledB64(f);parts.push({inline_data:{mime_type:'image/jpeg',data:b64}});}
+  }
+  return parts;
+}
+// On localhost, route Gemini through the local proxy (same-origin, no CORS).
+// Off localhost, call Google directly.
+function geminiBase(){
+  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))
+    return location.origin+'/api/gemini-proxy/v1beta/models/';
+  return 'https://generativelanguage.googleapis.com/v1beta/models/';
+}
+async function callGeminiOnParts(parts,promptText){
+  const url=geminiBase()+$('model-gemini').value+':generateContent';
+  let res;
+  try{
+    res=await fetch(url,{method:'POST',
+      headers:{'Content-Type':'application/json','x-goog-api-key':state.keyGemini},
+      body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:promptText}]}],
+        generationConfig:{temperature:0,maxOutputTokens:8192}})});
+  }catch(netErr){
+    throw new Error('לא ניתן להגיע ל-Gemini ('+netErr.message+'). בדוק חיבור רשת/חסימה.');
+  }
+  if(!res.ok){const t=await res.text();throw new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));}
+  const data=await res.json();
+  // Free text (not JSON) — robust against truncation; Claude turns it into the record.
+  return (data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim();
+}
+// Retry on rate-limit (429 / RESOURCE_EXHAUSTED) with backoff.
+async function callGeminiRetry(parts,promptText,onWait){
+  const tries=4;
+  for(let a=0;a<tries;a++){
+    try{return await callGeminiOnParts(parts,promptText);}
+    catch(e){
+      const rate=/HTTP 429|RESOURCE_EXHAUSTED|quota|rate/i.test(e.message);
+      if(rate&&a<tries-1){const wait=15000*(a+1);if(onWait)onWait(wait);await new Promise(r=>setTimeout(r,wait));continue;}
+      throw e;
+    }
+  }
+}
+
 /* ---------- Claude CLI engine (single engine: reads scans + synthesizes) ---------- */
 // On localhost we talk to this same origin (localhost never changes). Off
 // localhost (remote access) we use the tunnel URL the archivist pasted.
@@ -417,36 +488,50 @@ function renderRecord(rec){
 $('run').addEventListener('click',async()=>{
   if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return;}
   try{serverBase();}catch(e){showStatus(e.message,'err');return;}
+  const engine=$('engine-mode').value;  // 'claude' | 'dual'
+  if(engine==='dual'){
+    state.keyGemini=$('key-gemini').value.trim();
+    if(!state.keyGemini){showStatus('מצב דו-מנועי דורש מפתח Gemini (הקריאה הויזואלית של הדפים).','err');return;}
+  }
+  const reader=engine==='dual'?'Gemini':'Claude';
   const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||8);
   const chunks=chunkArr(state.files,chunkSize);
   $('run').disabled=true;
   try{
-    // Stage 1 — Claude READS every chunk of scans (full coverage) and returns free-text notes.
+    // Stage 1 — the chosen reader reads every chunk (full coverage) → free-text notes.
     const notes=[]; const failed=[];
     let done=0;
     for(let i=0;i<chunks.length;i++){
       const from=done+1, to=done+chunks[i].length; done=to;
       // A PDF is ONE uploaded file but contains MANY pages. Don't label it "page 1–1"
-      // (that makes Claude read only the cover). Instruct it to Read EVERY page of the
-      // document — Claude's Read tool needs explicit page ranges for long PDFs.
+      // (that makes the reader summarize only the cover). Instruct it to read EVERY page.
       const hasPdf=chunks[i].some(f=>mimeOf(f)==='application/pdf');
       const range = hasPdf ? `מסמך PDF מלא (קובץ ${from}${chunks[i].length>1?`–${to}`:''})` : `${from}–${to}`;
       const coverage = hasPdf
-        ? `\n\n🛑 המצורף הוא מסמך PDF שלם המכיל **דפים רבים** (לא דף בודד). עליך לקרוא את **כל הדפים** במסמך — מהראשון עד האחרון — ולא רק את דף השער/דף המנהלה הראשון. כלי ה-Read על PDF ארוך עשוי לדרוש קריאה בטווחי דפים (למשל pages:"1-10", אחר כך pages:"11-20" וכן הלאה) — חזור על הקריאה עד שכיסית את כל הדפים. בסיכום ציין כמה דפים סך הכול יש במסמך ואילו סוגי דפים מופיעים לאורכו. אל תעצור אחרי הדף הראשון.`
+        ? (engine==='dual'
+            ? `\n\n🛑 המצורף הוא מסמך PDF שלם המכיל **דפים רבים** (לא דף בודד). קרא את **כל הדפים** מהראשון עד האחרון — לא רק את דף השער/המנהלה. סכם את תוכן כל הדפים וציין כמה דפים יש במסמך. אל תעצור אחרי הדף הראשון.`
+            : `\n\n🛑 המצורף הוא מסמך PDF שלם המכיל **דפים רבים** (לא דף בודד). עליך לקרוא את **כל הדפים** במסמך — מהראשון עד האחרון — ולא רק את דף השער/דף המנהלה הראשון. כלי ה-Read על PDF ארוך עשוי לדרוש קריאה בטווחי דפים (למשל pages:"1-10", אחר כך pages:"11-20" וכן הלאה) — חזור על הקריאה עד שכיסית את כל הדפים. בסיכום ציין כמה דפים סך הכול יש במסמך ואילו סוגי דפים מופיעים לאורכו. אל תעצור אחרי הדף הראשון.`)
         : `\n\n(טווח דפים: ${range} מתוך ${state.files.length})`;
-      const baseMsg=`<span class="spinner"></span>שלב 1 · Claude קורא ${hasPdf?'את כל דפי ה-PDF':`דפים ${range} מתוך ${state.files.length}`} (מנה ${i+1}/${chunks.length})`;
+      const baseMsg=`<span class="spinner"></span>שלב 1 · ${reader} קורא ${hasPdf?'את כל דפי ה-PDF':`דפים ${range} מתוך ${state.files.length}`} (מנה ${i+1}/${chunks.length})`;
       showStatus(baseMsg+'…','info');
       const prompt=`${CHUNK_EXTRACT_RULES}${coverage}${contextBlock()}`;
       try{
-        const txt=await claudeReadChunk(chunks[i],prompt,secs=>showStatus(`${baseMsg} · ${secs} שׄ…`,'info'));
+        let txt;
+        if(engine==='dual'){
+          const parts=await geminiPartsFor(chunks[i]);
+          txt=await callGeminiRetry(parts,prompt,wait=>showStatus(`<span class="spinner"></span>שלב 1 · מגבלת קצב של Gemini (${range}) — ממתין ${wait/1000} שׄ ומנסה שוב…`,'info'));
+        }else{
+          txt=await claudeReadChunk(chunks[i],prompt,secs=>showStatus(`${baseMsg} · ${secs} שׄ…`,'info'));
+        }
         notes.push({range,text:txt||'(אין טקסט)'});
       }catch(chunkErr){
         // Don't abort a long run over one bad chunk — log it and continue.
         failed.push(range);
         notes.push({range,text:`⚠ מנה זו נכשלה בקריאה (${chunkErr.message}). דרושה קריאה חוזרת ידנית של דפים ${range}.`});
       }
+      if(engine==='dual'&&i<chunks.length-1)await new Promise(r=>setTimeout(r,1200)); // pace Gemini RPM
     }
-    if(failed.length===chunks.length)throw new Error('כל המנות נכשלו בקריאת Claude. '+NET_HINT);
+    if(failed.length===chunks.length)throw new Error(`כל המנות נכשלו בקריאת ${reader}. `+(engine==='dual'?'בדוק מפתח/מודל/מכסת Gemini.':NET_HINT));
 
     // Stage 2 — Claude synthesizes ALL chunk notes into ONE record (text-only; no images).
     showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז ${chunks.length} מנות לרשומת-תיק אחת…`,'info');
@@ -463,8 +548,17 @@ $('run').addEventListener('click',async()=>{
   }finally{$('run').disabled=false;}
 });
 
+/* ---------- engine-mode toggle: reveal Gemini fields only in dual mode ---------- */
+function syncEngineUI(){
+  const dual=$('engine-mode').value==='dual';
+  $('gemini-key-wrap').style.display=dual?'block':'none';
+  $('model-gemini-wrap').style.display=dual?'block':'none';
+}
+$('engine-mode').addEventListener('change',syncEngineUI);
+syncEngineUI();
+
 /* ---------- persist settings locally ---------- */
-const PERSIST=['model-claude','server-url','chunk-size','img-edge'];
+const PERSIST=['engine-mode','key-gemini','model-gemini','model-claude','server-url','chunk-size','img-edge'];
 const STORE_KEY='yv-tik-settings';
 function setSaveState(msg,color){const el=$('save-state');if(el){el.textContent=msg;el.style.color=color||'#2e7d32';}}
 function loadSettings(){
@@ -476,6 +570,7 @@ function loadSettings(){
   if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&$('server-url')&&!$('server-url').value.trim()){
     $('server-url').value=location.origin;
   }
+  syncEngineUI();
   setSaveState('🔒 הגדרות נטענו מהמכשיר','#2e7d32');
 }
 function saveSettings(){
