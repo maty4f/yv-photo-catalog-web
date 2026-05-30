@@ -66,6 +66,10 @@
   .disagree .d:last-child{border:none}
   .disagree .src{display:inline-block;min-width:62px;font-weight:600;color:#5a5a5a}
   .none{color:#999;font-style:italic}
+  .tbl{width:100%;border-collapse:collapse;font-size:13px;direction:rtl;text-align:right}
+  .tbl th,.tbl td{border:1px solid var(--line);padding:5px 8px;text-align:right;vertical-align:top;unicode-bidi:isolate}
+  .tbl th{background:#f3f1ec;font-weight:600;color:var(--accent-2);white-space:nowrap}
+  .tbl tr:nth-child(even) td{background:#faf9f5}
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;
        padding:8px 18px;border-radius:20px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
   .toast.show{opacity:.95}
@@ -279,6 +283,10 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפנ
 מיועד להקלדת שמות: true אם יש בתיק שמות מלאים של נספים/מגורשים/תושבים יהודים.
 סיווג: "בלתי מסווג" כברירת מחדל; "מוגבל"/"שמור" רק עם סיבה.
 
+אינוונטר מסמכים (document_inventory): שורה לכל מסמך/קבוצת-דפים בתיק, מסודרת לפי סדר הדפים — "מפת התיק" לניווט המקטלג. pages=טווח דפים בתיק; doc_type=סוג; date=תאריך אם מופיע; languages=שפות; description=תיאור במשפט.
+
+מפתח שמות (names_index): שורה לכל אדם המופיע בתיק (לא רק נספים — גם בני משפחה, פקידים, חותמים). אחד אותו אדם לשורה אחת גם אם מופיע בכמה מסמכים. name=שם בעברית; name_original=הכתיב המקורי בלועזית; role=תפקיד/קרבה; birth/death=תאריכים אם מצוינים; place=מקום קשור; fate=גורל אם מצוין (נספה/שרד/גורש/לא ידוע); source_pages=הדפים שבהם מופיע. מזין את מאגר שמות קורבנות השואה.
+
 החזר אך ורק JSON תקין בסכימה:
 {
  "title": "",
@@ -293,16 +301,18 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפנ
  "languages": [ "" ],
  "designate_name_typing": false, "name_typing_reason": "",
  "classification": "בלתי מסווג", "classification_reason": "",
- "diamonds": [ {"type": "", "description": "", "location": ""} ]
+ "diamonds": [ {"type": "", "description": "", "location": ""} ],
+ "document_inventory": [ {"pages": "", "doc_type": "", "date": "", "languages": "", "description": ""} ],
+ "names_index": [ {"name": "", "name_original": "", "role": "", "birth": "", "death": "", "place": "", "fate": "", "source_pages": ""} ]
 }`;
 
 /* ---------- chunk extraction (Claude reads every page) & synthesis prompts ---------- */
 const CHUNK_EXTRACT_RULES = `אתה מקטלג ארכיוני ביד ושם הקורא **חלק** מתיק ארכיוני (טווח דפים שיצוין). הקבצים המצורפים הם סריקות אמיתיות של תיעוד מתקופת השואה — קרא כל אחד מהם בעיון. אלו לא כל דפי התיק — תאר את מה שאתה רואה בדפים שלפניך בלבד. הסיכום הזה ישמש אחר כך לסינתזה של רשומת-תיק אחת.
 
 החזר **טקסט חופשי קצר ומובנה** (לא JSON, לא טבלאות). השתמש בכותרות קצרות:
-- **סוגי המסמכים** — איזה סוגי דפים יש בקטע (פרוטוקול חקירה, תעודה, מכתב, רשימה, שער תיק וכו').
+- **מסמכים בקטע** — פרט כל מסמך/קבוצת-דפים בקטע בשורה נפרדת: דף/טווח דפים בקטע · סוג (פרוטוקול חקירה, תעודה, מכתב, רשימה, שער תיק וכו') · תאריך אם מופיע · שפה · תיאור במשפט.
 - **תוכן עיקרי** — 2–4 משפטים: על מה הדפים, מי מעורב, מה מתואר.
-- **שמות** — שמות אנשים שמופיעים (כל שם פעם אחת בלבד, גם אם חזר הרבה; אל תחזור על אותו שם).
+- **שמות** — כל אדם שמופיע פעם אחת בלבד (אל תחזור על אותו שם). לכל אדם, שורה אחת: שם בעברית עם הכתיב המקורי בסוגריים · תפקיד/קרבה · תאריכי לידה/פטירה אם מצוינים · מקום · גורל אם מצוין (נספה/שרד/גורש/לא ידוע) · באיזה דף בקטע מופיע.
 - **מקומות ותאריכים** — כפי שמופיעים בפועל.
 - **שפות** — אילו שפות.
 - **יהלומים** — אם יש: עדות/תצהיר, מכתב ניצול, יומן, רשימת נספים/מגורשים/תושבים יהודים, תעודת מחנה/גטו, מסמך זהות בדויה. אם אין — כתוב "אין".
@@ -315,7 +325,9 @@ ${TIK_SCHEMA_RULES}
 בנוסף לשדות הסכימה, החזר:
  "field_confidence": { "title":"✓", "related_places":"~", ... },
  "review_flags": [ {"field":"", "issue":"", "note":""} ]
-היכן שהממצאים עקביים וברורים → "✓"; חלקיים/מבוסס מנה אחת → "~"; לא קריא/מוטל בספק → "?". רשום ב-review_flags כל סתירה בין מנות, דף לא-קריא, או פער שדורש בדיקת אנוש לפני הדבקה לספיר.`;
+היכן שהממצאים עקביים וברורים → "✓"; חלקיים/מבוסס מנה אחת → "~"; לא קריא/מוטל בספק → "?". רשום ב-review_flags כל סתירה בין מנות, דף לא-קריא, או פער שדורש בדיקת אנוש לפני הדבקה לספיר.
+
+איחוד בין מנות לאינוונטר ולמפתח השמות: document_inventory — מזג את המסמכים מכל המנות והסדר אותם לפי טווחי הדפים לרצף אחד. names_index — אם אותו אדם הופיע בכמה מנות, מזג לשורה אחת ואחד את כל הדפים (source_pages); אל תיצור שורות כפולות לאותו אדם.`;
 
 // Read an uploaded intake form (טופס איסוף) and pull the donor/archival info as
 // structured Hebrew text. This is מידע מוקדם ABOUT the תיק — never evidence FROM it.
@@ -495,6 +507,21 @@ function renderRecord(rec){
   const dia=(rec.diamonds||[]).length
     ? rec.diamonds.map(d=>`<div class="diamond"><b>${esc(d.type)}</b> — ${esc(d.description)}${d.location?` <small>(${esc(d.location)})</small>`:''}</div>`).join('')
     : '<span class="none">— לא זוהו יהלומים —</span>';
+  // document inventory — the "map" of the תיק for navigation
+  const inv=(rec.document_inventory||[]).filter(d=>d&&(d.doc_type||d.description||d.pages));
+  const invHtml=inv.length
+    ? `<table class="tbl"><thead><tr><th>דפים</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th></tr></thead><tbody>`+
+        inv.map(d=>`<tr><td>${esc(d.pages||'—')}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td></tr>`).join('')+
+      `</tbody></table>`
+    : '<span class="none">— לא נרשם אינוונטר —</span>';
+  // names index — feeds the Shoah Victims' Names DB
+  const nm=(rec.names_index||[]).filter(p=>p&&(p.name||p.name_original));
+  const nmHtml=nm.length
+    ? `<table class="tbl"><thead><tr><th>שם</th><th>תפקיד/קרבה</th><th>לידה</th><th>פטירה</th><th>מקום</th><th>גורל</th><th>דפים</th></tr></thead><tbody>`+
+        nm.map(p=>{const name=esc(p.name||'')+(p.name_original?` <span style="color:#5a5a5a">(${esc(p.name_original)})</span>`:'');
+          return `<tr><td>${name||'—'}</td><td>${esc(p.role||'—')}</td><td>${esc(p.birth||'—')}</td><td>${esc(p.death||'—')}</td><td>${esc(p.place||'—')}</td><td>${esc(p.fate||'—')}</td><td>${esc(p.source_pages||'—')}</td></tr>`;}).join('')+
+      `</tbody></table>`
+    : '<span class="none">— לא זוהו שמות —</span>';
   const places=(rec.related_places||[]).filter(Boolean).join('; ')||'<span class="none">—</span>';
   const langs=(rec.languages||[]).filter(Boolean).join(', ')||'<span class="none">—</span>';
   const dAuth=`${esc(rec.date_authentic_start||'—')} – ${esc(rec.date_authentic_end||'—')}`;
@@ -530,7 +557,13 @@ function renderRecord(rec){
     fieldBlock('מידע נוסף (להדבקה לספיר)','f-info',info.trim()||'<span class="none">—</span>')+
 
     `<div class="section-bar">יהלומים — מסמכים לרישום פרטני</div>`+
-    `<div class="field"><div class="body">${dia}</div></div>`;
+    `<div class="field"><div class="body">${dia}</div></div>`+
+
+    `<div class="section-bar">אינוונטר מסמכים — מפת התיק</div>`+
+    fieldBlock('אינוונטר מסמכים','f-inv',invHtml)+
+
+    `<div class="section-bar">מפתח שמות — להזנת מאגר שמות הקורבנות</div>`+
+    fieldBlock('מפתח שמות','f-names',nmHtml);
 
   // bind copy
   document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
@@ -578,6 +611,8 @@ function buildTikNotebookLMExport(){
   if(rec.donor_notes) infoParts.push('הערות מוסר: '+strip(rec.donor_notes));
   if(infoParts.length){ L.push(''); L.push(`## מידע נוסף (כולל שמות)`); infoParts.forEach(t=>L.push(t)); }
   if((rec.diamonds||[]).length){ L.push(''); L.push(`## יהלומים — מסמכים לרישום פרטני`); rec.diamonds.forEach(d=>{const t=strip(d.type),de=strip(d.description); if(t||de)L.push(`- **${t}** — ${de}${d.location?' ('+strip(d.location)+')':''}`);}); }
+  if((rec.document_inventory||[]).length){ L.push(''); L.push(`## אינוונטר מסמכים — מפת התיק`); rec.document_inventory.forEach(d=>{const pg=strip(d.pages),ty=strip(d.doc_type),de=strip(d.description),dt=strip(d.date),lg=strip(d.languages); if(ty||de)L.push(`- **${pg||'—'}** · ${ty}${dt?' · '+dt:''}${lg?' · '+lg:''}${de?' — '+de:''}`);}); }
+  if((rec.names_index||[]).length){ L.push(''); L.push(`## מפתח שמות`); rec.names_index.forEach(p=>{const nm=strip(p.name),or=strip(p.name_original); if(!nm&&!or)return; const bits=[strip(p.role),[strip(p.birth),strip(p.death)].filter(Boolean).join('–'),strip(p.place),strip(p.fate),strip(p.source_pages)?'דפים '+strip(p.source_pages):''].filter(Boolean).join(' · '); L.push(`- **${nm}${or?' ('+or+')':''}**${bits?' — '+bits:''}`);}); }
   if((rec.review_flags||[]).length){ L.push(''); L.push(`## נקודות לבדיקת המקטלג`); rec.review_flags.forEach(d=>L.push(`- **${strip(d.field)}**: ${strip(d.issue)}${d.note?' — '+strip(d.note):''}`)); }
   return L.join('\n');
 }
