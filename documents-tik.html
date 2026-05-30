@@ -79,7 +79,8 @@
 
   <!-- CONFIG -->
   <div class="card">
-    <h2>הגדרות</h2>
+    <h2>הגדרות <span id="save-state" class="hint" style="font-weight:400;margin-right:8px"></span>
+      <a id="clear-keys" href="#" class="hint" style="margin-right:8px">נקה מפתחות שמורים</a></h2>
     <div class="row2">
       <div>
         <label>מפתח Claude (Anthropic)</label>
@@ -458,17 +459,26 @@ syncModeUI();
 /* ---------- persist settings locally (so keys aren't re-entered each time) ---------- */
 const PERSIST=['key-claude','key-gemini','model-claude','model-gemini','claude-mode','server-url','chunk-size'];
 const STORE_KEY='yv-tik-settings';
+function setSaveState(msg,color){const el=$('save-state');if(el){el.textContent=msg;el.style.color=color||'#2e7d32';}}
 function loadSettings(){
-  try{const s=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
-    PERSIST.forEach(id=>{if(s[id]!=null&&$(id))$(id).value=s[id];});}catch(e){}
+  let s={};
+  try{s=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
+    PERSIST.forEach(id=>{if(s[id]!=null&&$(id)&&$(id).value!==s[id])$(id).value=s[id];});}catch(e){}
   syncModeUI();
+  setSaveState((s['key-gemini']||s['key-claude'])?'🔒 מפתחות נטענו מהמכשיר':'','#2e7d32');
 }
 function saveSettings(){
   try{const s={};PERSIST.forEach(id=>{if($(id))s[id]=$(id).value;});
-    localStorage.setItem(STORE_KEY,JSON.stringify(s));}catch(e){}
+    localStorage.setItem(STORE_KEY,JSON.stringify(s));
+    if(s['key-gemini']||s['key-claude'])setSaveState('🔒 נשמר במכשיר זה','#2e7d32');}catch(e){setSaveState('⚠ לא ניתן לשמור (אחסון חסום בדפדפן)','#b22222');}
 }
-PERSIST.forEach(id=>{const el=$(id);if(el){el.addEventListener('change',saveSettings);el.addEventListener('input',saveSettings);}});
+PERSIST.forEach(id=>{const el=$(id);if(el){el.addEventListener('change',saveSettings);el.addEventListener('input',saveSettings);el.addEventListener('blur',saveSettings);}});
+$('clear-keys').addEventListener('click',e=>{e.preventDefault();try{localStorage.removeItem(STORE_KEY);}catch(_){}PERSIST.forEach(id=>{if($(id)&&/^key-/.test(id))$(id).value='';});setSaveState('נמחקו מפתחות שמורים','#666');});
 loadSettings();
+// Some browsers blank password fields on reload / bfcache restore AFTER our script
+// runs — re-restore shortly after load and on pageshow so keys don't vanish.
+setTimeout(loadSettings,150);
+window.addEventListener('pageshow',loadSettings);
 
 /* ---------- model availability check (fixes the 400 by confirming a real model) ---------- */
 $('check-models').addEventListener('click',async()=>{
