@@ -155,6 +155,9 @@
 
   <!-- RESULTS -->
   <div id="results">
+    <div id="tik-export-bar" style="display:none; margin-bottom:12px;">
+      <button type="button" id="notebooklm-btn" class="copy-btn" style="background:#6b3f9b" title="ייצוא שמות · תאריכים · הקשר של התיק — קובץ Markdown להעלאה כמקור ב-NotebookLM">🧠 ייצוא ל-NotebookLM</button>
+    </div>
     <div id="disagree-box"></div>
     <div id="record"></div>
   </div>
@@ -407,6 +410,7 @@ function fieldBlock(label,id,html){
 function conf(rec,key){const c=rec.field_confidence?.[key];return c?(' '+cmark(c)):'';}
 
 function renderRecord(rec){
+  state.lastRecord=rec;
   const fc=rec.field_confidence||{};
   // review flags — points Claude marked as needing human verification before Sapir
   const dz=$('disagree-box'); dz.innerHTML='';
@@ -482,7 +486,52 @@ function renderRecord(rec){
     });
   });
   $('results').classList.add('show');
+  $('tik-export-bar').style.display='block';
 }
+
+/* ---------- NotebookLM export — names · dates · context of this תיק record ---------- */
+function buildTikNotebookLMExport(){
+  const rec=state.lastRecord; if(!rec) return null;
+  const strip=t=>String(t||'').replace(/<[^>]+>/g,'').trim();
+  const L=[];
+  L.push(`# יד ושם — רשומת תיק לייצוא ל-NotebookLM`);
+  L.push(`נוצר ${new Date().toLocaleDateString('he-IL')}`);
+  L.push('');
+  L.push(`> רשומת תיק אחת שפוענחה (Claude קרא את כל דפי התיק). העלה כמקור ב-NotebookLM כדי לחפש שמות, תאריכים ומקומות ולהצליב מידע. השמות מופיעים בתוך "מידע נוסף".`);
+  L.push('');
+  const add=(label,val)=>{const v=strip(val);if(v)L.push(`- **${label}:** ${v}`);};
+  add('כותר', rec.title);
+  add('מקומות קשורים', (rec.related_places||[]).filter(Boolean).join('; '));
+  add('תאריך אותנטי', [rec.date_authentic_start,rec.date_authentic_end].filter(Boolean).join(' – '));
+  add('תאריך משוחזר', [rec.date_reconstructed_start,rec.date_reconstructed_end].filter(Boolean).join(' – '));
+  add('שפות', (rec.languages||[]).filter(Boolean).join(', '));
+  add('מקוריות', rec.originality);
+  add('יוצר החומר (אדם)', rec.creator_person);
+  add('יוצר החומר (גוף)', rec.creator_org);
+  add('מיועד להקלדת שמות', rec.designate_name_typing?('כן'+(rec.name_typing_reason?' — '+rec.name_typing_reason:'')):'');
+  add('סיווג', (rec.classification||'')+(rec.classification_reason?' — '+rec.classification_reason:''));
+  add('הערת תוכן', rec.content_note);
+  const infoParts=[];
+  (rec.additional_info_paragraphs||[]).forEach(p=>{const b=strip(p.body); if(b)infoParts.push((p.heading?strip(p.heading)+': ':'')+b);});
+  if((rec.also_in_file||[]).length) infoParts.push('בתיק גם: '+rec.also_in_file.map(strip).filter(Boolean).join('; '));
+  if(rec.donor_notes) infoParts.push('הערות מוסר: '+strip(rec.donor_notes));
+  if(infoParts.length){ L.push(''); L.push(`## מידע נוסף (כולל שמות)`); infoParts.forEach(t=>L.push(t)); }
+  if((rec.diamonds||[]).length){ L.push(''); L.push(`## יהלומים — מסמכים לרישום פרטני`); rec.diamonds.forEach(d=>{const t=strip(d.type),de=strip(d.description); if(t||de)L.push(`- **${t}** — ${de}${d.location?' ('+strip(d.location)+')':''}`);}); }
+  if((rec.review_flags||[]).length){ L.push(''); L.push(`## נקודות לבדיקת המקטלג`); rec.review_flags.forEach(d=>L.push(`- **${strip(d.field)}**: ${strip(d.issue)}${d.note?' — '+strip(d.note):''}`)); }
+  return L.join('\n');
+}
+$('notebooklm-btn').addEventListener('click',()=>{
+  const md=buildTikNotebookLMExport();
+  if(!md){showStatus('אין רשומת תיק לייצוא','err');return;}
+  const today=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const fname=`notebooklm_tik_${today}.md`;
+  const blob=new Blob([md],{type:'text/markdown;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=fname;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  showStatus(`✓ הורד ל-NotebookLM: ${fname}`,'ok');
+});
 
 /* ---------- run (chunked: Claude reads every page, then synthesizes one record) ---------- */
 $('run').addEventListener('click',async()=>{
@@ -499,37 +548,63 @@ $('run').addEventListener('click',async()=>{
   $('run').disabled=true;
   try{
     // Stage 1 — the chosen reader reads every chunk (full coverage) → free-text notes.
-    const notes=[]; const failed=[];
-    let done=0;
-    for(let i=0;i<chunks.length;i++){
-      const from=done+1, to=done+chunks[i].length; done=to;
-      // A PDF is ONE uploaded file but contains MANY pages. Don't label it "page 1–1"
-      // (that makes the reader summarize only the cover). Instruct it to read EVERY page.
-      const hasPdf=chunks[i].some(f=>mimeOf(f)==='application/pdf');
-      const range = hasPdf ? `מסמך PDF מלא (קובץ ${from}${chunks[i].length>1?`–${to}`:''})` : `${from}–${to}`;
-      const coverage = hasPdf
+    // Precompute each chunk's page-range label up front so chunks can be read in
+    // any order (Claude mode reads several at once; see the bounded pool below).
+    const meta=chunks.map((c,i)=>{
+      const from=chunks.slice(0,i).reduce((n,cc)=>n+cc.length,0)+1;
+      const to=from+c.length-1;
+      // A PDF is ONE uploaded file but contains MANY pages — don't label it "page 1–1".
+      const hasPdf=c.some(f=>mimeOf(f)==='application/pdf');
+      const range=hasPdf?`מסמך PDF מלא (קובץ ${from}${c.length>1?`–${to}`:''})`:`${from}–${to}`;
+      return {from,to,hasPdf,range};
+    });
+    const notes=new Array(chunks.length); const failed=[];
+    function chunkPrompt(i){
+      const m=meta[i];
+      const coverage = m.hasPdf
         ? (engine==='dual'
             ? `\n\n🛑 המצורף הוא מסמך PDF שלם המכיל **דפים רבים** (לא דף בודד). קרא את **כל הדפים** מהראשון עד האחרון — לא רק את דף השער/המנהלה. סכם את תוכן כל הדפים וציין כמה דפים יש במסמך. אל תעצור אחרי הדף הראשון.`
             : `\n\n🛑 המצורף הוא מסמך PDF שלם המכיל **דפים רבים** (לא דף בודד). עליך לקרוא את **כל הדפים** במסמך — מהראשון עד האחרון — ולא רק את דף השער/דף המנהלה הראשון. כלי ה-Read על PDF ארוך עשוי לדרוש קריאה בטווחי דפים (למשל pages:"1-10", אחר כך pages:"11-20" וכן הלאה) — חזור על הקריאה עד שכיסית את כל הדפים. בסיכום ציין כמה דפים סך הכול יש במסמך ואילו סוגי דפים מופיעים לאורכו. אל תעצור אחרי הדף הראשון.`)
-        : `\n\n(טווח דפים: ${range} מתוך ${state.files.length})`;
-      const baseMsg=`<span class="spinner"></span>שלב 1 · ${reader} קורא ${hasPdf?'את כל דפי ה-PDF':`דפים ${range} מתוך ${state.files.length}`} (מנה ${i+1}/${chunks.length})`;
-      showStatus(baseMsg+'…','info');
-      const prompt=`${CHUNK_EXTRACT_RULES}${coverage}${contextBlock()}`;
-      try{
-        let txt;
-        if(engine==='dual'){
+        : `\n\n(טווח דפים: ${m.range} מתוך ${state.files.length})`;
+      return `${CHUNK_EXTRACT_RULES}${coverage}${contextBlock()}`;
+    }
+    // Don't abort a long run over one bad chunk — record it and keep going.
+    function recordFailure(i,err){
+      failed.push(meta[i].range);
+      notes[i]={range:meta[i].range,text:`⚠ מנה זו נכשלה בקריאה (${err.message}). דרושה קריאה חוזרת ידנית של דפים ${meta[i].range}.`};
+    }
+
+    if(engine==='dual'){
+      // Gemini free tier is rate-limited (5 RPM) → read sequentially with pacing.
+      for(let i=0;i<chunks.length;i++){
+        const m=meta[i];
+        showStatus(`<span class="spinner"></span>שלב 1 · Gemini קורא ${m.hasPdf?'את כל דפי ה-PDF':`דפים ${m.range} מתוך ${state.files.length}`} (מנה ${i+1}/${chunks.length})…`,'info');
+        try{
           const parts=await geminiPartsFor(chunks[i]);
-          txt=await callGeminiRetry(parts,prompt,wait=>showStatus(`<span class="spinner"></span>שלב 1 · מגבלת קצב של Gemini (${range}) — ממתין ${wait/1000} שׄ ומנסה שוב…`,'info'));
-        }else{
-          txt=await claudeReadChunk(chunks[i],prompt,secs=>showStatus(`${baseMsg} · ${secs} שׄ…`,'info'));
-        }
-        notes.push({range,text:txt||'(אין טקסט)'});
-      }catch(chunkErr){
-        // Don't abort a long run over one bad chunk — log it and continue.
-        failed.push(range);
-        notes.push({range,text:`⚠ מנה זו נכשלה בקריאה (${chunkErr.message}). דרושה קריאה חוזרת ידנית של דפים ${range}.`});
+          const txt=await callGeminiRetry(parts,chunkPrompt(i),wait=>showStatus(`<span class="spinner"></span>שלב 1 · מגבלת קצב של Gemini (${m.range}) — ממתין ${wait/1000} שׄ ומנסה שוב…`,'info'));
+          notes[i]={range:m.range,text:txt||'(אין טקסט)'};
+        }catch(err){recordFailure(i,err);}
+        if(i<chunks.length-1)await new Promise(r=>setTimeout(r,1200)); // pace Gemini RPM
       }
-      if(engine==='dual'&&i<chunks.length-1)await new Promise(r=>setTimeout(r,1200)); // pace Gemini RPM
+    }else{
+      // Claude mode: chunks are independent, and the server spawns one CLI process
+      // per job with no lock — so read several at once. Bounded to stay within the
+      // Claude subscription's limits and the machine's resources.
+      const CONCURRENCY=3;
+      let started=0, completed=0;
+      const tick=()=>showStatus(`<span class="spinner"></span>שלב 1 · Claude קורא ${chunks.length} מנות במקביל (${completed}/${chunks.length} הושלמו, עד ${CONCURRENCY} בו-זמנית)…`,'info');
+      tick();
+      async function worker(){
+        while(started<chunks.length){
+          const i=started++;
+          try{
+            const txt=await claudeReadChunk(chunks[i],chunkPrompt(i));
+            notes[i]={range:meta[i].range,text:txt||'(אין טקסט)'};
+          }catch(err){recordFailure(i,err);}
+          completed++; tick();
+        }
+      }
+      await Promise.all(Array.from({length:Math.min(CONCURRENCY,chunks.length)},worker));
     }
     if(failed.length===chunks.length)throw new Error(`כל המנות נכשלו בקריאת ${reader}. `+(engine==='dual'?'בדוק מפתח/מודל/מכסת Gemini.':NET_HINT));
 
