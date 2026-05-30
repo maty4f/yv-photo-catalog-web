@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>קטלוג תיק — יד ושם (בדיקה כפולה Gemini + Claude)</title>
+<title>קטלוג תיק — יד ושם (Claude קורא ומסנתז)</title>
 <style>
   :root{
     --bg:#f7f5f0; --card:#fff; --ink:#1a1a1a; --muted:#5a5a5a; --line:#d8d4cc;
@@ -75,24 +75,11 @@
 <body>
 <div class="wrap">
   <h1>קטלוג תיק — מקורות פרטיים (ספיר)</h1>
-  <div class="sub">רשומה אחת לכל תיק · בדיקה כפולה: Gemini + Claude קוראים את כל הדפים ומצליבים · סימוני ודאות לפי ההסכמה</div>
+  <div class="sub">רשומה אחת לכל תיק · Claude קורא את כל דפי התיק (במנות) ואז מסנתז רשומת-תיק אחת · סימוני ודאות ונקודות לבדיקת אנוש</div>
 
   <!-- CONFIG -->
   <div class="card">
-    <h2>הגדרות <span id="save-state" class="hint" style="font-weight:400;margin-right:8px"></span>
-      <a id="clear-keys" href="#" class="hint" style="margin-right:8px">נקה מפתחות שמורים</a></h2>
-    <div class="row2">
-      <div>
-        <label>מפתח Claude (Anthropic)</label>
-        <input type="password" id="key-claude" placeholder="sk-ant-…" autocomplete="off">
-        <div class="hint">api.anthropic.com</div>
-      </div>
-      <div>
-        <label>מפתח Gemini (Google)</label>
-        <input type="password" id="key-gemini" placeholder="AIza…" autocomplete="off">
-        <div class="hint"><a href="https://aistudio.google.com/app/apikey" target="_blank">השג מפתח</a></div>
-      </div>
-    </div>
+    <h2>הגדרות <span id="save-state" class="hint" style="font-weight:400;margin-right:8px"></span></h2>
     <div class="row2">
       <div>
         <label>מודל Claude</label>
@@ -100,42 +87,24 @@
           <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (מומלץ)</option>
           <option value="claude-opus-4-6">Claude Opus 4.6 (מדויק יותר)</option>
         </select>
+        <div class="hint">Claude רץ דרך שרת הבית (claude -p) במנוי — בלי מפתח ובלי עלות API. הוא קורא את הסריקות עצמן.</div>
       </div>
       <div>
-        <label>מודל Gemini <button type="button" id="check-models" class="copy-btn" style="background:#2c5d8a">בדוק זמינים</button></label>
-        <select id="model-gemini">
-          <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (מומלץ — יציב)</option>
-          <option value="gemini-2.5-pro">Gemini 2.5 Pro (איטי, מדויק)</option>
-          <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-        </select>
-        <div class="hint" id="model-check-status"></div>
-      </div>
-    </div>
-    <div class="row2">
-      <div>
-        <label>אופן הרצת Claude (שלב הסינתזה)</label>
-        <select id="claude-mode">
-          <option value="api" selected>API (מפתח sk-ant — בתשלום)</option>
-          <option value="cli">CLI מקומי (מנוי — בלי מפתח, דרך שרת הבית)</option>
-        </select>
-        <div class="hint">CLI מריץ את Claude דרך השרת המקומי (claude -p) — חוסך עלות API. Claude לא רואה תמונות במצב זה; Gemini מבצע את הקריאה החזותית.</div>
-      </div>
-      <div id="server-url-wrap" style="display:none">
         <label>כתובת שרת מקומי / tunnel</label>
-        <input type="text" id="server-url" class="ltr" value="https://bryant-widespread-building-fingers.trycloudflare.com" placeholder="https://….trycloudflare.com או http://localhost:3000">
-        <div class="hint">כתובת ה-tunnel מתחלפת בכל הפעלה. ודא שהשרת רץ.</div>
+        <input type="text" id="server-url" class="ltr" value="" placeholder="http://localhost:3000 או https://….trycloudflare.com">
+        <div class="hint">בהרצה מקומית מוגדר אוטומטית ל-localhost. בגישה מרחוק — הדבק את כתובת ה-tunnel (מתחלפת בכל הפעלה).</div>
       </div>
     </div>
     <div class="row2">
       <div>
         <label>דפים למנה (chunk)</label>
-        <input type="number" id="chunk-size" value="15" min="1" max="100" style="width:90px">
-        <div class="hint">Gemini קורא את כל דפי התיק במנות בגודל זה (כיסוי מלא, לא דגימה).</div>
+        <input type="number" id="chunk-size" value="8" min="1" max="40" style="width:90px">
+        <div class="hint">Claude קורא את כל דפי התיק במנות בגודל זה (כיסוי מלא, לא דגימה). מנה קטנה = קריאה מדויקת יותר אך יותר מנות.</div>
       </div>
       <div>
         <label>רזולוציית קריאה (px לצד הארוך)</label>
-        <input type="number" id="img-edge" value="1100" min="500" max="2200" step="100" style="width:110px">
-        <div class="hint">סריקות מוקטנות לגודל זה לפני שליחה ל-Gemini — חוסך טוקנים ומונע נפילה על מגבלות. אם כתב יד לא נקרא, העלה ל-1500–1800.</div>
+        <input type="number" id="img-edge" value="1500" min="500" max="2200" step="100" style="width:110px">
+        <div class="hint">סריקות מוקטנות לגודל זה לפני שליחה. אם כתב יד לא נקרא — העלה ל-1800–2000.</div>
       </div>
     </div>
   </div>
@@ -174,10 +143,9 @@ const state = { files: [] };
 
 /* ---------- helpers ---------- */
 function fileToBase64(file){return new Promise(r=>{const fr=new FileReader();fr.onload=e=>r(e.target.result.split(',')[1]);fr.readAsDataURL(file);});}
-// Downscale a scan client-side before sending to Gemini. Full-res archive scans
-// are ~5000 vision-tokens/page and bust the 20MB inline limit; shrinking to a
-// modest long-edge gets each page to ~one 768px tile (~258 tokens) so a whole
-// תיק fits inside Gemini's rate/token limits. Handwriting stays legible ~1100px.
+// Downscale a scan client-side before sending. Full-res archive scans are huge;
+// shrinking to a modest long-edge keeps each /api/ask-async request under the
+// 25MB JSON limit and speeds Claude's Read. Handwriting stays legible ~1500px.
 function imgMaxEdge(){return Math.max(500,Math.min(2200,parseInt($('img-edge')?.value,10)||1100));}
 async function downscaledB64(file){
   const url=URL.createObjectURL(file);
@@ -269,8 +237,8 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפנ
  "diamonds": [ {"type": "", "description": "", "location": ""} ]
 }`;
 
-/* ---------- chunk extraction (Gemini reads every page) & synthesis prompts ---------- */
-const CHUNK_EXTRACT_RULES = `אתה קורא **חלק** מתיק ארכיוני (טווח דפים שיצוין). אלו לא כל דפי התיק — תאר את מה שאתה רואה בדפים שלפניך בלבד. הסיכום הזה ישמש אחר כך לסינתזה של רשומת-תיק אחת.
+/* ---------- chunk extraction (Claude reads every page) & synthesis prompts ---------- */
+const CHUNK_EXTRACT_RULES = `אתה מקטלג ארכיוני ביד ושם הקורא **חלק** מתיק ארכיוני (טווח דפים שיצוין). הקבצים המצורפים הם סריקות אמיתיות של תיעוד מתקופת השואה — קרא כל אחד מהם בעיון. אלו לא כל דפי התיק — תאר את מה שאתה רואה בדפים שלפניך בלבד. הסיכום הזה ישמש אחר כך לסינתזה של רשומת-תיק אחת.
 
 החזר **טקסט חופשי קצר ומובנה** (לא JSON, לא טבלאות). השתמש בכותרות קצרות:
 - **סוגי המסמכים** — איזה סוגי דפים יש בקטע (פרוטוקול חקירה, תעודה, מכתב, רשימה, שער תיק וכו').
@@ -282,109 +250,81 @@ const CHUNK_EXTRACT_RULES = `אתה קורא **חלק** מתיק ארכיוני 
 
 אסור לנחש. אם דף לא קריא — ציין זאת. היה תמציתי — זו רק נקודת ביניים, לא הרשומה הסופית.`;
 
-const SYNTH_RULES = `אתה מקטלג ארכיוני בכיר ביד ושם. לפניך סיכומי-טקסט חופשיים שכתב Gemini אחרי שקרא את **כל דפי התיק** (מנה אחר מנה, לפי טווחי דפים). תפקידך: לסנתז מהם **רשומת-תיק אחת** לפי נהלי ספיר, ולבקר את הממצאים — לאחד כפילויות, לזהות סתירות בין מנות, ולסמן ודאות. אתה לא רואה את הדפים עצמם — הסתמך על הסיכומים, ואם משהו חסר/לא ברור סמן זאת.
+const SYNTH_RULES = `אתה מקטלג ארכיוני בכיר ביד ושם. לפניך סיכומי-טקסט שכתבת קודם אחרי שקראת את **כל דפי התיק** (מנה אחר מנה, לפי טווחי דפים). תפקידך עכשיו: לסנתז מהם **רשומת-תיק אחת** לפי נהלי ספיר — לאחד כפילויות, לזהות סתירות בין מנות, ולסמן ודאות. הסתמך על הסיכומים; אם משהו חסר/לא ברור סמן זאת.
 ${TIK_SCHEMA_RULES}
 
 בנוסף לשדות הסכימה, החזר:
  "field_confidence": { "title":"✓", "related_places":"~", ... },
- "disagreements": [ {"field":"", "gemini":"", "claude":"", "resolved":"", "note":""} ]
-היכן שהממצאים עקביים וברורים → "✓"; חלקיים/מבוסס מנה אחת → "~"; לא קריא/מוטל בספק → "?". רשום ב-disagreements כל סתירה בין מנות או פער שדורש בדיקת אנוש.`;
+ "review_flags": [ {"field":"", "issue":"", "note":""} ]
+היכן שהממצאים עקביים וברורים → "✓"; חלקיים/מבוסס מנה אחת → "~"; לא קריא/מוטל בספק → "?". רשום ב-review_flags כל סתירה בין מנות, דף לא-קריא, או פער שדורש בדיקת אנוש לפני הדבקה לספיר.`;
 
 function contextBlock(){const c=$('context').value.trim();return c?`\n\n## מידע מוקדם / דף איסוף\n${c}`:'\n\n## מידע מוקדם\n(אין)';}
 function chunkArr(arr,size){const out=[];for(let i=0;i<arr.length;i+=size)out.push(arr.slice(i,i+size));return out;}
 
-async function geminiPartsFor(files){
-  const parts=[];
+// Build the images[] payload for /api/ask-async — base64 each page. Images are
+// downscaled client-side (saves bandwidth + keeps the request under the 25MB
+// JSON limit); PDFs are sent as-is. The server materializes each to a temp file
+// and tells Claude to Read it, giving Claude a real visual pass over the scans.
+async function imagesForChunk(files){
+  const imgs=[];
   for(const f of files){
     const mime=mimeOf(f);
-    if(mime==='application/pdf'){const b64=await fileToBase64(f);parts.push({inline_data:{mime_type:mime,data:b64}});}
-    else{const b64=await downscaledB64(f);parts.push({inline_data:{mime_type:'image/jpeg',data:b64}});}
+    if(mime==='application/pdf'){imgs.push({mime,data:await fileToBase64(f)});}
+    else{imgs.push({mime:'image/jpeg',data:await downscaledB64(f)});}
   }
-  return parts;
+  return imgs;
 }
-/* ---------- API callers ---------- */
-// On localhost, route Gemini through the local proxy (same-origin, no CORS, no
-// direct-Google network dependency) — identical to photos/films/documents.html.
-// Off localhost, call Google directly.
-function geminiBase(){
-  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))
-    return location.origin+'/api/gemini-proxy/v1beta/models/';
-  return 'https://generativelanguage.googleapis.com/v1beta/models/';
+
+/* ---------- Claude CLI engine (single engine: reads scans + synthesizes) ---------- */
+// On localhost we talk to this same origin (localhost never changes). Off
+// localhost (remote access) we use the tunnel URL the archivist pasted.
+function serverBase(){
+  const v=$('server-url').value.trim().replace(/\/$/,'');
+  if(v)return v;
+  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))return location.origin;
+  throw new Error('חסרה כתובת שרת מקומי / tunnel.');
 }
-async function callGeminiOnParts(parts,promptText){
-  const url=geminiBase()+$('model-gemini').value+':generateContent';
-  let res;
-  try{
-    res=await fetch(url,{method:'POST',
-      headers:{'Content-Type':'application/json','x-goog-api-key':state.keyGemini},
-      body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:promptText}]}],
-        generationConfig:{temperature:0,maxOutputTokens:8192}})});
-  }catch(netErr){
-    throw new Error('לא ניתן להגיע ל-Gemini ('+netErr.message+'). בדוק חיבור רשת/חסימה.');
-  }
-  if(!res.ok){const t=await res.text();throw new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));}
-  const data=await res.json();
-  // Free text (not JSON) — robust against truncation; Claude turns it into the record.
-  return (data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim();
-}
-// Retry on rate-limit (429 / RESOURCE_EXHAUSTED) with backoff, so a momentary
-// quota spike on a long תיק doesn't drop a chunk.
-async function callGeminiRetry(parts,promptText,onWait){
-  const tries=4;
-  for(let a=0;a<tries;a++){
-    try{return await callGeminiOnParts(parts,promptText);}
-    catch(e){
-      const rate=/HTTP 429|RESOURCE_EXHAUSTED|quota|rate/i.test(e.message);
-      if(rate&&a<tries-1){const wait=15000*(a+1);if(onWait)onWait(wait);await new Promise(r=>setTimeout(r,wait));continue;}
-      throw e;
-    }
-  }
-}
-async function callClaudeAPI(parts,promptText,maxTok){
-  let res;
-  try{
-    res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':state.keyClaude,
-        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:$('model-claude').value,max_tokens:maxTok||16000,
-        messages:[{role:'user',content:[...parts,{type:'text',text:promptText}]}]})});
-  }catch(netErr){
-    throw new Error('לא ניתן להגיע ל-api.anthropic.com ('+netErr.message+'). ייתכן שהרשת חוסמת את Anthropic — עבור ל"אופן הרצת Claude" → "CLI מקומי".');
-  }
-  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('Claude HTTP '+res.status+': '+(e.error?.message||''));}
-  const data=await res.json();
-  return parseJson((data.content?.[0]?.text||'').trim(),'Claude');
-}
-async function callClaudeCLI(promptText){
-  const base=$('server-url').value.trim().replace(/\/$/,'');
-  if(!base)throw new Error('חסרה כתובת שרת מקומי (CLI).');
+const NET_HINT='ודא ששרת הבית רץ (node server.js), ובגישה מרחוק שגם המנהרה (cloudflared) רצה ושכתובת ה-tunnel מעודכנת — היא מתחלפת בכל הפעלה.';
+
+// POST a job to /api/ask-async and poll until done. Async POST returns a jobId
+// immediately so a long Claude run survives the Cloudflare quick-tunnel ~100s
+// limit. `onTick(secs)` updates the status line. Returns the raw text.
+async function runClaudeJob({prompt,images,onTick}){
+  const base=serverBase();
   const model=$('model-claude').value.includes('opus')?'opus':'sonnet';
-  const netHint='ודא ששרת הבית והמנהרה (cloudflared) רצים, ושכתובת השרת מעודכנת — כתובת ה-tunnel מתחלפת בכל הפעלה.';
-  // Async: POST returns a jobId immediately, then poll — survives the
-  // Cloudflare quick-tunnel ~100s limit that breaks long synchronous calls.
   let res;
   try{
     res=await fetch(base+'/api/ask-async',{method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt:promptText,model})});
-  }catch(netErr){throw new Error('לא ניתן להגיע לשרת המקומי ('+netErr.message+'). '+netHint);}
-  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('CLI HTTP '+res.status+': '+(e.error||'').slice(0,400));}
+      body:JSON.stringify({prompt,model,images:images||[]})});
+  }catch(netErr){throw new Error('לא ניתן להגיע לשרת המקומי ('+netErr.message+'). '+NET_HINT);}
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('שרת HTTP '+res.status+': '+(e.error||'').slice(0,400));}
   const {jobId}=await res.json();
   if(!jobId)throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
-  // Poll up to ~12 minutes.
-  const started=Date.now(), maxMs=12*60*1000;
+  // Poll up to ~15 minutes (a big chunk of scans can take a while for Claude to Read).
+  const started=Date.now(), maxMs=15*60*1000;
   while(Date.now()-started<maxMs){
     await new Promise(r=>setTimeout(r,3000));
     let pr;
-    try{pr=await fetch(base+'/api/ask-async/'+jobId);}catch(e){continue;}  // transient — keep polling
+    try{pr=await fetch(base+'/api/ask-async/'+jobId);}catch(e){continue;} // transient — keep polling
     if(!pr.ok)continue;
     const j=await pr.json();
-    const secs=Math.round((Date.now()-started)/1000);
-    showStatus(`<span class="spinner"></span>שלב 2 · Claude (CLI מקומי) מסנתז את רשומת התיק… (${secs} שניות)`,'info');
-    if(j.status==='done')return parseJson((j.text||'').trim(),'Claude CLI');
-    if(j.status==='error')throw new Error('Claude CLI נכשל: '+(j.error||'').slice(0,400));
+    if(onTick)onTick(Math.round((Date.now()-started)/1000));
+    if(j.status==='done')return (j.text||'').trim();
+    if(j.status==='error')throw new Error('Claude נכשל: '+(j.error||'').slice(0,400));
   }
-  throw new Error('הסינתזה ב-CLI נמשכה מעל 12 דקות ולא הסתיימה. נסה שוב או צמצם את גודל התיק.');
+  throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. צמצם את "דפים למנה" או את גודל התיק ונסה שוב.');
+}
+
+// Stage 1 — Claude READS one chunk of scans and returns free-text notes.
+async function claudeReadChunk(files,promptText,onTick){
+  const images=await imagesForChunk(files);
+  return await runClaudeJob({prompt:promptText,images,onTick});
+}
+// Stage 2 — Claude SYNTHESIZES the per-chunk notes into one JSON record (no images).
+async function claudeSynthesize(promptText,onTick){
+  const text=await runClaudeJob({prompt:promptText,images:[],onTick});
+  return parseJson(text,'Claude');
 }
 
 /* ---------- render ---------- */
@@ -397,14 +337,12 @@ function conf(rec,key){const c=rec.field_confidence?.[key];return c?(' '+cmark(c
 
 function renderRecord(rec){
   const fc=rec.field_confidence||{};
-  // disagreements
+  // review flags — points Claude marked as needing human verification before Sapir
   const dz=$('disagree-box'); dz.innerHTML='';
-  if((rec.disagreements||[]).length){
-    dz.innerHTML=`<div class="disagree"><h3>⚠ נקודות לבדיקת המקטלג (Gemini ≠ Claude)</h3>`+
-      rec.disagreements.map(d=>`<div class="d"><b>${esc(d.field)}</b><br>`+
-        `<span class="src">Gemini:</span> ${esc(d.gemini)}<br>`+
-        `<span class="src">Claude:</span> ${esc(d.claude)}`+
-        (d.resolved?`<br><span class="src">נבחר:</span> ${esc(d.resolved)}`:'')+
+  if((rec.review_flags||[]).length){
+    dz.innerHTML=`<div class="disagree"><h3>⚠ נקודות לבדיקת המקטלג לפני הדבקה לספיר</h3>`+
+      rec.review_flags.map(d=>`<div class="d"><b>${esc(d.field)}</b><br>`+
+        `${esc(d.issue)}`+
         (d.note?`<br><small>${esc(d.note)}</small>`:'')+`</div>`).join('')+`</div>`;
   }
   // additional info (assembled)
@@ -475,47 +413,49 @@ function renderRecord(rec){
   $('results').classList.add('show');
 }
 
-/* ---------- run (chunked: Gemini reads every page, Claude synthesizes) ---------- */
+/* ---------- run (chunked: Claude reads every page, then synthesizes one record) ---------- */
 $('run').addEventListener('click',async()=>{
-  state.keyClaude=$('key-claude').value.trim();
-  state.keyGemini=$('key-gemini').value.trim();
-  const mode=$('claude-mode').value;            // api | cli
-  if(!state.keyGemini){showStatus('דרוש מפתח Gemini (הקריאה החזותית של כל הדפים).','err');return;}
-  if(mode==='api' && !state.keyClaude){showStatus('מצב API דורש מפתח Claude (או עבור ל-CLI).','err');return;}
   if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return;}
-  const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||15);
+  try{serverBase();}catch(e){showStatus(e.message,'err');return;}
+  const chunkSize=Math.max(1,parseInt($('chunk-size').value,10)||8);
   const chunks=chunkArr(state.files,chunkSize);
   $('run').disabled=true;
   try{
-    // Stage 1 — Gemini reads EVERY chunk (full coverage) and returns FREE TEXT notes
+    // Stage 1 — Claude READS every chunk of scans (full coverage) and returns free-text notes.
     const notes=[]; const failed=[];
     let done=0;
     for(let i=0;i<chunks.length;i++){
       const from=done+1, to=done+chunks[i].length; done=to;
-      const range=`${from}–${to}`;
-      showStatus(`<span class="spinner"></span>שלב 1 · Gemini קורא דפים ${range} מתוך ${state.files.length} (מנה ${i+1}/${chunks.length})…`,'info');
-      const parts=await geminiPartsFor(chunks[i]);
-      const prompt=`${CHUNK_EXTRACT_RULES}\n\n(טווח דפים: ${range} מתוך ${state.files.length})${contextBlock()}`;
+      // A PDF is ONE uploaded file but contains MANY pages. Don't label it "page 1–1"
+      // (that makes Claude read only the cover). Instruct it to Read EVERY page of the
+      // document — Claude's Read tool needs explicit page ranges for long PDFs.
+      const hasPdf=chunks[i].some(f=>mimeOf(f)==='application/pdf');
+      const range = hasPdf ? `מסמך PDF מלא (קובץ ${from}${chunks[i].length>1?`–${to}`:''})` : `${from}–${to}`;
+      const coverage = hasPdf
+        ? `\n\n🛑 המצורף הוא מסמך PDF שלם המכיל **דפים רבים** (לא דף בודד). עליך לקרוא את **כל הדפים** במסמך — מהראשון עד האחרון — ולא רק את דף השער/דף המנהלה הראשון. כלי ה-Read על PDF ארוך עשוי לדרוש קריאה בטווחי דפים (למשל pages:"1-10", אחר כך pages:"11-20" וכן הלאה) — חזור על הקריאה עד שכיסית את כל הדפים. בסיכום ציין כמה דפים סך הכול יש במסמך ואילו סוגי דפים מופיעים לאורכו. אל תעצור אחרי הדף הראשון.`
+        : `\n\n(טווח דפים: ${range} מתוך ${state.files.length})`;
+      const baseMsg=`<span class="spinner"></span>שלב 1 · Claude קורא ${hasPdf?'את כל דפי ה-PDF':`דפים ${range} מתוך ${state.files.length}`} (מנה ${i+1}/${chunks.length})`;
+      showStatus(baseMsg+'…','info');
+      const prompt=`${CHUNK_EXTRACT_RULES}${coverage}${contextBlock()}`;
       try{
-        const txt=await callGeminiRetry(parts,prompt,wait=>showStatus(`<span class="spinner"></span>שלב 1 · מגבלת קצב של Gemini בדפים ${range} — ממתין ${wait/1000} שׄ ומנסה שוב…`,'info'));
+        const txt=await claudeReadChunk(chunks[i],prompt,secs=>showStatus(`${baseMsg} · ${secs} שׄ…`,'info'));
         notes.push({range,text:txt||'(אין טקסט)'});
       }catch(chunkErr){
         // Don't abort a long run over one bad chunk — log it and continue.
         failed.push(range);
         notes.push({range,text:`⚠ מנה זו נכשלה בקריאה (${chunkErr.message}). דרושה קריאה חוזרת ידנית של דפים ${range}.`});
       }
-      if(i<chunks.length-1)await new Promise(r=>setTimeout(r,1200)); // pace requests to respect RPM
     }
-    if(failed.length===chunks.length)throw new Error('כל המנות נכשלו בקריאת Gemini. בדוק מפתח/מודל/חיבור.');
+    if(failed.length===chunks.length)throw new Error('כל המנות נכשלו בקריאת Claude. '+NET_HINT);
 
-    // Stage 2 — Claude verifies Gemini's text findings & synthesizes ONE record (text-only; no images)
-    showStatus(`<span class="spinner"></span>שלב 2 · ${mode==='cli'?'Claude (CLI מקומי)':'Claude'} בודק את ממצאי Gemini ומסנתז ${chunks.length} מנות לרשומת-תיק אחת…`,'info');
+    // Stage 2 — Claude synthesizes ALL chunk notes into ONE record (text-only; no images).
+    showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז ${chunks.length} מנות לרשומת-תיק אחת…`,'info');
     const findingsText=notes.map(n=>`### דפים ${n.range}\n${n.text}`).join('\n\n');
-    const synthPrompt=`${SYNTH_RULES}\n\n## ממצאי Gemini מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}\n\nהחזר JSON סופי בלבד.`;
-    const final = mode==='cli' ? await callClaudeCLI(synthPrompt) : await callClaudeAPI([],synthPrompt,20000);
+    const synthPrompt=`${SYNTH_RULES}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}\n\nהחזר JSON סופי בלבד.`;
+    const final=await claudeSynthesize(synthPrompt,secs=>showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק… (${secs} שׄ)`,'info'));
     renderRecord(final);
     const warn=failed.length?` ⚠ ${failed.length} מנות נכשלו (דפים ${failed.join(', ')}) — דרושה קריאה חוזרת ידנית.`:'';
-    showStatus(`✓ הקטלוג הושלם — נקראו ${state.files.length} הדפים ב-${chunks.length} מנות.${warn} בדוק את אי-ההסכמות והיהלומים לפני הדבקה לספיר.`,failed.length?'info':'ok');
+    showStatus(`✓ הקטלוג הושלם — נקראו ${state.files.length} הדפים ב-${chunks.length} מנות.${warn} בדוק את נקודות הבדיקה והיהלומים לפני הדבקה לספיר.`,failed.length?'info':'ok');
     $('results').scrollIntoView({behavior:'smooth'});
   }catch(err){
     console.error(err);
@@ -523,68 +463,35 @@ $('run').addEventListener('click',async()=>{
   }finally{$('run').disabled=false;}
 });
 
-/* ---------- mode toggle: show server URL only for CLI ---------- */
-function syncModeUI(){
-  $('server-url-wrap').style.display=$('claude-mode').value==='cli'?'block':'none';
-}
-$('claude-mode').addEventListener('change',syncModeUI);
-syncModeUI();
-
-/* ---------- persist settings locally (so keys aren't re-entered each time) ---------- */
-const PERSIST=['key-claude','key-gemini','model-claude','model-gemini','claude-mode','server-url','chunk-size','img-edge'];
+/* ---------- persist settings locally ---------- */
+const PERSIST=['model-claude','server-url','chunk-size','img-edge'];
 const STORE_KEY='yv-tik-settings';
 function setSaveState(msg,color){const el=$('save-state');if(el){el.textContent=msg;el.style.color=color||'#2e7d32';}}
 function loadSettings(){
   let s={};
   try{s=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
     PERSIST.forEach(id=>{if(s[id]!=null&&$(id)&&$(id).value!==s[id])$(id).value=s[id];});}catch(e){}
-  // Auto-config: when served from the local machine, use this same origin for the
-  // Claude CLI server — no tunnel, localhost never changes. Only triggers on localhost.
-  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)){
-    if($('claude-mode'))$('claude-mode').value='cli';
-    if($('server-url'))$('server-url').value=location.origin;
+  // Auto-config: when served from the local machine, use this same origin —
+  // localhost never changes, so no tunnel URL is needed.
+  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&$('server-url')&&!$('server-url').value.trim()){
+    $('server-url').value=location.origin;
   }
-  syncModeUI();
-  setSaveState((s['key-gemini']||s['key-claude'])?'🔒 מפתחות נטענו מהמכשיר':'','#2e7d32');
+  setSaveState('🔒 הגדרות נטענו מהמכשיר','#2e7d32');
 }
 function saveSettings(){
   try{const s={};PERSIST.forEach(id=>{if($(id))s[id]=$(id).value;});
     localStorage.setItem(STORE_KEY,JSON.stringify(s));
-    if(s['key-gemini']||s['key-claude'])setSaveState('🔒 נשמר במכשיר זה','#2e7d32');}catch(e){setSaveState('⚠ לא ניתן לשמור (אחסון חסום בדפדפן)','#b22222');}
+    setSaveState('🔒 נשמר במכשיר זה','#2e7d32');}catch(e){setSaveState('⚠ לא ניתן לשמור (אחסון חסום בדפדפן)','#b22222');}
 }
 PERSIST.forEach(id=>{const el=$(id);if(el){el.addEventListener('change',saveSettings);el.addEventListener('input',saveSettings);el.addEventListener('blur',saveSettings);}});
-$('clear-keys').addEventListener('click',e=>{e.preventDefault();try{localStorage.removeItem(STORE_KEY);}catch(_){}PERSIST.forEach(id=>{if($(id)&&/^key-/.test(id))$(id).value='';});setSaveState('נמחקו מפתחות שמורים','#666');});
 loadSettings();
-// Some browsers blank password fields on reload / bfcache restore AFTER our script
-// runs — re-restore shortly after load and on pageshow so keys don't vanish.
-setTimeout(loadSettings,150);
 window.addEventListener('pageshow',loadSettings);
-
-/* ---------- model availability check (fixes the 400 by confirming a real model) ---------- */
-$('check-models').addEventListener('click',async()=>{
-  const key=$('key-gemini').value.trim();
-  const st=$('model-check-status');
-  if(!key){st.innerHTML='<span style="color:#b22222">הדבק מפתח Gemini קודם.</span>';return;}
-  st.textContent='בודק…';
-  try{
-    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=50',{headers:{'x-goog-api-key':key}});
-    const d=await r.json();
-    if(!r.ok){st.innerHTML='<span style="color:#b22222">שגיאה '+r.status+': '+esc(d.error?.message||'')+'</span>';return;}
-    const names=(d.models||[]).map(m=>(m.name||'').replace(/^models\//,''));
-    const sel=$('model-gemini').value;
-    const ok=names.includes(sel);
-    const flash=names.filter(n=>n.includes('flash')).slice(0,6).join(', ');
-    st.innerHTML=ok
-      ?`<span style="color:#2e7d32">✓ ${esc(sel)} זמין. Flash זמינים: ${esc(flash)}</span>`
-      :`<span style="color:#b22222">⚠ ${esc(sel)} לא זמין אצלך. בחר מתוך: ${esc(flash)}</span>`;
-  }catch(e){st.innerHTML='<span style="color:#b22222">שגיאת רשת — Google חסום? '+esc(e.message)+'</span>';}
-});
 
 /* ---------- file handling ---------- */
 function renderFiles(){
   const n=state.files.length;
-  const cs=Math.max(1,parseInt($('chunk-size').value,10)||15);
-  const note=n?`<div class="f" style="font-weight:600">📁 ${n} דפים — ייקראו במלואם ב-${Math.ceil(n/cs)} מנות (Gemini)</div>`:'';
+  const cs=Math.max(1,parseInt($('chunk-size').value,10)||8);
+  const note=n?`<div class="f" style="font-weight:600">📁 ${n} דפים — ייקראו במלואם ב-${Math.ceil(n/cs)} מנות (Claude)</div>`:'';
   const rows=state.files.slice(0,60).map(f=>
     `<div class="f"><span>${esc(f.name)}</span><span>${(f.size/1024/1024).toFixed(1)}MB</span></div>`).join('');
   const more=n>60?`<div class="f"><span>… ועוד ${n-60}</span><span></span></div>`:'';
