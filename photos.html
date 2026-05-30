@@ -1873,7 +1873,7 @@ ${rulesPrompt}
   const data = await res.json();
   let text = (data.text || '').trim();
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-  return parseJson(text, 'Claude CLI');
+  return parseJsonResponse(text, 'Claude CLI');
 }
 
 // Gemini step — pure vision, returns descriptive Hebrew text (no JSON)
