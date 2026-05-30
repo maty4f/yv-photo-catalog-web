@@ -336,8 +336,8 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="hybrid" selected>⭐ Hybrid: Gemini ויזואל + Claude מבני (מומלץ — דיוק היסטורי)</option>
-        <option value="anthropic">Anthropic (Claude) בלבד (בתשלום)</option>
+        <option value="anthropic" selected>⭐ Anthropic (Claude) בלבד (מומלץ — מהיר, מנוע יחיד)</option>
+        <option value="hybrid">Hybrid: Gemini קורא ויזואלית → Claude כותב ובודק (שתי קריאות עוקבות)</option>
         <option value="gemini">🆓 Google (Gemini) בלבד (חינם — free tier)</option>
         <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (חינם — דורש שרת מקומי)</option>
       </select>
@@ -359,7 +359,7 @@
     <div class="row provider-row" data-provider="cli-hybrid" style="display:none;">
       <label>איך זה עובד</label>
       <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        Gemini עושה ניתוח ויזואלי ראשוני (API חינמי) → Claude בונה את שדות ספיר ומאמת היסטורית, אבל דרך <code>claude</code> CLI שרץ במחשב שלך (במקום API בתשלום).<br>
+        Gemini הוא העיניים — קריאה ויזואלית בלבד (API חינמי) → Claude בודק את הקריאה של Gemini ובונה את שדות ספיר (טקסט בלבד, לא רואה את התמונה), דרך <code>claude</code> CLI שרץ במחשב שלך (במקום API בתשלום).<br>
         <b>דורש:</b> מפתח Gemini (למטה) + שרת מקומי פעיל ב-URL למעלה. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
       </div>
     </div>
@@ -401,7 +401,7 @@
     </div>
 
     <div class="hint">
-      📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: Gemini עושה זיהוי ראשוני ויזואלי (אישים, חפצים, מקומות, OCR של כיתובים) → Claude עושה זיהוי משני (פורמט ספיר, עברית אקדמית, אימות היסטורי, טרמינולוגיית יד-ושם). שניהם מסמנים <b>ודאות dual-axis V/H</b>: V=ויזואלי (מה רואים), H=היסטורי (מה תואם תיעוד). דורש שני מפתחות. ראה <code>reference/confidence_dual_axis.md</code>.
+      📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: חלוקת תפקידים — <b>Gemini הוא העיניים</b>: קריאה ויזואלית בלבד (אישים, חפצים, מקומות, OCR). <b>Claude הוא הטקסט והבקרה</b>: בודק את הקריאה של Gemini (סתירות, אי-התאמות תקופתיות, ביטחון-יתר → מנמיך ודאות), ואז כותב את קטלוג ספיר בעברית אקדמית. Claude לא רואה את התמונה — רק את הקריאה של Gemini. דורש שני מפתחות. ראה <code>reference/confidence_dual_axis.md</code>.
       <br>📍 <b>🆓 Gemini בלבד (חינם)</b>: זיהוי ויזואלי + OCR חזק במעבר אחד. הכי זול — בדרך כלל בתוך ה-free tier של Google. ללא שכבת אימות היסטורי, פחות חזק על Sapir/עברית אקדמית. <b>מסלול חינמי חלופי:</b> השתמש ב-CLI <code>yv photo catalog &lt;file&gt;</code> שמדפיס prompt → הדבק ב-Claude Code (שיש לך) → גם זה $0.
       <br>📍 <b>Anthropic בלבד (בתשלום)</b>: זיהוי ויזואלי + סינתזה במודל אחד. מהיר וטוב לתצלום פשוט; פחות חזק על OCR של כיתובים מטושטשים.
       <br>—
@@ -1225,9 +1225,10 @@ async function startQueueProcessor() {
       }
       renderQueuePanel();
 
-      // Small pause to avoid rate-limit hits (Gemini Pro Free = 5 RPM)
-      // For Hybrid: 2 API calls per item, double the pause
-      const delay = state.provider === 'hybrid' ? 13000 : (state.provider === 'gemini' ? 6500 : 1500);
+      // Small pause to avoid rate-limit hits (Gemini Pro Free = 5 RPM).
+      // Downscaled images (see prepareImage) cut per-request load, so the Gemini/
+      // Hybrid pauses are shorter than before. Hybrid still pays for 2 calls/item.
+      const delay = state.provider === 'hybrid' ? 6000 : (state.provider === 'gemini' ? 3000 : 1500);
       await new Promise(r => setTimeout(r, delay));
     }
   } finally {
@@ -1678,13 +1679,41 @@ identifyBtn.addEventListener('click', async () => {
   }
 });
 
-// File → base64 helper (shared)
+// Raw file → base64 (no re-encoding). Used for PDFs, which can't be canvas-scaled.
 const fileToBase64 = file => new Promise((resolve, reject) => {
   const r = new FileReader();
   r.onload = () => resolve(r.result.split(',')[1]);
   r.onerror = reject;
   r.readAsDataURL(file);
 });
+
+// Image → downscaled JPEG base64, shared by every provider path.
+// Big archival scans are the main latency + rate-limit (429) driver: capping the
+// long edge at 1568px preserves every detail the vision models can actually use
+// while cutting input tokens and upload size by ~5-10×. Returns { data, mime }.
+// Images already ≤ maxDim are sent untouched; an undecodable format falls back
+// to the original bytes so nothing ever fails to send.
+async function prepareImage(file, maxDim = 1568, quality = 0.85) {
+  const dataUrl = await fileToDataUrl(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = reject;
+      im.src = dataUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+    if (scale >= 1) return { data: dataUrl.split(',')[1], mime: file.type || 'image/jpeg' };
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const jpeg = canvas.toDataURL('image/jpeg', quality);
+    return { data: jpeg.split(',')[1], mime: 'image/jpeg' };
+  } catch (e) {
+    return { data: dataUrl.split(',')[1], mime: file.type || 'image/jpeg' };
+  }
+}
 
 function getRulesAndContext() {
   const ctxText = contextEl.value.trim();
@@ -1718,10 +1747,10 @@ function parseJsonResponse(text, providerLabel) {
 
 // ─── Anthropic (Claude) ───────────────────────────────────────────────
 async function callAnthropic() {
-  const frontB64 = await fileToBase64(state.photos.front);
-  const backB64 = state.photos.back ? await fileToBase64(state.photos.back) : null;
-  const frontMime = state.photos.front.type || 'image/jpeg';
-  const backMime = state.photos.back?.type || 'image/jpeg';
+  const front = await prepareImage(state.photos.front);
+  const back = state.photos.back ? await prepareImage(state.photos.back) : null;
+  const frontB64 = front.data, frontMime = front.mime;
+  const backB64 = back?.data ?? null, backMime = back?.mime ?? 'image/jpeg';
 
   const content = [
     { type: 'text', text: 'אני שולח לך תצלום ארכיוני של יד ושם לקטלוג מלא לפי הנהלים הרשמיים. התשובה שלך חייבת להיות JSON תקין בלבד (ללא טקסט נוסף).' },
@@ -1761,10 +1790,10 @@ async function callAnthropic() {
 
 // ─── Google Gemini ────────────────────────────────────────────────────
 async function callGemini() {
-  const frontB64 = await fileToBase64(state.photos.front);
-  const backB64 = state.photos.back ? await fileToBase64(state.photos.back) : null;
-  const frontMime = state.photos.front.type || 'image/jpeg';
-  const backMime = state.photos.back?.type || 'image/jpeg';
+  const front = await prepareImage(state.photos.front);
+  const back = state.photos.back ? await prepareImage(state.photos.back) : null;
+  const frontB64 = front.data, frontMime = front.mime;
+  const backB64 = back?.data ?? null, backMime = back?.mime ?? 'image/jpeg';
 
   const parts = [
     { text: 'אני שולח לך תצלום ארכיוני של יד ושם לקטלוג מלא לפי הנהלים הרשמיים. התשובה שלך חייבת להיות JSON תקין בלבד (ללא טקסט נוסף).' },
@@ -1806,11 +1835,11 @@ async function callGemini() {
   return parseJsonResponse(text, 'Gemini');
 }
 
-// ─── HYBRID: Gemini (vision) → Claude (structured catalog) ────────────────
-// Strategy: Use Gemini's free tier for the heavy vision work (image analysis),
-// then use Claude's reasoning + rule-following to produce the structured JSON.
-// Result: same quality as full-Claude vision call, but ~50× cheaper because
-// Claude's input is text-only (no images).
+// ─── HYBRID: Gemini (vision) → Claude (validate + structured catalog) ──────
+// Division of labour: Gemini is the eyes (visual reading only); Claude is the
+// text + the checker. Step 2 Claude does NOT see the image — it validates
+// Gemini's reading for plausibility/contradictions, downgrades over-claims,
+// and produces the structured JSON. Text-only input keeps Claude ~50× cheaper.
 async function callHybrid() {
   if (!hasHybridKeys()) {
     throw new Error('מצב Hybrid דורש מפתח Anthropic וגם מפתח Gemini. הגדר ב-⚙ הגדרות API.');
@@ -1820,9 +1849,9 @@ async function callHybrid() {
   showStatus('שלב 1/2 · Gemini מנתח את התצלום ויזואלית…', 'info');
   const visualDescription = await geminiVisualExtract();
 
-  // STEP 2: Claude takes the visual description + collection context + rules
-  // and produces the full structured JSON catalog
-  showStatus('שלב 2/2 · Claude בונה קטלוג מובנה לפי הכללים של ספיר…', 'info');
+  // STEP 2: Claude validates Gemini's reading (plausibility, contradictions,
+  // over-claims) and produces the full structured JSON catalog — text-only.
+  showStatus('שלב 2/2 · Claude בודק את הקריאה של Gemini ובונה קטלוג מובנה…', 'info');
   return await claudeStructureFromVisual(visualDescription);
 }
 
@@ -1834,7 +1863,7 @@ async function callCliHybrid() {
   }
   showStatus('שלב 1/2 · Gemini מנתח את התצלום ויזואלית…', 'info');
   const visualDescription = await geminiVisualExtract();
-  showStatus('שלב 2/2 · Claude קורא את התמונה בעצמו, מצליב עם Gemini ובונה קטלוג…', 'info');
+  showStatus('שלב 2/2 · Claude (CLI) בודק את הקריאה של Gemini ובונה קטלוג…', 'info');
   return await claudeStructureFromVisual_viaCLI(visualDescription);
 }
 
@@ -1843,17 +1872,22 @@ async function claudeStructureFromVisual_viaCLI(visualDescription) {
   const studiosBrief = state.studios.map(s => `${s.id} | ${s.name} (${s.city}, ${s.country})`).join('\n');
   const rulesPrompt = buildSystemRules(ctxText, studiosBrief);
 
-  // Give Claude the actual image(s) too — a real second visual pass alongside
-  // Gemini, so place identification (camps, ghettos, landmarks) is cross-checked.
-  const images = [{ mime: state.photos.front.type || 'image/jpeg', data: await fileToBase64(state.photos.front) }];
-  if (state.photos.back) images.push({ mime: state.photos.back.type || 'image/jpeg', data: await fileToBase64(state.photos.back) });
+  // Claude is text-only here: Gemini is the eyes, Claude is the text + checker.
+  // No image is sent to the CLI — Claude validates Gemini's reading, not the photo.
+  const prompt = `אני שולח לך **ניתוח ויזואלי שכבר בוצע ע"י Gemini** של תצלום ארכיוני. אתה **לא** רואה את התמונה עצמה — Gemini הוא העיניים, אתה הטקסט והבקרה. תפקידך כפול:
 
-  const prompt = `קיבלת תצלום ארכיוני של יד ושם (קבצי התמונה צוינו למעלה — קרא אותם). בנוסף, מצורף **ניתוח ויזואלי עצמאי של Gemini** על אותו תצלום. תפקידך לבצע שני דברים:
+**(א) בקרה על הקריאה של Gemini.** עבור על הניתוח של Gemini בעין ביקורתית — לא לקבל אותו כפשוטו:
+- סתירות פנימיות (פרט אחד שמכחיש פרט אחר באותו ניתוח).
+- אי-התאמות תקופתיות (מדים/רכבים/סגנון שלא תואמים את התאריך שצוין).
+- זיהויים שמוצגים בביטחון-יתר ללא בסיס ויזואלי מספק (שם איש, מחנה/גטו ספציפי, יחידה צבאית). במקרה כזה **הנמך את רמת הוודאות** או הורד לתיאור גנרי.
+- התנגשות עם פרופיל האוסף / תיאור הפריט מטופס האיסוף (אם יש).
+כל הערת בקרה כזו נכנסת לשדה "הערות" בנוסח **"בדיקת קלוד: ..."**.
 
-1. **התבונן בתמונה בעצמך** והפק קריאה ויזואלית עצמאית — אל תסתמך רק על Gemini. שים לב במיוחד לזיהוי **מקום**: שערים, שלטים, צריחי שמירה, אדריכלות, כיתובים, סמלים. אם יש ראיה ויזואלית ברורה למחנה/גטו/אתר מוכר (למשל שער עם הכיתוב "Arbeit macht frei", צריחי השמירה והמסילה של אושוויץ-בירקנאו) — זהה אותו עם סימון ודאות מתאים. אם אין ראיה ברורה — "מחנה/גטו לא מזוהה" (אל תנחש).
-2. **הצלב את הקריאה שלך עם זו של Gemini**: היכן שאתם מסכימים — חזק את הביטחון. היכן שאתם נחלקים (במיוחד על מקום, אנשים, תאריך) — ציין זאת בשדה ההערות ("Gemini: ... / Claude: ..."), ובחר את הקריאה הנתמכת ביותר בראיה ויזואלית.
+**(ב) הפקת הקטלוג המובנה.** על בסיס הניתוח של Gemini (אחרי הבקרה) + פרופיל האוסף + תיאור הפריט + חוקי הקטלוג של יד ושם — הפק JSON מובנה לפי הסכימה. שדה התיאור הויזואלי כפרוזה נקייה בלבד ללא תגיות HTML.
 
-לאחר מכן הפק JSON מובנה לפי הסכימה. שדה התיאור הויזואלי ישקף את הקריאה המשולבת (שלך + Gemini), כפרוזה נקייה בלבד ללא תגיות HTML.
+מגבלות קשיחות:
+- אסור להוסיף תוכן ויזואלי שלא הופיע אצל Gemini (אתה לא רואה את התמונה). אם Gemini אמר "[לא ברור]" — שמור על אי-הוודאות.
+- מותר ומומלץ **להוריד** ביטחון או לסייג זיהוי שנראה לך מופרך — אסור **להעלות** ביטחון על סמך השערה שלך.
 
 ## הניתוח הויזואלי של Gemini
 
@@ -1874,7 +1908,7 @@ ${rulesPrompt}
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, images, model }),
+      body: JSON.stringify({ prompt, model }),
     });
   } catch (e) {
     throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${url}). ודא שהשרת + tunnel פעילים. (${e.message})`);
@@ -1891,10 +1925,10 @@ ${rulesPrompt}
 
 // Gemini step — pure vision, returns descriptive Hebrew text (no JSON)
 async function geminiVisualExtract() {
-  const frontB64 = await fileToBase64(state.photos.front);
-  const backB64 = state.photos.back ? await fileToBase64(state.photos.back) : null;
-  const frontMime = state.photos.front.type || 'image/jpeg';
-  const backMime = state.photos.back?.type || 'image/jpeg';
+  const front = await prepareImage(state.photos.front);
+  const back = state.photos.back ? await prepareImage(state.photos.back) : null;
+  const frontB64 = front.data, frontMime = front.mime;
+  const backB64 = back?.data ?? null, backMime = back?.mime ?? 'image/jpeg';
 
   const visualPrompt = `אתה מקטלג בארכיון יד ושם, מתבונן בתצלום היסטורי. תפקידך: לתאר ויזואלית מה אתה רואה — בלי לנחש, בלי להזיז, בלי להמציא.
 
@@ -1972,9 +2006,20 @@ async function claudeStructureFromVisual(visualDescription) {
   const rulesPrompt = buildSystemRules(ctxText, studiosBrief);
 
   const claudeContent = [
-    { type: 'text', text: `אני שולח לך **ניתוח ויזואלי שכבר בוצע ע"י Gemini** של תצלום ארכיוני. תפקידך: לקבל את הניתוח הזה + פרופיל האוסף + תיאור הפריט מטופס איסוף + חוקי הקטלוג של יד ושם, ולהפיק JSON מובנה לפי הסכימה.
+    { type: 'text', text: `אני שולח לך **ניתוח ויזואלי שכבר בוצע ע"י Gemini** של תצלום ארכיוני. אתה **לא** רואה את התמונה עצמה — Gemini הוא העיניים, אתה הטקסט והבקרה. תפקידך כפול:
 
-חשוב: אל תוסיף תוכן ויזואלי שאינו בניתוח של Gemini. אם Gemini אומר "[לא ברור]" — שמור על זה. אם Gemini לא ראה משהו — אסור להמציא.
+**(א) בקרה על הקריאה של Gemini.** עבור על הניתוח של Gemini בעין ביקורתית — לא לקבל אותו כפשוטו:
+- סתירות פנימיות (פרט אחד שמכחיש פרט אחר באותו ניתוח).
+- אי-התאמות תקופתיות (מדים/רכבים/סגנון שלא תואמים את התאריך שצוין).
+- זיהויים שמוצגים בביטחון-יתר ללא בסיס ויזואלי מספק (שם איש, מחנה/גטו ספציפי, יחידה צבאית). במקרה כזה **הנמך את רמת הוודאות** או הורד לתיאור גנרי.
+- התנגשות עם פרופיל האוסף / תיאור הפריט מטופס האיסוף (אם יש).
+כל הערת בקרה כזו נכנסת לשדה "הערות" בנוסח **"בדיקת קלוד: ..."**.
+
+**(ב) הפקת הקטלוג המובנה.** על בסיס הניתוח של Gemini (אחרי הבקרה) + פרופיל האוסף + תיאור הפריט + חוקי הקטלוג של יד ושם — הפק JSON מובנה לפי הסכימה.
+
+מגבלות קשיחות:
+- אסור להוסיף תוכן ויזואלי שלא הופיע אצל Gemini (אתה לא רואה את התמונה). אם Gemini אמר "[לא ברור]" — שמור על אי-הוודאות.
+- מותר ומומלץ **להוריד** ביטחון או לסייג זיהוי שנראה לך מופרך — אסור **להעלות** ביטחון על סמך השערה שלך.
 
 ## הניתוח הויזואלי של Gemini
 
