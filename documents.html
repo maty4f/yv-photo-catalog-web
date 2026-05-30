@@ -679,6 +679,7 @@
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       <button id="validate-btn" class="ghost" type="button" title="פאס בקרה אקדמית — בודק כל טענה בקטלוג מול המסמך המקורי" style="border-color:#6b3f9b; color:#6b3f9b;">🔬 בקרה אקדמית</button>
       <button id="preview-btn" class="ghost" type="button">👁 תצוגה מקדימה</button>
+      <button id="notebooklm-btn" class="ghost" type="button" title="ייצוא שמות · תאריכים · הקשר מכל המסמכים שפוענחו — קובץ Markdown להעלאה כמקור ב-NotebookLM" style="border-color:#6b3f9b; color:#6b3f9b;">🧠 ייצוא ל-NotebookLM</button>
       <button id="download-final-btn">⬇ הורד HTML</button>
     </div>
   </div>
@@ -3415,6 +3416,113 @@ function _docBatchAdvance() {
   }
   return true;
 }
+
+// ── NotebookLM export — names · dates · context, aggregated across all parsed docs ──
+function nlmRecordFromDOM() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  return {
+    file: state.document?.name || '—',
+    title_he: g('r-title-he'), title_en: g('r-title-en'),
+    doc_type: g('r-doc-type'), doc_date: g('r-doc-date'),
+    date_start_recon: g('r-date-start-recon'), date_end_recon: g('r-date-end-recon'),
+    place_he: g('r-place-he'), place_en: g('r-place-en'),
+    sender_he: g('r-sender-he'), recipient_he: g('r-recipient-he'),
+    persons_he: g('r-persons-he'), persons_en: g('r-persons-en'),
+    summary_he: g('r-summary-he'), context_he: g('r-context-he'),
+    subjects: activeSubjects.map(s => s.he).join(', '),
+  };
+}
+function nlmRecordFromIdent(d, file) {
+  return {
+    file: file || '—',
+    title_he: d.title_he || '', title_en: d.title_en || '',
+    doc_type: d.doc_type || '', doc_date: d.doc_date || '',
+    date_start_recon: d.date_start_reconstructed || '', date_end_recon: d.date_end_reconstructed || '',
+    place_he: d.place_he || '', place_en: d.place_en || '',
+    sender_he: d.sender_he || '', recipient_he: d.recipient_he || '',
+    persons_he: d.persons_he || '', persons_en: d.persons_en || '',
+    summary_he: d.summary_he || '', context_he: d.context_he || '',
+    subjects: (d.subjects_he || []).join(', '),
+  };
+}
+function nlmExtractNames(text) {
+  if (!text) return [];
+  return String(text).replace(/<[^>]+>/g, ' ')
+    .split(/[,;\n•·]+/)
+    .map(s => s.replace(/[✓~?×]|V[✓~?]|H[✓~?]/g, '').replace(/\[[^\]]*\]/g, '').trim())
+    .filter(s => s.length >= 2 && s.length <= 70);
+}
+function nlmStrip(text) { return String(text || '').replace(/<[^>]+>/g, '').trim(); }
+function buildNotebookLMExport() {
+  const records = [];
+  if (state.doc_queue && state.doc_queue.length) {
+    state.doc_queue.forEach((it, idx) => {
+      if (idx === state.current_doc_queue_index) records.push(nlmRecordFromDOM());
+      else if (it.identification) records.push(nlmRecordFromIdent(it.identification, it.file?.name));
+    });
+  } else {
+    records.push(nlmRecordFromDOM());
+  }
+  const valid = records.filter(r => r.title_he || r.persons_he || r.summary_he || r.original_text);
+  if (!valid.length) return null;
+
+  const today = new Date().toLocaleDateString('he-IL');
+  const lines = [];
+  lines.push(`# יד ושם — אינדקס שמות · תאריכים · הקשר`);
+  lines.push(`מסמך ייצוא ל-NotebookLM · נוצר ${today} · ${valid.length} מסמכים`);
+  lines.push('');
+  lines.push(`> כל רשומה למטה היא מסמך אחד שפוענח. העלה קובץ זה כמקור ב-NotebookLM כדי לחפש שמות, להצליב בין מסמכים ולבנות ציר זמן. השמות והתאריכים חולצו ע"י Claude מתוך הסריקות — מומלץ לאמת מול המקור.`);
+  lines.push('');
+
+  // Aggregated names index
+  const nameIndex = {};
+  valid.forEach(r => nlmExtractNames(r.persons_he).forEach(n => {
+    (nameIndex[n] = nameIndex[n] || new Set()).add(r.file);
+  }));
+  const names = Object.keys(nameIndex).sort((a, b) => a.localeCompare(b, 'he'));
+  if (names.length) {
+    lines.push(`## אינדקס שמות (חולץ אוטומטית — לאימות)`);
+    names.forEach(n => lines.push(`- **${n}** — ${[...nameIndex[n]].join('; ')}`));
+    lines.push('');
+  }
+
+  lines.push(`---`);
+  lines.push(`## מסמכים`);
+  lines.push('');
+  valid.forEach((r, i) => {
+    lines.push(`### ${i + 1}. ${r.file}`);
+    const add = (label, val) => { const v = nlmStrip(val); if (v) lines.push(`- **${label}:** ${v}`); };
+    add('כותר', r.title_he);
+    add('Title', r.title_en);
+    add('סוג מסמך', r.doc_type);
+    const dates = [r.doc_date, r.date_start_recon && `התחלה ${r.date_start_recon}`, r.date_end_recon && `סיום ${r.date_end_recon}`]
+      .map(x => nlmStrip(x)).filter(Boolean).join(' · ');
+    add('תאריכים', dates);
+    add('מקום', [nlmStrip(r.place_he), nlmStrip(r.place_en)].filter(Boolean).join(' / '));
+    add('שולח', r.sender_he);
+    add('נמען', r.recipient_he);
+    add('אישים (שמות)', r.persons_he);
+    add('Persons', r.persons_en);
+    add('תקציר', r.summary_he);
+    add('הקשר היסטורי', r.context_he);
+    add('נושאים', r.subjects);
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+document.getElementById('notebooklm-btn').addEventListener('click', () => {
+  const md = buildNotebookLMExport();
+  if (!md) { showStatus('אין מסמכים מפוענחים לייצוא', 'err'); return; }
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const fname = `notebooklm_shemot_taarichim_${today}.md`;
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showStatus(`✓ הורד ל-NotebookLM: ${fname}`, 'ok');
+});
 
 document.getElementById('download-final-btn').addEventListener('click', () => {
   const html = buildDocHTML();
