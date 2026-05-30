@@ -1626,7 +1626,10 @@ function fillResults(d) {
 // 'span class="cv c-high">V✓</span>' with a dropped leading '<'), plus bare
 // V✓/H~/V? tokens. Confidence belongs in the data, never in the copy-paste text.
 function stripConfidenceMarkup(v) {
-  if (typeof v !== 'string') return v || '';
+  // The model sometimes returns a prose field as an array of lines; coerce so
+  // callers can always rely on a string (and .trim()) without throwing.
+  if (Array.isArray(v)) v = v.filter(x => x != null).join('\n');
+  if (typeof v !== 'string') return v == null ? '' : String(v);
   return v
     .replace(/(?:<|&lt;)?\s*\/?\s*span(?:\s[^<>]*)?(?:>|&gt;)/gi, '')
     .replace(/[VH]\s*[✓~?]/g, '')
@@ -2129,11 +2132,15 @@ function buildCombinedFilmRecord() {
     if (d.inscriptions_he) inscrHe.push(stripConfidenceMarkup(d.inscriptions_he).trim());
     if (d.inscriptions_en) inscrEn.push(stripConfidenceMarkup(d.inscriptions_en).trim());
   });
-  // Union of subjects across parts (dedup by Hebrew term)
+  // Union of subjects across parts (dedup by Hebrew term).
+  // Tolerate a string-shaped subjects field (model occasionally returns one).
+  const asArr = x => Array.isArray(x) ? x : (x == null || x === '' ? [] : [x]);
   const subjHe = [], subjEn = [];
   done.forEach(part => {
-    (part.identification.subjects_he || []).forEach((he, i) => {
-      if (he && !subjHe.includes(he)) { subjHe.push(he); subjEn.push((part.identification.subjects_en || [])[i] || ''); }
+    const sh = asArr(part.identification.subjects_he);
+    const se = asArr(part.identification.subjects_en);
+    sh.forEach((he, i) => {
+      if (he && !subjHe.includes(he)) { subjHe.push(he); subjEn.push(se[i] || ''); }
     });
   });
   const totalDur = state.filmParts.length
@@ -2160,11 +2167,24 @@ function buildCombinedFilmRecord() {
 // Build the unified single-film record and load it into the results form.
 // `auto` suppresses the "no parts" alert when called automatically.
 function runCombinedIdentification(auto) {
-  const combined = buildCombinedFilmRecord();
+  let combined;
+  try {
+    combined = buildCombinedFilmRecord();
+  } catch (e) {
+    console.error('combine failed', e);
+    showStatus('⚠ המיזוג נכשל: ' + e.message + ' — ייתכן שאחד החלקים החזיר נתונים בפורמט לא צפוי.', 'err');
+    return false;
+  }
   if (!combined) { if (!auto) alert('עדיין לא זוהה אף חלק'); return false; }
   state.currentPartIdx = -1;
   state.identification = combined;
-  fillResults(combined);
+  try {
+    fillResults(combined);
+  } catch (e) {
+    console.error('combine render failed', e);
+    showStatus('⚠ שגיאה בהצגת הסרט המאוחד: ' + e.message, 'err');
+    return false;
+  }
   document.getElementById('results').classList.add('show');
   document.getElementById('no-results').style.display = 'none';
   document.getElementById('download-bar').style.display = 'flex';
