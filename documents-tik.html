@@ -303,8 +303,16 @@ async function geminiPartsFor(files){
   return parts;
 }
 /* ---------- API callers ---------- */
+// On localhost, route Gemini through the local proxy (same-origin, no CORS, no
+// direct-Google network dependency) — identical to photos/films/documents.html.
+// Off localhost, call Google directly.
+function geminiBase(){
+  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))
+    return location.origin+'/api/gemini-proxy/v1beta/models/';
+  return 'https://generativelanguage.googleapis.com/v1beta/models/';
+}
 async function callGeminiOnParts(parts,promptText){
-  const url='https://generativelanguage.googleapis.com/v1beta/models/'+$('model-gemini').value+':generateContent';
+  const url=geminiBase()+$('model-gemini').value+':generateContent';
   let res;
   try{
     res=await fetch(url,{method:'POST',
