@@ -354,6 +354,8 @@
         <input type="file" id="merge-jpgs-input" accept="image/jpeg,image/jpg,image/png,image/webp" multiple hidden>
         <button type="button" id="doc-batch-add-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📤 העלה batch (עד 20)</button>
         <input type="file" id="doc-batch-input" accept="application/pdf,image/*" multiple hidden>
+        <button type="button" id="doc-folder-add-btn" class="ghost" style="padding:5px 10px; font-size:12px; border-color:#2e7d4e; color:#1f5c38;" title="העלאת תיקייה שלמה של סריקות">📁 העלה תיקייה</button>
+        <input type="file" id="doc-folder-input" webkitdirectory directory multiple hidden>
       </div>
     </div>
     <div class="body">
@@ -1107,6 +1109,17 @@ document.getElementById('doc-queue-add-more-btn').addEventListener('click', () =
 document.getElementById('doc-batch-input').addEventListener('change', e => {
   const files = [...e.target.files];
   e.target.value = '';
+  addDocsToQueue(files);
+});
+document.getElementById('doc-folder-add-btn').addEventListener('click', () =>
+  document.getElementById('doc-folder-input').click());
+document.getElementById('doc-folder-input').addEventListener('change', e => {
+  const files = [...e.target.files]
+    .filter(f => f.type === 'application/pdf' || f.type.startsWith('image/'))
+    .sort((a, b) => (a.webkitRelativePath || a.name)
+      .localeCompare(b.webkitRelativePath || b.name, undefined, { numeric: true }));
+  e.target.value = '';
+  if (!files.length) { alert('לא נמצאו קבצי PDF/תמונה בתיקייה.'); return; }
   addDocsToQueue(files);
 });
 
