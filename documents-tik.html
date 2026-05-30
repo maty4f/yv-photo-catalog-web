@@ -185,7 +185,12 @@ function parseJson(text,label){
   const fence=s.match(/```(?:json)?\s*([\s\S]*?)```/); if(fence)s=fence[1].trim();
   if(!s.startsWith('{')){const m=s.match(/\{[\s\S]*\}/);if(m)s=m[0];}
   try{return JSON.parse(s);}catch(e1){
-    let r=s.replace(/,(\s*[}\]])/g,'$1');
+    let r=s;
+    // If truncated mid-string (odd count of unescaped quotes), drop the dangling
+    // partial element back to the last completed token (closing quote/brace/bracket).
+    const quotes=(r.match(/(?<!\\)"/g)||[]).length;
+    if(quotes%2!==0){const cut=Math.max(r.lastIndexOf('",'),r.lastIndexOf('"]'),r.lastIndexOf('"}'),r.lastIndexOf('},'),r.lastIndexOf(']'));if(cut>0)r=r.slice(0,cut+1);}
+    r=r.replace(/,\s*$/,'').replace(/,(\s*[}\]])/g,'$1');
     const ob=(r.match(/\{/g)||[]).length,cb=(r.match(/\}/g)||[]).length,os=(r.match(/\[/g)||[]).length,cs=(r.match(/\]/g)||[]).length;
     let nB=cb,nS=cs; while(nS<os){r+=']';nS++;} while(nB<ob){r+='}';nB++;}
     try{return JSON.parse(r);}catch(e2){const err=new Error(label+' החזיר תגובה שאינה JSON תקין');err.rawText=text;throw err;}
@@ -235,7 +240,9 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפנ
 /* ---------- chunk extraction (Gemini reads every page) & synthesis prompts ---------- */
 const CHUNK_EXTRACT_RULES = `אתה קורא **חלק** מתיק ארכיוני (טווח דפים שיצוין). אלו לא כל דפי התיק — חלץ ממצאים מהדפים שלפניך בלבד, שישמשו אחר כך לסינתזה של רשומת-תיק אחת.
 לכל מסמך/קבוצת דפים: סוג החומר, תקציר קצר, שמות אנשים (מלאים אם אפשר), מקומות, תאריכים (כפי שמופיעים), שפות, כיתובים/חתימות בולטים, וסימון "יהלומים" (מכתב ניצול, תצהיר/עדות, יומן, רשימת נספים/מגורשים/תושבים יהודים, תעודת מחנה/גטו, מסמך זהות בדויה).
-אסור לנחש. אם לא קריא — ציין. החזר אך ורק JSON:
+אסור לנחש. אם לא קריא — ציין.
+**חשוב — ללא כפילויות:** כל שם מופיע **פעם אחת בלבד** במערך names (גם אם הוזכר עשרות פעמים בטקסט), וכל מקום פעם אחת ב-places. אל תחזור על אותו ערך. names מוגבל ל-40 שמות ייחודיים לכל היותר; places ל-30. תקצירים קצרים.
+החזר אך ורק JSON תקין ומלא (נסגר כראוי):
 {
  "page_range": "",
  "documents": [ {"kind":"", "summary":"", "dates":[""], "languages":[""]} ],
@@ -267,7 +274,7 @@ async function callGeminiOnParts(parts,promptText){
   const res=await fetch(url,{method:'POST',
     headers:{'Content-Type':'application/json','x-goog-api-key':state.keyGemini},
     body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:promptText}]}],
-      generationConfig:{temperature:0,maxOutputTokens:16384,responseMimeType:'application/json'}})});
+      generationConfig:{temperature:0,maxOutputTokens:32768,responseMimeType:'application/json'}})});
   if(!res.ok){const t=await res.text();throw new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));}
   const data=await res.json();
   return parseJson((data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim(),'Gemini');
@@ -395,17 +402,25 @@ $('run').addEventListener('click',async()=>{
   $('run').disabled=true;
   try{
     // Stage 1 — Gemini reads EVERY chunk (full coverage)
-    const partials=[];
+    const partials=[]; const failed=[];
     let done=0;
     for(let i=0;i<chunks.length;i++){
       const from=done+1, to=done+chunks[i].length; done=to;
-      showStatus(`<span class="spinner"></span>שלב 1 · Gemini קורא דפים ${from}–${to} מתוך ${state.files.length} (מנה ${i+1}/${chunks.length})…`,'info');
+      const range=`${from}–${to}`;
+      showStatus(`<span class="spinner"></span>שלב 1 · Gemini קורא דפים ${range} מתוך ${state.files.length} (מנה ${i+1}/${chunks.length})…`,'info');
       const parts=await geminiPartsFor(chunks[i]);
-      const prompt=`${CHUNK_EXTRACT_RULES}\n\n(טווח דפים: ${from}–${to} מתוך ${state.files.length})${contextBlock()}`;
-      const p=await callGeminiOnParts(parts,prompt);
-      p.page_range=p.page_range||`${from}–${to}`;
-      partials.push(p);
+      const prompt=`${CHUNK_EXTRACT_RULES}\n\n(טווח דפים: ${range} מתוך ${state.files.length})${contextBlock()}`;
+      try{
+        const p=await callGeminiOnParts(parts,prompt);
+        p.page_range=p.page_range||range;
+        partials.push(p);
+      }catch(chunkErr){
+        // Don't abort a 157-page run over one bad chunk — log it and continue.
+        failed.push(range);
+        partials.push({page_range:range,documents:[],names:[],places:[],diamonds:[],notes:`⚠ מנה זו נכשלה בקריאה (${chunkErr.message}). דרושה קריאה חוזרת ידנית של דפים ${range}.`});
+      }
     }
+    if(failed.length===chunks.length)throw new Error('כל המנות נכשלו בקריאת Gemini. בדוק מפתח/מודל/חיבור.');
 
     // Stage 2 — Claude verifies Gemini's text findings & synthesizes ONE record (text-only; no images)
     showStatus(`<span class="spinner"></span>שלב 2 · ${mode==='cli'?'Claude (CLI מקומי)':'Claude'} בודק את ממצאי Gemini ומסנתז ${chunks.length} מנות לרשומת-תיק אחת…`,'info');
@@ -413,7 +428,8 @@ $('run').addEventListener('click',async()=>{
     const final = mode==='cli' ? await callClaudeCLI(synthPrompt) : await callClaudeAPI([],synthPrompt,20000);
     final._partials=partials;
     renderRecord(final);
-    showStatus(`✓ הקטלוג הושלם — נקראו כל ${state.files.length} הדפים ב-${chunks.length} מנות. בדוק את אי-ההסכמות והיהלומים לפני הדבקה לספיר.`,'ok');
+    const warn=failed.length?` ⚠ ${failed.length} מנות נכשלו (דפים ${failed.join(', ')}) — דרושה קריאה חוזרת ידנית.`:'';
+    showStatus(`✓ הקטלוג הושלם — נקראו ${state.files.length} הדפים ב-${chunks.length} מנות.${warn} בדוק את אי-ההסכמות והיהלומים לפני הדבקה לספיר.`,failed.length?'info':'ok');
     $('results').scrollIntoView({behavior:'smooth'});
   }catch(err){
     console.error(err);
@@ -427,6 +443,21 @@ function syncModeUI(){
 }
 $('claude-mode').addEventListener('change',syncModeUI);
 syncModeUI();
+
+/* ---------- persist settings locally (so keys aren't re-entered each time) ---------- */
+const PERSIST=['key-claude','key-gemini','model-claude','model-gemini','claude-mode','server-url','chunk-size'];
+const STORE_KEY='yv-tik-settings';
+function loadSettings(){
+  try{const s=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
+    PERSIST.forEach(id=>{if(s[id]!=null&&$(id))$(id).value=s[id];});}catch(e){}
+  syncModeUI();
+}
+function saveSettings(){
+  try{const s={};PERSIST.forEach(id=>{if($(id))s[id]=$(id).value;});
+    localStorage.setItem(STORE_KEY,JSON.stringify(s));}catch(e){}
+}
+PERSIST.forEach(id=>{const el=$(id);if(el){el.addEventListener('change',saveSettings);el.addEventListener('input',saveSettings);}});
+loadSettings();
 
 /* ---------- model availability check (fixes the 400 by confirming a real model) ---------- */
 $('check-models').addEventListener('click',async()=>{
