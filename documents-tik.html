@@ -316,17 +316,32 @@ async function callClaudeCLI(promptText){
   const base=$('server-url').value.trim().replace(/\/$/,'');
   if(!base)throw new Error('חסרה כתובת שרת מקומי (CLI).');
   const model=$('model-claude').value.includes('opus')?'opus':'sonnet';
+  const netHint='ודא ששרת הבית והמנהרה (cloudflared) רצים, ושכתובת השרת מעודכנת — כתובת ה-tunnel מתחלפת בכל הפעלה.';
+  // Async: POST returns a jobId immediately, then poll — survives the
+  // Cloudflare quick-tunnel ~100s limit that breaks long synchronous calls.
   let res;
   try{
-    res=await fetch(base+'/api/ask',{method:'POST',
+    res=await fetch(base+'/api/ask-async',{method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({prompt:promptText,model})});
-  }catch(netErr){
-    throw new Error('לא ניתן להגיע לשרת המקומי ('+netErr.message+'). ודא ששרת הבית והמנהרה (cloudflared) רצים, ושכתובת השרת מעודכנת — כתובת ה-tunnel מתחלפת בכל הפעלה.');
+  }catch(netErr){throw new Error('לא ניתן להגיע לשרת המקומי ('+netErr.message+'). '+netHint);}
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('CLI HTTP '+res.status+': '+(e.error||'').slice(0,400));}
+  const {jobId}=await res.json();
+  if(!jobId)throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
+  // Poll up to ~12 minutes.
+  const started=Date.now(), maxMs=12*60*1000;
+  while(Date.now()-started<maxMs){
+    await new Promise(r=>setTimeout(r,3000));
+    let pr;
+    try{pr=await fetch(base+'/api/ask-async/'+jobId);}catch(e){continue;}  // transient — keep polling
+    if(!pr.ok)continue;
+    const j=await pr.json();
+    const secs=Math.round((Date.now()-started)/1000);
+    showStatus(`<span class="spinner"></span>שלב 2 · Claude (CLI מקומי) מסנתז את רשומת התיק… (${secs} שניות)`,'info');
+    if(j.status==='done')return parseJson((j.text||'').trim(),'Claude CLI');
+    if(j.status==='error')throw new Error('Claude CLI נכשל: '+(j.error||'').slice(0,400));
   }
-  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('CLI HTTP '+res.status+': '+(e.error||e.stderr||'').slice(0,400));}
-  const data=await res.json();
-  return parseJson((data.text||'').trim(),'Claude CLI');
+  throw new Error('הסינתזה ב-CLI נמשכה מעל 12 דקות ולא הסתיימה. נסה שוב או צמצם את גודל התיק.');
 }
 
 /* ---------- render ---------- */
