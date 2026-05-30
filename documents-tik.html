@@ -160,8 +160,13 @@
     </div>
     <div class="hint">תיקייה = תיק אחד. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
     <div class="filelist" id="filelist"></div>
-    <label>מידע מוקדם / דף איסוף (אופציונלי)</label>
-    <textarea id="context" placeholder="הערות מוסר החומר, שם החטיבה, רקע משפחתי, סימול…"></textarea>
+    <label>טופס איסוף / דף מלווה (אופציונלי — סריקה או PDF)</label>
+    <div class="drop" id="intake-drop" style="padding:16px">גרור לכאן טופס איסוף / דף מלווה — סריקה או PDF<br><small>או לחץ לבחירה · Claude יקרא אותו וישלב את המידע ברשומת התיק</small></div>
+    <input type="file" id="intake-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" style="display:none">
+    <div class="filelist" id="intake-filelist"></div>
+    <div class="hint">מידע מהמוסר/הארכיון על התיק (לא חלק מהתיק עצמו). Claude יקרא אותו לפני הקטלוג וישלב אותו כ"מידע מוקדם" — לא יוצג כעובדה מהתיק.</div>
+    <label>מידע מוקדם (טקסט חופשי, אופציונלי)</label>
+    <textarea id="context" placeholder="הערות מוסר החומר, שם החטיבה, רקע משפחתי, סימול… (בנוסף לטופס שמעלים למעלה, או במקומו)"></textarea>
     <div class="hint">המידע הזה ישמש ל"הערות מוסר החומר" ולהקשר — לא יוצג כעובדה מהתיק.</div>
   </div>
 
@@ -192,7 +197,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const state = { files: [] };
+const state = { files: [], intakeFiles: [] };
 
 /* ---------- helpers ---------- */
 function fileToBase64(file){return new Promise(r=>{const fr=new FileReader();fr.onload=e=>r(e.target.result.split(',')[1]);fr.readAsDataURL(file);});}
@@ -311,7 +316,31 @@ ${TIK_SCHEMA_RULES}
  "review_flags": [ {"field":"", "issue":"", "note":""} ]
 היכן שהממצאים עקביים וברורים → "✓"; חלקיים/מבוסס מנה אחת → "~"; לא קריא/מוטל בספק → "?". רשום ב-review_flags כל סתירה בין מנות, דף לא-קריא, או פער שדורש בדיקת אנוש לפני הדבקה לספיר.`;
 
-function contextBlock(){const c=$('context').value.trim();return c?`\n\n## מידע מוקדם / דף איסוף\n${c}`:'\n\n## מידע מוקדם\n(אין)';}
+// Read an uploaded intake form (טופס איסוף) and pull the donor/archival info as
+// structured Hebrew text. This is מידע מוקדם ABOUT the תיק — never evidence FROM it.
+const INTAKE_EXTRACT_RULES = `לפניך סריקה/צילום של **טופס איסוף / דף מלווה** של תיק ארכיוני ביד ושם — מסמך שמילא מוסר החומר או הארכיון, ובו מידע מוקדם על התיק (לא חלק מהתיק עצמו). קרא אותו בעיון וחלץ את כל המידע הרלוונטי לקטלוג.
+
+החזר **טקסט עברי קצר ומובנה** (לא JSON, לא טבלאות) עם הכותרות הרלוונטיות בלבד (דלג על מה שלא מופיע):
+- **מוסר החומר** — שם, קשר לחומר (בעלים/שליח/יורש), פרטי קשר אם רשומים.
+- **מקור / בעלים מקורי** — אם המוסר אינו הבעלים.
+- **רקע משפחתי / ביוגרפי** — שמות, קרבה, גורל, ערים.
+- **מקומות ותאריכים** — כפי שמצוינים בטופס.
+- **תיאור התיק לפי המוסר** — מה לדבריו כולל התיק.
+- **הערות ארכיוניות / סימול** — מספר נכנסות, סימול, הערות הארכיון.
+- **הוראות / הגבלות** — מגבלות שימוש/סיווג שביקש המוסר.
+
+זהו מידע מוקדם מהמוסר/מהטופס — לא ראיה מתוך התיק עצמו. אסור לנחש; אם שדה ריק או לא קריא — דלג עליו או ציין "לא קריא".`;
+
+// Merge the form-derived text with any free-text notes into one מידע-מוקדם block,
+// shared by stage-1 chunk reading and stage-2 synthesis.
+function contextBlock(){
+  const typed=$('context').value.trim();
+  const intake=(state.intakeText||'').trim();
+  const parts=[];
+  if(intake)parts.push('### מתוך טופס האיסוף / דף מלווה (קריאת Claude)\n'+intake);
+  if(typed)parts.push('### הערות נוספות שהוקלדו\n'+typed);
+  return parts.length?`\n\n## מידע מוקדם / דף איסוף\n${parts.join('\n\n')}`:'\n\n## מידע מוקדם\n(אין)';
+}
 function chunkArr(arr,size){const out=[];for(let i=0;i<arr.length;i+=size)out.push(arr.slice(i,i+size));return out;}
 
 // Build the images[] payload for /api/ask-async — base64 each page. Images are
@@ -456,8 +485,9 @@ function renderRecord(rec){
   if((rec.also_in_file||[]).length){
     info+=`<b>בתיק גם:</b>\n`+rec.also_in_file.map(x=>'• '+esc(x)).join('\n')+'\n\n';
   }
-  if(rec.donor_notes||$('context').value.trim()){
-    const dn=rec.donor_notes||$('context').value.trim();
+  const fallbackDonor=[(state.intakeText||'').trim(),$('context').value.trim()].filter(Boolean).join('\n\n');
+  if(rec.donor_notes||fallbackDonor){
+    const dn=rec.donor_notes||fallbackDonor;
     info+=`<b>הערות מוסר החומר:</b>\n${esc(dn)}`;
   }
   // diamonds summary
@@ -709,6 +739,14 @@ $('run').addEventListener('click',async()=>{
   // In parallel with cataloging: if the תיק is image scans, merge them into one PDF.
   maybeBuildCombinedPdf();
   try{
+    // Stage 0 — if a טופס איסוף was uploaded, read it FIRST so its donor/archival
+    // info feeds into every stage as מידע מוקדם (not as evidence from the תיק).
+    state.intakeText='';
+    if(state.intakeFiles.length){
+      showStatus('<span class="spinner"></span>קורא את טופס האיסוף / הדף המלווה…','info');
+      try{state.intakeText=await claudeReadChunk(state.intakeFiles,INTAKE_EXTRACT_RULES);}
+      catch(e){showStatus('⚠ קריאת טופס האיסוף נכשלה ('+e.message+') — ממשיך בלי המידע מהטופס.','info');}
+    }
     // Stage 1 — the chosen reader reads every chunk (full coverage) → free-text notes.
     // Precompute each chunk's page-range label up front so chunks can be read in
     // any order (Claude mode reads several at once; see the bounded pool below).
@@ -850,6 +888,26 @@ $('chunk-size').addEventListener('change',renderFiles);
 drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
 drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
 drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files);});
+
+/* ---------- intake form (טופס איסוף) handling ---------- */
+function renderIntake(){
+  const n=state.intakeFiles.length;
+  $('intake-filelist').innerHTML = n
+    ? state.intakeFiles.map(f=>`<div class="f"><span>📄 ${esc(f.name)}</span><span>${(f.size/1024/1024).toFixed(1)}MB</span></div>`).join('')
+      +`<div class="f" id="intake-clear" style="cursor:pointer;color:#8a3a2c;font-weight:600">נקה טופס איסוף ✕</div>`
+    : '';
+  const c=$('intake-clear');if(c)c.addEventListener('click',()=>{state.intakeFiles=[];renderIntake();});
+}
+function addIntake(list){
+  const files=Array.from(list).filter(f=>/\.(pdf|jpe?g|png|tiff?|webp)$/i.test(f.name));
+  state.intakeFiles=[...state.intakeFiles,...files];renderIntake();
+}
+const idrop=$('intake-drop');
+idrop.addEventListener('click',()=>$('intake-input').click());
+$('intake-input').addEventListener('change',e=>{addIntake(e.target.files);e.target.value='';});
+idrop.addEventListener('dragover',e=>{e.preventDefault();idrop.classList.add('over');});
+idrop.addEventListener('dragleave',()=>idrop.classList.remove('over'));
+idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('over');addIntake(e.dataTransfer.files);});
 </script>
 </body>
 </html>
