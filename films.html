@@ -48,6 +48,34 @@
   .cl-note { margin: 10px 0 0; line-height: 1.7; font-size: 12px; }
   header.doc .actions-top { display: flex; gap: 8px; align-items: center; }
 
+  /* ── Film-parts rail (sticky left sidebar) ─────────────────────── */
+  #parts-rail { position: fixed; top: 12px; left: 12px; width: 210px; max-height: calc(100vh - 24px);
+    overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 4px 18px rgba(0,0,0,.10); z-index: 60; direction: rtl; text-align: right;
+    font-size: 12.5px; display: none; }
+  #parts-rail.show { display: block; }
+  #parts-rail .pr-head { padding: 9px 12px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg,#fbfaf6,#f3efe6); border-radius: 10px 10px 0 0;
+    font-weight: 700; color: var(--ink); display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  #parts-rail .pr-head small { font-weight: 400; color: var(--muted); font-size: 10.5px; }
+  #parts-rail .pr-list { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .pr-item { border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; cursor: pointer;
+    background: var(--bg); transition: border-color .12s, background .12s; }
+  .pr-item:hover { border-color: var(--accent); }
+  .pr-item.current { border-color: var(--accent); background: #eef4fa; box-shadow: inset 0 0 0 1px var(--accent); }
+  .pr-item .pr-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .pr-item .pr-name { font-weight: 600; color: var(--ink); }
+  .pr-item .pr-tc { color: var(--muted); font-size: 10.5px; font-family: monospace; direction: ltr;
+    unicode-bidi: isolate; margin-top: 2px; }
+  .pr-badge { font-size: 10.5px; padding: 1px 7px; border-radius: 10px; font-weight: 600; white-space: nowrap; }
+  .pr-badge.pending { color: var(--muted); background: #ededea; border: 1px solid var(--line); }
+  .pr-badge.identified { color: #155724; background: #e6f4ea; border: 1px solid #b7dfc2; }
+  #parts-rail .pr-foot { padding: 8px; border-top: 1px solid var(--line); }
+  #parts-rail .pr-foot button { width: 100%; padding: 8px; font-size: 12.5px; }
+  #parts-rail .pr-progress { padding: 0 12px 8px; color: var(--muted); font-size: 11px; }
+  @media (max-width: 1400px) { #parts-rail { position: static; width: auto; max-height: none; margin: 0 0 16px;
+    box-shadow: none; } }
+
   section.step { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
   section.step > .head { padding: 11px 16px; background: linear-gradient(180deg,#fbfaf6,#f3efe6); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
   section.step > .head .num { background: var(--accent); color: white; border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
@@ -575,9 +603,25 @@
 
 </div>
 
+<!-- ============================================ -->
+<!--  Film-parts rail (sticky left sidebar)        -->
+<!-- ============================================ -->
+<aside id="parts-rail">
+  <div class="pr-head">
+    <span>✂️ חלקי הסרט</span>
+    <small id="pr-count"></small>
+  </div>
+  <div class="pr-progress" id="pr-progress"></div>
+  <div class="pr-list" id="pr-list"></div>
+  <div class="pr-foot">
+    <button type="button" id="pr-combine-btn" disabled>🎬 זיהוי כולל</button>
+  </div>
+</aside>
+
 <script type="module">
 const state = {
   film: null, filmMeta: null, identification: null,
+  filmParts: [], currentPartIdx: -1,
   provider: localStorage.getItem('yv_api_provider') || 'gemini',
   apiKeys: {
     anthropic: localStorage.getItem('yv_api_key_anthropic') || '',
@@ -693,8 +737,8 @@ const delFilmBtn = document.getElementById('delete-film-btn');
 filmDrop.addEventListener('click', () => fileInput.click());
 ['dragenter', 'dragover'].forEach(evt => filmDrop.addEventListener(evt, e => { e.preventDefault(); filmDrop.classList.add('dragover'); }));
 ['dragleave', 'drop'].forEach(evt => filmDrop.addEventListener(evt, e => { e.preventDefault(); filmDrop.classList.remove('dragover'); }));
-filmDrop.addEventListener('drop', e => { const f = e.dataTransfer.files?.[0]; if (f && f.type.startsWith('video/')) loadFilm(f); });
-fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) loadFilm(f); });
+filmDrop.addEventListener('drop', e => { const f = e.dataTransfer.files?.[0]; if (f && f.type.startsWith('video/')) { state.currentPartIdx = -1; loadFilm(f); } });
+fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) { state.currentPartIdx = -1; loadFilm(f); } });
 delFilmBtn.addEventListener('click', e => { e.stopPropagation(); clearFilm(); });
 
 function loadFilm(file) {
@@ -842,6 +886,7 @@ function jumpToFilmQueueItem(idx) {
 }
 
 function loadFilmQueueItemIntoUI(item) {
+  state.currentPartIdx = -1;
   clearFilm();
   loadFilm(item.file);
   if (item.status === 'ready' || item.status === 'reviewing') {
@@ -1006,6 +1051,13 @@ identifyBtn.addEventListener('click', async () => {
     document.getElementById('results').classList.add('show');
     document.getElementById('no-results').style.display = 'none';
     document.getElementById('download-bar').style.display = 'flex';
+    // If we are cataloging a specific film-part, store the result per-part
+    if (state.currentPartIdx >= 0 && state.filmParts[state.currentPartIdx]) {
+      const part = state.filmParts[state.currentPartIdx];
+      part.identification = result;
+      part.status = 'identified';
+      renderPartsRail();
+    }
     showStatus('✓ הזיהוי הושלם.', 'ok');
     document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
@@ -1931,7 +1983,149 @@ function showSplitResult() {
       }
     });
   });
+  // Register the parts in the persistent side-rail tracker
+  registerFilmParts(splitParts);
 }
+
+// =====================================================================
+//  FILM PARTS RAIL — catalog one part at a time, then merge them all
+// =====================================================================
+const partsRail = document.getElementById('parts-rail');
+const prList = document.getElementById('pr-list');
+const prCount = document.getElementById('pr-count');
+const prProgress = document.getElementById('pr-progress');
+const prCombineBtn = document.getElementById('pr-combine-btn');
+
+// Build the per-part tracking records from a freshly split film.
+function registerFilmParts(parts) {
+  state.filmParts = parts.map((p, i) => ({
+    idx: i, name: p.name, blob: p.blob,
+    startSec: p.startSec, endSec: p.endSec, size: p.size,
+    status: 'pending', identification: null,
+  }));
+  state.currentPartIdx = -1;
+  renderPartsRail();
+}
+
+function renderPartsRail() {
+  const parts = state.filmParts;
+  if (!parts.length) { partsRail.classList.remove('show'); return; }
+  partsRail.classList.add('show');
+  const doneCount = parts.filter(p => p.status === 'identified').length;
+  prCount.textContent = `${doneCount}/${parts.length} זוהו`;
+  prProgress.textContent = doneCount === parts.length
+    ? '✓ כל החלקים זוהו — ניתן לבצע זיהוי כולל'
+    : `נותרו ${parts.length - doneCount} חלקים לזיהוי`;
+  prList.innerHTML = parts.map(p => {
+    const cur = p.idx === state.currentPartIdx ? ' current' : '';
+    const badge = p.status === 'identified'
+      ? '<span class="pr-badge identified">✓ זוהה</span>'
+      : '<span class="pr-badge pending">○ טרם</span>';
+    return `<div class="pr-item${cur}" data-idx="${p.idx}">
+      <div class="pr-top"><span class="pr-name">חלק ${p.idx + 1}</span>${badge}</div>
+      <div class="pr-tc">${formatDuration(p.startSec)} → ${formatDuration(p.endSec)}</div>
+    </div>`;
+  }).join('');
+  prList.querySelectorAll('.pr-item').forEach(el => {
+    el.addEventListener('click', () => loadPartIntoUI(parseInt(el.dataset.idx)));
+  });
+  prCombineBtn.disabled = doneCount === 0;
+}
+
+// Load a specific part as the active film and restore its identification.
+function loadPartIntoUI(idx) {
+  const part = state.filmParts[idx];
+  if (!part) return;
+  state.currentPartIdx = idx;
+  const file = new File([part.blob], part.name, { type: part.blob.type || 'video/mp4' });
+  loadFilm(file);
+  if (part.identification) {
+    fillResults(part.identification);
+    document.getElementById('results').classList.add('show');
+    document.getElementById('no-results').style.display = 'none';
+    document.getElementById('download-bar').style.display = 'flex';
+  }
+  renderPartsRail();
+  document.getElementById('film-drop').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Parse "HH:MM:SS" or "MM:SS" timecode into seconds.
+function tcToSec(tc) {
+  if (typeof tc !== 'string') return 0;
+  const parts = tc.trim().split(':').map(Number);
+  if (parts.some(isNaN)) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || 0;
+}
+
+// Merge all identified parts into one combined record (no API call).
+function buildCombinedFilmRecord() {
+  const done = state.filmParts.filter(p => p.status === 'identified' && p.identification);
+  if (!done.length) return null;
+  const first = done[0].identification;
+  const combinedTimeline = [];
+  const personsHe = [], personsEn = [], inscrHe = [], inscrEn = [];
+  done.forEach((part, n) => {
+    const d = part.identification;
+    // Offset each scene's timecodes by the part's absolute start time
+    (d.timeline || []).forEach(scene => {
+      combinedTimeline.push({
+        start: formatDuration(part.startSec + tcToSec(scene.start)),
+        end: formatDuration(part.startSec + tcToSec(scene.end)),
+        description_he: scene.description_he,
+        description_en: scene.description_en,
+      });
+    });
+    const lbl = `— חלק ${part.idx + 1} —`;
+    if (d.persons_he) personsHe.push(lbl + '\n' + d.persons_he);
+    if (d.persons_en) personsEn.push(`— Part ${part.idx + 1} —\n` + d.persons_en);
+    if (d.inscriptions_he) inscrHe.push(lbl + '\n' + d.inscriptions_he);
+    if (d.inscriptions_en) inscrEn.push(`— Part ${part.idx + 1} —\n` + d.inscriptions_en);
+  });
+  // Union of subjects across parts (dedup by Hebrew term)
+  const subjHe = [], subjEn = [];
+  done.forEach(part => {
+    (part.identification.subjects_he || []).forEach((he, i) => {
+      if (he && !subjHe.includes(he)) { subjHe.push(he); subjEn.push((part.identification.subjects_en || [])[i] || ''); }
+    });
+  });
+  const totalDur = state.filmParts.length
+    ? formatDuration(state.filmParts[state.filmParts.length - 1].endSec)
+    : (first.duration || '');
+  return {
+    ...first,
+    title_he: first.title_he,
+    title_en: first.title_en,
+    duration: totalDur,
+    summary_he: done.map((p, n) => `חלק ${p.idx + 1}: ${stripConfidenceMarkup(p.identification.summary_he || '')}`).filter(Boolean).join('\n'),
+    summary_en: done.map((p, n) => `Part ${p.idx + 1}: ${stripConfidenceMarkup(p.identification.summary_en || '')}`).filter(Boolean).join('\n'),
+    persons_he: personsHe.join('\n\n'),
+    persons_en: personsEn.join('\n\n'),
+    inscriptions_he: inscrHe.join('\n\n'),
+    inscriptions_en: inscrEn.join('\n\n'),
+    timeline: combinedTimeline,
+    subjects_he: subjHe,
+    subjects_en: subjEn,
+  };
+}
+
+prCombineBtn.addEventListener('click', () => {
+  const combined = buildCombinedFilmRecord();
+  if (!combined) { alert('עדיין לא זוהה אף חלק'); return; }
+  state.currentPartIdx = -1;
+  state.identification = combined;
+  fillResults(combined);
+  document.getElementById('results').classList.add('show');
+  document.getElementById('no-results').style.display = 'none';
+  document.getElementById('download-bar').style.display = 'flex';
+  renderPartsRail();
+  const pending = state.filmParts.filter(p => p.status !== 'identified').length;
+  showStatus(pending
+    ? `✓ זיהוי כולל מ-${state.filmParts.length - pending} חלקים (${pending} עדיין לא זוהו)`
+    : '✓ זיהוי כולל מכל החלקים הושלם.', 'ok');
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 
 function downloadBlob(blob, name) {
   const url = URL.createObjectURL(blob);
@@ -1942,12 +2136,11 @@ function downloadBlob(blob, name) {
 }
 
 function usePartForCatalog(part) {
-  // Convert blob to File and load it as the active film
-  const file = new File([part.blob], part.name, { type: part.blob.type || 'video/mp4' });
   splitModal.classList.remove('show');
-  loadFilm(file);
-  // Smooth-scroll up to the film step
-  document.getElementById('film-drop').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Route through the rail tracker so per-part identification is persisted.
+  // splitParts and state.filmParts share the same order/indexing.
+  const idx = splitParts.indexOf(part);
+  loadPartIntoUI(idx >= 0 ? idx : 0);
 }
 
 async function ensureFFmpegLoaded(onStatus) {
