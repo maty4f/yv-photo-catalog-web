@@ -283,21 +283,31 @@ async function geminiPartsFor(files){
 /* ---------- API callers ---------- */
 async function callGeminiOnParts(parts,promptText){
   const url='https://generativelanguage.googleapis.com/v1beta/models/'+$('model-gemini').value+':generateContent';
-  const res=await fetch(url,{method:'POST',
-    headers:{'Content-Type':'application/json','x-goog-api-key':state.keyGemini},
-    body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:promptText}]}],
-      generationConfig:{temperature:0,maxOutputTokens:8192}})});
+  let res;
+  try{
+    res=await fetch(url,{method:'POST',
+      headers:{'Content-Type':'application/json','x-goog-api-key':state.keyGemini},
+      body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:promptText}]}],
+        generationConfig:{temperature:0,maxOutputTokens:8192}})});
+  }catch(netErr){
+    throw new Error('לא ניתן להגיע ל-Gemini ('+netErr.message+'). בדוק חיבור רשת/חסימה.');
+  }
   if(!res.ok){const t=await res.text();throw new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));}
   const data=await res.json();
   // Free text (not JSON) — robust against truncation; Claude turns it into the record.
   return (data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim();
 }
 async function callClaudeAPI(parts,promptText,maxTok){
-  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':state.keyClaude,
-      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:$('model-claude').value,max_tokens:maxTok||16000,
-      messages:[{role:'user',content:[...parts,{type:'text',text:promptText}]}]})});
+  let res;
+  try{
+    res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':state.keyClaude,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:$('model-claude').value,max_tokens:maxTok||16000,
+        messages:[{role:'user',content:[...parts,{type:'text',text:promptText}]}]})});
+  }catch(netErr){
+    throw new Error('לא ניתן להגיע ל-api.anthropic.com ('+netErr.message+'). ייתכן שהרשת חוסמת את Anthropic — עבור ל"אופן הרצת Claude" → "CLI מקומי".');
+  }
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('Claude HTTP '+res.status+': '+(e.error?.message||''));}
   const data=await res.json();
   return parseJson((data.content?.[0]?.text||'').trim(),'Claude');
@@ -306,9 +316,14 @@ async function callClaudeCLI(promptText){
   const base=$('server-url').value.trim().replace(/\/$/,'');
   if(!base)throw new Error('חסרה כתובת שרת מקומי (CLI).');
   const model=$('model-claude').value.includes('opus')?'opus':'sonnet';
-  const res=await fetch(base+'/api/ask',{method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({prompt:promptText,model})});
+  let res;
+  try{
+    res=await fetch(base+'/api/ask',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt:promptText,model})});
+  }catch(netErr){
+    throw new Error('לא ניתן להגיע לשרת המקומי ('+netErr.message+'). ודא ששרת הבית והמנהרה (cloudflared) רצים, ושכתובת השרת מעודכנת — כתובת ה-tunnel מתחלפת בכל הפעלה.');
+  }
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('CLI HTTP '+res.status+': '+(e.error||e.stderr||'').slice(0,400));}
   const data=await res.json();
   return parseJson((data.text||'').trim(),'Claude CLI');
