@@ -1224,7 +1224,7 @@ function loadQueueItemIntoUI(item) {
     item.status = 'reviewing';
     // Auto-fill the form with the identification result
     if (item.identification) {
-      fillResultsForm(item.identification);
+      fillResults(item.identification);
       document.getElementById('results').classList.add('show');
       document.getElementById('no-results').style.display = 'none';
       document.getElementById('download-bar').style.display = 'flex';
@@ -1424,7 +1424,7 @@ state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').repla
 state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
 // Auto-config: when served from the local machine, talk to this same origin.
 // No tunnel, no manual URL — localhost never changes. Only triggers on localhost.
-if (/^(localhost|127\.0\.0\.1|films\.mf-sr\.com)$/.test(location.hostname)) {
+if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
   state.localServerUrl = location.origin;
   state.proxyGemini = true;
 }
@@ -1803,9 +1803,7 @@ function parseJsonResponse(text, providerLabel) {
 // ─── Anthropic (Claude) ───────────────────────────────────────────────
 async function callAnthropic() {
   const front = await prepareImage(state.photos.front);
-  // Verso carries handwriting / stamps / dates — keep it at higher resolution
-  // than the front (whose value is composition) so fine text stays legible.
-  const back = state.photos.back ? await prepareImage(state.photos.back, 2400, 0.92) : null;
+  const back = state.photos.back ? await prepareImage(state.photos.back) : null;
   const frontB64 = front.data, frontMime = front.mime;
   const backB64 = back?.data ?? null, backMime = back?.mime ?? 'image/jpeg';
 
@@ -1848,9 +1846,7 @@ async function callAnthropic() {
 // ─── Google Gemini ────────────────────────────────────────────────────
 async function callGemini() {
   const front = await prepareImage(state.photos.front);
-  // Verso carries handwriting / stamps / dates — keep it at higher resolution
-  // than the front (whose value is composition) so fine text stays legible.
-  const back = state.photos.back ? await prepareImage(state.photos.back, 2400, 0.92) : null;
+  const back = state.photos.back ? await prepareImage(state.photos.back) : null;
   const frontB64 = front.data, frontMime = front.mime;
   const backB64 = back?.data ?? null, backMime = back?.mime ?? 'image/jpeg';
 
@@ -1876,7 +1872,7 @@ async function callGemini() {
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
       generationConfig: {
-        temperature: 0,
+        temperature: 0.2,
         maxOutputTokens: 16000,
         responseMimeType: 'application/json',
       },
@@ -2005,49 +2001,10 @@ ${rulesPrompt}
   throw new Error('הריצה נמשכה מעל 5 דקות ולא הסתיימה. נסה שוב, או בדוק שהשרת המקומי תקין.');
 }
 
-// Run a TEXT-only prompt through the local Claude CLI server (cli-hybrid mode).
-// Same async POST + poll pattern as claudeStructureFromVisual_viaCLI, but returns
-// the raw text — callers parse/clean as needed. Lets the secondary helpers
-// (translate, item-type detect) work in cli-hybrid without an Anthropic web key.
-async function runClaudeCliText(prompt, maxMs = 5 * 60 * 1000) {
-  const base = state.localServerUrl;
-  if (!base) throw new Error('מצב CLI Hybrid דורש URL של שרת מקומי.');
-  const model = modelSelAnthropic.value.includes('opus') ? 'opus' : 'sonnet';
-  let res;
-  try {
-    res = await fetch(base + '/api/ask-async', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, model }),
-    });
-  } catch (e) {
-    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${base}). ודא שהשרת + tunnel פעילים. (${e.message})`);
-  }
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`שרת CLI החזיר HTTP ${res.status}: ${err.error || err.stderr || ''}`);
-  }
-  const { jobId } = await res.json();
-  if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
-  const started = Date.now();
-  while (Date.now() - started < maxMs) {
-    await new Promise(r => setTimeout(r, 3000));
-    let pr;
-    try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; } // transient — keep polling
-    if (!pr.ok) continue;
-    const j = await pr.json();
-    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
-    if (j.status === 'done') return (j.text || '').trim();
-  }
-  throw new Error('הריצה נמשכה מעל הזמן המוקצב ולא הסתיימה.');
-}
-
 // Gemini step — pure vision, returns descriptive Hebrew text (no JSON)
 async function geminiVisualExtract() {
   const front = await prepareImage(state.photos.front);
-  // Verso carries handwriting / stamps / dates — keep it at higher resolution
-  // than the front (whose value is composition) so fine text stays legible.
-  const back = state.photos.back ? await prepareImage(state.photos.back, 2400, 0.92) : null;
+  const back = state.photos.back ? await prepareImage(state.photos.back) : null;
   const frontB64 = front.data, frontMime = front.mime;
   const backB64 = back?.data ?? null, backMime = back?.mime ?? 'image/jpeg';
 
@@ -2076,16 +2033,8 @@ async function geminiVisualExtract() {
 - מאפיינים תקופתיים: סגנון לבוש, רכבים, פוטוגרפיה (sepia/דהוי/וכו׳)
 - **זיהוי אתר מובהק**: אם האדריכלות/המבנה מתועדים ומזוהים בבירור (למשל שער הכניסה והמסילה של אושוויץ-בירקנאו, צריחי שמירה, רמפת סלקציה, שער "Arbeit macht frei") — ציין זאת במפורש עם רמת ודאות (ודאי/סביר). אל תנחש מקום עלום, אבל אל תימנע מזיהוי אתר איקוני מתועד שרואים בבירור.
 
-[גב התצלום (verso) — קריאה מוקפדת, עדיפות גבוהה 🔍]
-אם נשלחה תמונת גב — **סרוק אותה בקפדנות מלאה**. הגב הוא לרוב המקור הסמכותי ביותר לזיהוי (תאריך, שמות, מקום, חותמת סטודיו). אל תוותר על שום סימן:
-- כתב יד (עט/עיפרון) — תעתק מילה-במילה, כולל תאריכים ומספרים. אם חלקית קריא — תעתק את מה שכן, וסמן [לא ברור] רק לחלק הבעייתי.
-- חותמות (סטודיו, ארכיון, "Photo", כתובת) — תעתק במלואן.
-- מספרי ארכיון / מספור בכתב יד.
-- כיתוב בכמה שפות/כיוונים — טפל בכל אחד בנפרד.
-לכל פריט: שפה + תעתיק מדויק. אל תסכם "יש כיתוב בגב" — תמלל אותו בפועל.
-
 [כיתובים]
-לכל טקסט שאתה רואה — שלטים בחזית, כיתובי גב, חותמות סטודיו, כתב יד:
+לכל טקסט שאתה רואה — שלטים, כיתובי גב, חותמות סטודיו, כתב יד:
 * שפה: [גרמנית/יידיש/פולנית/רוסית/וכו׳]
 * תעתיק: [המילים בדיוק כפי שכתובות]
 * אם לא קריא: [לא קריא] / [?]
@@ -2093,16 +2042,11 @@ async function geminiVisualExtract() {
 [חותמת סטודיו (אם נראה)]
 - שם הסטודיו, עיר, כתובת — רק אם נראה בבירור
 
-🛑 חוק-על — דיוק בלי המצאה, אך בלי הימנעות 🛑
-יש שני סוגי פעולה — **אסור לבלבל ביניהם**:
-1. **קריאה ותיאור של מה שקיים בפועל בתמונה — תמיד נסה, ובמלואו.** כל כיתוב, חותמת, כתב יד, פנים, מדים, אובייקט שנמצאים בתמונה — תעתק/תאר אותם. אם משהו חלקית קריא — תעתק את מה שכן ניתן, וסמן [?] רק לחלק הספק. **אסור למחוק או להשמיט קריאה אמיתית רק מפני שאינה ודאית ב-100%.** סימון ודאות ([?]) עדיף תמיד על השמטה. במיוחד בגב התצלום — נסה לפענח כל סימן.
-2. **המצאת פרטים שאינם בתמונה — אסורה בהחלט.** אל תנחש שם של אדם, יחידה צבאית, או מקום עלום שאינם כתובים/נראים. אל תשלים פערים בהיגיון או ב"מה בדרך כלל יש בתצלום כזה". אל תסיק מהתקופה/הסגנון אל פרט ספציפי (מדים תקופתיים ≠ ידיעת היחידה; שטעטל ≠ ידיעת העיר).
-
-ההבחנה הקובעת: **"מה רואים" — דווח תמיד** (עם [?] אם ספק). **"מה לא רואים אבל אפשר לנחש" — לעולם לא.**
-- זיהוי אתר מתועד ומובהק (כמו אושוויץ-בירקנאו) ממאפיין ויזואלי ייחודי — כן, עם רמת ודאות. זה "מה רואים", לא ניחוש.
-- שמור על תיאור עובדתי, לא פרשני. אל תספר סיפור — תאר מסגרת.
-
-🔁 **בדיקה עצמית לפני החזרה:** ודא ששום פרט ספציפי שכתבת (שם/יחידה/מקום עלום) אינו מומצא. **אל תמחק תיאורים או תעתיקים של מה שכן נראה — אלה בדיוק מה שנדרש.** הבדיקה מסירה המצאות, לא קריאות אמיתיות.
+⚠ חוקים קריטיים:
+- אם אינך רואה משהו בבירור — אל תכלול אותו
+- אסור לנחש שמות אישים, יחידות, או מקומות עלומים — אך **כן לזהות** אתר מתועד ומובהק (כמו אושוויץ-בירקנאו) כשרואים מאפיין ויזואלי ייחודי, עם רמת ודאות
+- אם פרט מטושטש — סמן [לא ברור] במקום להמציא
+- שמור על תיאור עובדתי, לא פרשני
 
 החזר טקסט עברי נקי ללא code-fence.`;
 
@@ -2268,11 +2212,9 @@ ${itemBlock}
 
 **חובה מוחלטת**: כל פרט שאתה מציין בקטלוג חייב להיות מבוסס על מה שאתה **רואה במפורש** בתצלום או על מידע מהקונטקסט/אוסף.
 
-❌ **אסור**: לנחש שמות אישים שלא מזוהים בכיתוב/קונטקסט; להמציא יחידה צבאית; להמציא תאריך בלי ראיה ויזואלית; להוסיף תיאור פעולות/אירועים שלא נראים; **להסיק מהתקופה/הסגנון אל פרט ספציפי** (מדים תקופתיים ≠ ידיעת היחידה; שטעטל ≠ ידיעת העיר).
+❌ **אסור**: לנחש שמות אישים שלא מזוהים בכיתוב/קונטקסט; להמציא יחידה צבאית; להמציא תאריך בלי ראיה ויזואלית; להוסיף תיאור פעולות/אירועים שלא נראים.
 
 ✅ **מותר**: לתאר מה שרואים בלשון תיאורית כללית. "אדם לא מזוהה (גבר ~40, מעיל כהה)" עדיף על שם מומצא.
-
-🔁 **בדיקה עצמית לפני החזרת ה-JSON**: ודא ששום ערך אינו פרט ספציפי מומצא (שם/יחידה/מקום עלום/תאריך שלא נראה ולא נתמך בקונטקסט). פרט כזה → הורד ודאות או הכלל לתיאור גנרי. **אבל אל תרוקן שדה שיש לו בסיס ויזואלי או מקור בקונטקסט** — כיתוב/תעתיק מהגב, זיהוי נראה, תיאור — אלה נדרשים ונשמרים. שדה ריק עדיף רק על המצאה טהורה, לא על קריאה אמיתית.
 
 🏛 **זיהוי מקום — חובה לנסות כשאפשר**: אם התצלום מציג **אתר מתועד ומובהק** הניתן לזיהוי מתוך מאפיינים ויזואליים ייחודיים — לא רק משלט קריא, אלא גם אדריכלות/מבנה מתועדים (למשל **שער הכניסה והמסילה של אושוויץ-בירקנאו**, צריחי השמירה, צריף, רמפת הסלקציה, שער "Arbeit macht frei") — **זהה אותו** בשם המלא בשדה \`places_en\` עם סימון ודאות מתאים: \`✓\` לאתר איקוני בלתי-נמנע לזיהוי, \`~\` לזיהוי סביר מבוסס כמה רמזים. רק כשאין שום ראיה מובהקת → "מחנה ריכוז (לא מזוהה) / unidentified concentration camp". זיהוי מבוסס-ראיה אינו "ניחוש" — הימנעות מזיהוי של אתר מובהק היא טעות בדיוק כמו זיהוי שגוי.
 
@@ -3380,13 +3322,9 @@ identifyCollectionBtn.addEventListener('click', async () => {
   setMini(colFormStatus, '', '');
   setMini(colSapirStatus, '', '');
   setMini(colExtraStatus, '', '');
-  // cli-hybrid has no Anthropic web key and the CLI text endpoint can't OCR a PDF,
-  // so route collection-form OCR through Gemini (admin registration form — no
-  // PROHIBITED_CONTENT concern, and a Gemini key is always present in cli-hybrid).
-  const useGeminiForCollection = state.provider === 'gemini' || state.provider === 'cli-hybrid';
-  showCollectionStatus(`שולח ${totalPdfs + totalText} מקור(ות) ל-${useGeminiForCollection ? 'Gemini' : 'Claude'}…`, 'info');
+  showCollectionStatus(`שולח ${totalPdfs + totalText} מקור(ות) ל-${state.provider === 'gemini' ? 'Gemini' : 'Claude'}…`, 'info');
   try {
-    const profile = useGeminiForCollection
+    const profile = state.provider === 'gemini'
       ? await callGeminiForCollection(sources)
       : await callAnthropicForCollection(sources);
     fillCollectionProfile(profile);
@@ -3677,12 +3615,10 @@ async function callGeminiForCollection(sources) {
   const parts = await buildCollectionContent(sources, 'gemini');
   parts.push({ text: buildCollectionPrompt(sources) });
 
-  // Always use the Gemini model/key explicitly — this is reachable from cli-hybrid
-  // mode too, where getActiveModel()/getActiveApiKey() would return Anthropic's.
-  const url = geminiBase() + '/v1beta/models/' + modelSelGemini.value + ':generateContent';
+  const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 16000, responseMimeType: 'application/json' },
@@ -3932,8 +3868,6 @@ ${heText}`;
     if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
     const data = await res.json();
     return (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
-  } else if (state.provider === 'cli-hybrid') {
-    return (await runClaudeCliText(prompt)).trim();
   } else {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -4021,9 +3955,6 @@ async function detectItemTypeFromDesc(descHe) {
       if (!res.ok) return 'unknown';
       const data = await res.json();
       const t = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim().toLowerCase();
-      return t.includes('photo') ? 'photo' : t.includes('document') ? 'document' : 'unknown';
-    } else if (state.provider === 'cli-hybrid') {
-      const t = (await runClaudeCliText(prompt)).toLowerCase();
       return t.includes('photo') ? 'photo' : t.includes('document') ? 'document' : 'unknown';
     } else {
       const res = await fetch('https://api.anthropic.com/v1/messages', {

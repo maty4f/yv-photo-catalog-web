@@ -848,7 +848,7 @@ state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').repla
 state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
 // Auto-config: when served from the local machine, talk to this same origin.
 // No tunnel, no manual URL — localhost never changes. Only triggers on localhost.
-if (/^(localhost|127\.0\.0\.1|films\.mf-sr\.com)$/.test(location.hostname)) {
+if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
   state.localServerUrl = location.origin;
   state.proxyGemini = true;
 }
