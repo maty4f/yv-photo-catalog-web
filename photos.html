@@ -1224,7 +1224,7 @@ function loadQueueItemIntoUI(item) {
     item.status = 'reviewing';
     // Auto-fill the form with the identification result
     if (item.identification) {
-      fillResults(item.identification);
+      fillResultsForm(item.identification);
       document.getElementById('results').classList.add('show');
       document.getElementById('no-results').style.display = 'none';
       document.getElementById('download-bar').style.display = 'flex';
