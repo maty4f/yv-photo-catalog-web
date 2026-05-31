@@ -2001,6 +2001,43 @@ ${rulesPrompt}
   throw new Error('הריצה נמשכה מעל 5 דקות ולא הסתיימה. נסה שוב, או בדוק שהשרת המקומי תקין.');
 }
 
+// Run a TEXT-only prompt through the local Claude CLI server (cli-hybrid mode).
+// Same async POST + poll pattern as claudeStructureFromVisual_viaCLI, but returns
+// the raw text — callers parse/clean as needed. Lets the secondary helpers
+// (translate, item-type detect) work in cli-hybrid without an Anthropic web key.
+async function runClaudeCliText(prompt, maxMs = 5 * 60 * 1000) {
+  const base = state.localServerUrl;
+  if (!base) throw new Error('מצב CLI Hybrid דורש URL של שרת מקומי.');
+  const model = modelSelAnthropic.value.includes('opus') ? 'opus' : 'sonnet';
+  let res;
+  try {
+    res = await fetch(base + '/api/ask-async', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, model }),
+    });
+  } catch (e) {
+    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${base}). ודא שהשרת + tunnel פעילים. (${e.message})`);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`שרת CLI החזיר HTTP ${res.status}: ${err.error || err.stderr || ''}`);
+  }
+  const { jobId } = await res.json();
+  if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
+  const started = Date.now();
+  while (Date.now() - started < maxMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    let pr;
+    try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; } // transient — keep polling
+    if (!pr.ok) continue;
+    const j = await pr.json();
+    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
+    if (j.status === 'done') return (j.text || '').trim();
+  }
+  throw new Error('הריצה נמשכה מעל הזמן המוקצב ולא הסתיימה.');
+}
+
 // Gemini step — pure vision, returns descriptive Hebrew text (no JSON)
 async function geminiVisualExtract() {
   const front = await prepareImage(state.photos.front);
@@ -3322,9 +3359,13 @@ identifyCollectionBtn.addEventListener('click', async () => {
   setMini(colFormStatus, '', '');
   setMini(colSapirStatus, '', '');
   setMini(colExtraStatus, '', '');
-  showCollectionStatus(`שולח ${totalPdfs + totalText} מקור(ות) ל-${state.provider === 'gemini' ? 'Gemini' : 'Claude'}…`, 'info');
+  // cli-hybrid has no Anthropic web key and the CLI text endpoint can't OCR a PDF,
+  // so route collection-form OCR through Gemini (admin registration form — no
+  // PROHIBITED_CONTENT concern, and a Gemini key is always present in cli-hybrid).
+  const useGeminiForCollection = state.provider === 'gemini' || state.provider === 'cli-hybrid';
+  showCollectionStatus(`שולח ${totalPdfs + totalText} מקור(ות) ל-${useGeminiForCollection ? 'Gemini' : 'Claude'}…`, 'info');
   try {
-    const profile = state.provider === 'gemini'
+    const profile = useGeminiForCollection
       ? await callGeminiForCollection(sources)
       : await callAnthropicForCollection(sources);
     fillCollectionProfile(profile);
@@ -3615,10 +3656,12 @@ async function callGeminiForCollection(sources) {
   const parts = await buildCollectionContent(sources, 'gemini');
   parts.push({ text: buildCollectionPrompt(sources) });
 
-  const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
+  // Always use the Gemini model/key explicitly — this is reachable from cli-hybrid
+  // mode too, where getActiveModel()/getActiveApiKey() would return Anthropic's.
+  const url = geminiBase() + '/v1beta/models/' + modelSelGemini.value + ':generateContent';
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 16000, responseMimeType: 'application/json' },
@@ -3868,6 +3911,8 @@ ${heText}`;
     if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
     const data = await res.json();
     return (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  } else if (state.provider === 'cli-hybrid') {
+    return (await runClaudeCliText(prompt)).trim();
   } else {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -3955,6 +4000,9 @@ async function detectItemTypeFromDesc(descHe) {
       if (!res.ok) return 'unknown';
       const data = await res.json();
       const t = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim().toLowerCase();
+      return t.includes('photo') ? 'photo' : t.includes('document') ? 'document' : 'unknown';
+    } else if (state.provider === 'cli-hybrid') {
+      const t = (await runClaudeCliText(prompt)).toLowerCase();
       return t.includes('photo') ? 'photo' : t.includes('document') ? 'document' : 'unknown';
     } else {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
