@@ -403,7 +403,7 @@ async function geminiPartsFor(files){
 // On localhost, route Gemini through the local proxy (same-origin, no CORS).
 // Off localhost, call Google directly.
 function geminiBase(){
-  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))
+  if(/^(localhost|127\.0\.0\.1|films\.mf-sr\.com)$/.test(location.hostname))
     return location.origin+'/api/gemini-proxy/v1beta/models/';
   return 'https://generativelanguage.googleapis.com/v1beta/models/';
 }
@@ -442,7 +442,7 @@ async function callGeminiRetry(parts,promptText,onWait){
 function serverBase(){
   const v=$('server-url').value.trim().replace(/\/$/,'');
   if(v)return v;
-  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))return location.origin;
+  if(/^(localhost|127\.0\.0\.1|films\.mf-sr\.com)$/.test(location.hostname))return location.origin;
   throw new Error('חסרה כתובת שרת מקומי / tunnel.');
 }
 const NET_HINT='ודא ששרת הבית רץ (node server.js), ובגישה מרחוק שגם המנהרה (cloudflared) רצה ושכתובת ה-tunnel מעודכנת — היא מתחלפת בכל הפעלה.';
@@ -918,7 +918,7 @@ function loadSettings(){
     PERSIST.forEach(id=>{if(s[id]!=null&&$(id)&&$(id).value!==s[id])$(id).value=s[id];});}catch(e){}
   // Auto-config: when served from the local machine, use this same origin —
   // localhost never changes, so no tunnel URL is needed.
-  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&$('server-url')&&!$('server-url').value.trim()){
+  if(/^(localhost|127\.0\.0\.1|films\.mf-sr\.com)$/.test(location.hostname)&&$('server-url')&&!$('server-url').value.trim()){
     $('server-url').value=location.origin;
   }
   syncEngineUI();
