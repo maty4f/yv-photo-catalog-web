@@ -1193,6 +1193,9 @@ async function addDocsToQueue(files) {
       item.thumb = await new Promise(r => {
         const reader = new FileReader();
         reader.onload = e => r(e.target.result);
+        // Thumbnail is non-critical: on a bad image resolve to null so the
+        // queue-add loop proceeds instead of hanging forever.
+        reader.onerror = () => r(null);
         reader.readAsDataURL(file);
       });
     }
@@ -2134,9 +2137,10 @@ async function geminiOCROnly() {
 //  Required for documents > 20MB (inline_data hard limit)
 // =====================================================================
 function fileToBase64(file) {
-  return new Promise(r => {
+  return new Promise((r, reject) => {
     const reader = new FileReader();
     reader.onload = e => r(e.target.result.split(',')[1]);
+    reader.onerror = () => reject(reader.error || new Error('קריאת הקובץ נכשלה'));
     reader.readAsDataURL(file);
   });
 }
@@ -2684,8 +2688,8 @@ ${thesaurusBrief}
   "translation_en":      "",      "translation_en_conf":     "...",
   "persons_he":          "",      "persons_he_conf":         "...",
   "persons_en":          "",      "persons_en_conf":         "...",
-  "context_he":          "",      "context_en_conf":         "...",
-  "context_en":          "",      "context_he_conf":         "...",
+  "context_he":          "",      "context_he_conf":         "...",
+  "context_en":          "",      "context_en_conf":         "...",
   "decipher_notes":      "",
   "subjects_he":         [],
   "subjects_en":         [],

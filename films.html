@@ -950,11 +950,15 @@ async function identifyFilmQueueItem(item) {
   const savedFilm = state.film;
   const savedMeta = state.filmMeta;
   state.film = item.file;
-  // Re-extract metadata for this file
-  await new Promise(resolve => {
+  // Re-extract metadata for this file. Guard with onerror + timeout so a bad
+  // queued video REJECTS (caught by the queue processor -> marked 'error') instead
+  // of leaving the while(true) queue loop hung forever.
+  await new Promise((resolve, reject) => {
     const v = document.createElement('video');
     v.src = URL.createObjectURL(item.file);
+    const to = setTimeout(() => { URL.revokeObjectURL(v.src); reject(new Error('פג הזמן בטעינת מטא-דאטה של הסרטון')); }, 30000);
     v.onloadedmetadata = () => {
+      clearTimeout(to);
       state.filmMeta = {
         duration: v.duration,
         width: v.videoWidth,
@@ -965,6 +969,7 @@ async function identifyFilmQueueItem(item) {
       URL.revokeObjectURL(v.src);
       resolve();
     };
+    v.onerror = () => { clearTimeout(to); URL.revokeObjectURL(v.src); reject(new Error('טעינת הסרטון נכשלה')); };
   });
   try {
     if (state.provider === 'pipeline')   return await callPipeline();
@@ -1551,25 +1556,38 @@ async function extractKeyframes(file, count) {
   const video = document.createElement('video');
   video.src = URL.createObjectURL(file);
   video.muted = true;
-  await new Promise(r => video.addEventListener('loadedmetadata', r, { once: true }));
-  const duration = video.duration;
-  const interval = duration / (count + 1);
-  const canvas = document.createElement('canvas');
-  const targetWidth = 800;
-  canvas.width = targetWidth;
-  canvas.height = Math.round(targetWidth * video.videoHeight / video.videoWidth);
-  const ctx = canvas.getContext('2d');
-  const frames = [];
-  for (let i = 1; i <= count; i++) {
-    const t = i * interval;
-    video.currentTime = t;
-    await new Promise(r => video.addEventListener('seeked', r, { once: true }));
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    frames.push({ tc: formatDuration(t), t, b64: dataUrl.split(',')[1] });
+  // Wait for a media event with an 'error' + timeout guard, so a corrupt or
+  // unseekable video REJECTS instead of leaving the analysis hung forever.
+  const waitFor = (evt, ms = 30000) => new Promise((resolve, reject) => {
+    const cleanup = () => { clearTimeout(to); video.removeEventListener(evt, onOk); video.removeEventListener('error', onErr); };
+    const onOk = () => { cleanup(); resolve(); };
+    const onErr = () => { cleanup(); reject(new Error('שגיאה בטעינת/קריאת הווידאו')); };
+    const to = setTimeout(() => { cleanup(); reject(new Error('פג הזמן בהמתנה לאירוע "' + evt + '" של הווידאו')); }, ms);
+    video.addEventListener(evt, onOk, { once: true });
+    video.addEventListener('error', onErr, { once: true });
+  });
+  try {
+    await waitFor('loadedmetadata');
+    const duration = video.duration;
+    const interval = duration / (count + 1);
+    const canvas = document.createElement('canvas');
+    const targetWidth = 800;
+    canvas.width = targetWidth;
+    canvas.height = Math.round(targetWidth * video.videoHeight / video.videoWidth);
+    const ctx = canvas.getContext('2d');
+    const frames = [];
+    for (let i = 1; i <= count; i++) {
+      const t = i * interval;
+      video.currentTime = t;
+      await waitFor('seeked');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      frames.push({ tc: formatDuration(t), t, b64: dataUrl.split(',')[1] });
+    }
+    return frames;
+  } finally {
+    URL.revokeObjectURL(video.src);
   }
-  URL.revokeObjectURL(video.src);
-  return frames;
 }
 
 function parseJson(text, label) {
@@ -2257,13 +2275,20 @@ let autoRunCancel = false;
 // Load a part as the active film and resolve once its metadata is ready,
 // so the provider call has correct state.film + state.filmMeta.
 function loadPartAwaitMeta(idx) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const part = state.filmParts[idx];
     state.currentPartIdx = idx;
     const file = new File([part.blob], part.name, { type: part.blob.type || 'video/mp4' });
     // loadFilm sets filmPreview.onloadedmetadata (which sets state.filmMeta);
     // defer resolve to the next tick so that handler has already run.
-    filmPreview.addEventListener('loadedmetadata', () => setTimeout(resolve, 0), { once: true });
+    // Guard with 'error' + timeout so a bad part blob rejects instead of hanging
+    // the auto-identify loop forever.
+    const cleanup = () => { clearTimeout(to); filmPreview.removeEventListener('loadedmetadata', onMeta); filmPreview.removeEventListener('error', onErr); };
+    const onMeta = () => { cleanup(); setTimeout(resolve, 0); };
+    const onErr = () => { cleanup(); reject(new Error('טעינת חלק הסרטון נכשלה')); };
+    const to = setTimeout(() => { cleanup(); reject(new Error('פג הזמן בטעינת חלק הסרטון')); }, 30000);
+    filmPreview.addEventListener('loadedmetadata', onMeta, { once: true });
+    filmPreview.addEventListener('error', onErr, { once: true });
     loadFilm(file);
     renderPartsRail();
   });
@@ -2292,8 +2317,8 @@ async function autoIdentifyAllParts() {
     part.status = 'analyzing';
     renderPartsRail();
     showStatus(`⚡ זיהוי אוטומטי — חלק ${i + 1}/${state.filmParts.length} דרך ${providerLabel()}…`, 'info');
-    await loadPartAwaitMeta(i);
     try {
+      await loadPartAwaitMeta(i);
       const result = await callActiveProvider();
       part.identification = result;
       part.status = 'identified';
@@ -2404,7 +2429,9 @@ async function splitFilm(file, segmentSeconds, onStatus, onProgress) {
         partName,
       ]);
       const data = await ffmpeg.readFile(partName);
-      const blob = new Blob([data.buffer], { type: file.type || 'video/mp4' });
+      // Use the Uint8Array view (data), not data.buffer — the underlying
+      // ArrayBuffer can be larger than the view, which would append garbage.
+      const blob = new Blob([data], { type: file.type || 'video/mp4' });
       parts.push({
         name: partName, blob,
         startSec: start, endSec: start + partLength,

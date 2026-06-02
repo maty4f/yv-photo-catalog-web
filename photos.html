@@ -1070,9 +1070,10 @@ function pairFilesByHash(files) {
 }
 
 async function fileToDataUrl(file) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = e => resolve(e.target.result);
+    r.onerror = () => reject(r.error || new Error('קריאת הקובץ נכשלה'));
     r.readAsDataURL(file);
   });
 }
@@ -1224,7 +1225,7 @@ function loadQueueItemIntoUI(item) {
     item.status = 'reviewing';
     // Auto-fill the form with the identification result
     if (item.identification) {
-      fillResults(item.identification);
+      fillResultsForm(item.identification);
       document.getElementById('results').classList.add('show');
       document.getElementById('no-results').style.display = 'none';
       document.getElementById('download-bar').style.display = 'flex';
@@ -3243,7 +3244,7 @@ function refreshCollectionButtons() {
   }
 
   identifyCollectionBtn.title = !hasId ? 'יש להזין מספר אוסף' :
-                                !hasForm ? 'יש להעלות טופס או להדביק טקסט' :
+                                !hasAnySource ? 'יש להעלות טופס או להדביק טקסט' :
                                 !hasKey ? 'יש להגדיר API key' : '';
 }
 colIdEl.addEventListener('input', refreshCollectionButtons);

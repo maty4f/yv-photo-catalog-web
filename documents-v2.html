@@ -586,9 +586,10 @@ async function waitForFileActive(fileName, maxAttempts = 90) {
 }
 
 function fileToBase64(file) {
-  return new Promise(r => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = e => r(e.target.result.split(',')[1]);
+    reader.onload = e => resolve(e.target.result.split(',')[1]);
+    reader.onerror = () => reject(new Error('קריאת הקובץ נכשלה'));
     reader.readAsDataURL(file);
   });
 }
@@ -875,7 +876,8 @@ ${JSON.stringify(geminiDraft, null, 2)}
 // =====================================================================
 function showStatus(msg, kind) {
   statusEl.className = 'status ' + (kind || 'info');
-  statusEl.innerHTML = (kind === 'info' ? '<span class="spinner"></span>' : '') + msg;
+  const escMsg = String(msg).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  statusEl.innerHTML = (kind === 'info' ? '<span class="spinner"></span>' : '') + escMsg;
 }
 
 // Threshold above which we bypass the PDF route entirely and sample pages as images.
@@ -1135,11 +1137,12 @@ function buildOutputHtml(r, today) {
 body { font-family: "SBL Hebrew", "Frank Ruhl Libre", sans-serif; line-height: 1.6; padding: 30px; max-width: 900px; margin: 0 auto; direction: rtl; text-align: right; }
 h1 { color: #2e7d4e; border-bottom: 2px solid #2e7d4e; padding-bottom: 8px; }
 table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-th, td { padding: 8px 12px; border-bottom: 1px solid #ddd; vertical-align: top; text-align: right; }
+th, td { padding: 8px 12px; border-bottom: 1px solid #ddd; vertical-align: top; text-align: right; unicode-bidi: isolate; }
 th { background: #f0f7f2; width: 180px; color: #555; font-weight: 600; }
 .section { margin-top: 20px; }
 .section h2 { color: #2e7d4e; font-size: 18px; margin-bottom: 8px; }
 .bilingual { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.bilingual > div { direction: rtl; text-align: right; unicode-bidi: isolate; }
 .bilingual .en { direction: ltr; text-align: left; }
 .meta { color: #888; font-size: 12px; margin-top: 30px; }
 </style></head><body>

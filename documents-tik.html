@@ -206,7 +206,7 @@ const $ = id => document.getElementById(id);
 const state = { files: [], intakeFiles: [] };
 
 /* ---------- helpers ---------- */
-function fileToBase64(file){return new Promise(r=>{const fr=new FileReader();fr.onload=e=>r(e.target.result.split(',')[1]);fr.readAsDataURL(file);});}
+function fileToBase64(file){return new Promise(r=>{const fr=new FileReader();fr.onload=e=>r(e.target.result.split(',')[1]);fr.onerror=()=>r('');fr.readAsDataURL(file);});}
 // Downscale a scan client-side before sending. Full-res archive scans are huge;
 // shrinking to a modest long-edge keeps each /api/ask-async request under the
 // 25MB JSON limit and speeds Claude's Read. Handwriting stays legible ~1500px.
