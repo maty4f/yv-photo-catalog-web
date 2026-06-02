@@ -656,18 +656,20 @@ function pickSamplePages(totalPages, want = 10) {
   return [...new Set([...head, ...mid, ...tail])].sort((a, b) => a - b);
 }
 
-async function renderPageToJpegBase64(pdf, pageNum, maxWidth = 1400) {
+async function renderPageToJpegBase64(pdf, pageNum, maxWidth = 2200) {
   const page = await pdf.getPage(pageNum);
   const viewport = page.getViewport({ scale: 1 });
-  const scale = Math.min(maxWidth / viewport.width, 2);
+  // 2200px long-edge keeps dense handwriting legible (only ~10 pages are sampled,
+  // so the larger payload is affordable). Cap the up-scale at 3× for tiny sources.
+  const scale = Math.min(maxWidth / viewport.width, 3);
   const scaled = page.getViewport({ scale });
   const canvas = document.createElement('canvas');
   canvas.width = scaled.width;
   canvas.height = scaled.height;
   const ctx = canvas.getContext('2d');
   await page.render({ canvasContext: ctx, viewport: scaled }).promise;
-  // Quality 0.82 = good OCR readability while keeping size down
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+  // Quality 0.85 = good handwriting/OCR readability while keeping size down
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
   return dataUrl.split(',')[1];
 }
 
