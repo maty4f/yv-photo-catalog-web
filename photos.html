@@ -1765,12 +1765,23 @@ identifyBtn.addEventListener('click', async () => {
 //  Uses the same local-server base URL as the CLI flows (state.localServerUrl);
 //  empty base ⇒ relative URLs (works when the page is served by the server).
 // =====================================================================
+// Same-origin first: if this page is served by the API server itself
+// (films.mf-sr.com / localhost), a stale saved tunnel URL in localStorage must
+// not shadow it — probe /api/health and prefer relative URLs when it answers.
+async function resolveUnifiedBase() {
+  try {
+    const r = await fetch('/api/health', { cache: 'no-store' });
+    if (r.ok) return '';
+  } catch {}
+  return state.localServerUrl || null;
+}
+
 async function runUnifiedServer() {
   const f = state.photos.front;
   if (!f) throw new Error('יש להעלות חזית תצלום');
-  const base = state.localServerUrl || '';
-  if (!base && location.hostname.endsWith('pages.dev'))
-    throw new Error('הזן URL של השרת המקומי (⚙ הגדרות API → שרת CLI מקומי)');
+  const base = await resolveUnifiedBase();
+  if (base === null)
+    throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
 
   const fd = new FormData();
   fd.append('file', f);
