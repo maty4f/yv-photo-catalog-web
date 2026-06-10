@@ -114,7 +114,8 @@
     <div class="row">
       <label>מצב עיבוד</label>
       <select id="mode">
-        <option value="claude-cli" selected>⭐ Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini)</option>
+        <option value="unified-server" selected>⭐ מנוע מאוחד בשרת (מומלץ — חינם, בלי מפתחות; מסמך — כמה דקות)</option>
+        <option value="claude-cli">Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini)</option>
         <option value="hybrid">Hybrid: Gemini + Claude API</option>
         <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini + Claude CLI מקומי</option>
         <option value="gemini-only">Gemini בלבד</option>
@@ -297,7 +298,7 @@
 //  State
 // =====================================================================
 const state = {
-  mode: localStorage.getItem('yv_v2_mode') || 'claude-cli',
+  mode: localStorage.getItem('yv_v2_mode') || 'unified-server',
   apiKey: localStorage.getItem('yv_v2_api_key') || '',
   apiKeyAnthropic: localStorage.getItem('yv_v2_api_key_anthropic') || '',
   model: localStorage.getItem('yv_v2_model') || 'gemini-3.5-flash',
@@ -502,7 +503,12 @@ function loadPdf(file) {
 
 function refresh() {
   let hasKey;
-  if (state.mode === 'claude-cli') {
+  if (state.mode === 'unified-server') {
+    // Server-side engine — no browser keys needed. From pages.dev the local-server
+    // URL (same field as Docling/CLI) must be set; on the server's own origin
+    // relative URLs work, so an empty URL is fine there.
+    hasKey = !!state.localServerUrl || !location.hostname.endsWith('pages.dev');
+  } else if (state.mode === 'claude-cli') {
     // Claude reads the PDF directly via the local server — only the server URL is needed.
     hasKey = !!state.localServerUrl;
   } else {
@@ -513,12 +519,15 @@ function refresh() {
   analyzeBtn.disabled = !(state.pdf && hasKey);
   let missing = '';
   if (!state.pdf) missing = 'יש להעלות PDF';
+  else if (state.mode === 'unified-server' && !hasKey) missing = 'מצב מנוע מאוחד דורש URL של השרת המקומי (שדה "שרת Docling" למעלה)';
   else if (state.mode === 'claude-cli' && !state.localServerUrl) missing = 'מצב Claude CLI דורש URL של שרת מקומי (בהרצה מ-localhost מוגדר אוטומטית)';
   else if (state.mode !== 'claude-cli' && !state.apiKey) missing = 'יש להזין מפתח Gemini';
   else if (state.mode === 'hybrid' && !state.apiKeyAnthropic) missing = 'מצב Hybrid דורש גם מפתח Anthropic';
   else if (state.mode === 'cli-hybrid' && !state.localServerUrl) missing = 'מצב CLI Hybrid דורש URL של שרת מקומי (למטה)';
   analyzeBtn.title = missing;
-  analyzeBtn.textContent = state.mode === 'claude-cli'
+  analyzeBtn.textContent = state.mode === 'unified-server'
+    ? '🔍 הפק רישום (מנוע מאוחד בשרת)'
+    : state.mode === 'claude-cli'
     ? '🔍 הפק רישום (Claude קורא ישירות)'
     : state.mode === 'hybrid'
     ? '🔍 הפק רישום (Gemini→Claude API)'
@@ -893,6 +902,13 @@ analyzeBtn.addEventListener('click', async () => {
   const INLINE_MAX = 14;
 
   try {
+    // === UNIFIED SERVER ENGINE === upload → SSE progress → produced catalog HTML.
+    // Runs fully server-side (Gemini + Claude CLI + validation) — no browser keys.
+    if (state.mode === 'unified-server') {
+      await runUnifiedServer();
+      return;
+    }
+
     // === CLAUDE CLI DIRECT === Claude reads the PDF/scans itself via the local
     // server's /api/ask-async (it writes the bytes to a temp file and has Claude
     // Read them). No Gemini → no PROHIBITED_CONTENT block on Holocaust material.
@@ -1059,6 +1075,55 @@ analyzeBtn.addEventListener('click', async () => {
     analyzeBtn.disabled = false;
   }
 });
+
+// =====================================================================
+//  UNIFIED SERVER ENGINE — upload to /api/items, stream SSE, link output.
+//  Reuses state.localServerUrl (same field as Docling / Claude CLI);
+//  empty base ⇒ relative URLs (works when the page is served by the server).
+// =====================================================================
+async function runUnifiedServer() {
+  const base = state.localServerUrl || '';
+  const fd = new FormData();
+  fd.append('file', state.pdf);
+  fd.append('kind', 'doc');
+  fd.append('context', contextEl.value.trim());
+  showStatus('מעלה את המסמך לשרת המאוחד…');
+
+  const res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
+  if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
+
+  showStatus('מנתח בשרת (Gemini → Claude → ולידציה)… מסמך — כמה דקות');
+  await new Promise((resolve, reject) => {
+    const es = new EventSource(base + '/api/jobs/' + j.jobId + '/events');
+    let serverErr = '';
+    es.onmessage = e => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.type === 'error') serverErr = ev.message || '';
+        else if (ev.text) {
+          const line = String(ev.text).trim().split('\n').pop().slice(0, 160);
+          if (line) showStatus('🛠 ' + line);
+        }
+      } catch (ignore) {}
+    };
+    es.addEventListener('end', e => {
+      es.close();
+      let fin = {};
+      try { fin = JSON.parse(e.data); } catch (ignore) {}
+      if (fin.status === 'done' && fin.outputName) {
+        const url = base + '/api/output/' + encodeURIComponent(fin.outputName);
+        statusEl.className = 'status ok';
+        statusEl.innerHTML = '✓ הרישום מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+        resolve();
+      } else {
+        reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
+      }
+    });
+    es.onerror = () => { /* SSE auto-reconnects; terminal state arrives via "end" */ };
+  });
+}
 
 // Strip dual-axis confidence markup the model sometimes injects into prose
 // fields (e.g. <span class="cv c-mid">V~</span>, or the malformed

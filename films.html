@@ -281,13 +281,14 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="pipeline" selected>Pipeline: Gemini → Claude (מומלץ — דיוק היסטורי)</option>
+        <option value="unified-server" selected>⭐ מנוע מאוחד בשרת (מומלץ — חינם, בלי מפתחות; סרט — כמה דקות)</option>
+        <option value="pipeline">Pipeline: Gemini → Claude (דיוק היסטורי)</option>
         <option value="gemini">🆓 Google (Gemini) — וידאו ישיר, מהיר (חינם — free tier)</option>
         <option value="anthropic">Anthropic (Claude) — פריימים בלבד (בתשלום)</option>
         <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (חינם — דורש שרת מקומי)</option>
       </select>
     </div>
-    <div class="row provider-row" data-provider="cli-hybrid" style="display:none;">
+    <div class="row provider-row" data-provider="cli-hybrid unified-server" style="display:none;">
       <label>שרת CLI מקומי (URL)</label>
       <div>
         <input type="text" id="local-server-url" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="direction:ltr; text-align:left; width:100%;">
@@ -635,7 +636,7 @@
 const state = {
   film: null, filmMeta: null, identification: null,
   filmParts: [], currentPartIdx: -1, autoRunning: false,
-  provider: localStorage.getItem('yv_api_provider') || 'gemini',
+  provider: localStorage.getItem('yv_api_provider') || 'unified-server',
   apiKeys: {
     anthropic: localStorage.getItem('yv_api_key_anthropic') || '',
     gemini: localStorage.getItem('yv_api_key_gemini') || '',
@@ -726,6 +727,7 @@ function syncProviderRows() {
 function getActiveApiKey() { return state.apiKeys[state.provider] || ''; }
 function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
 function hasAllRequiredKeys() {
+  if (state.provider === 'unified-server') return true; // server-side engine — no browser keys needed
   if (state.provider === 'pipeline') return !!state.apiKeys.gemini && !!state.apiKeys.anthropic;
   if (state.provider === 'cli-hybrid') return !!state.apiKeys.gemini && !!state.localServerUrl;
   return !!getActiveApiKey();
@@ -972,6 +974,8 @@ async function identifyFilmQueueItem(item) {
     v.onerror = () => { clearTimeout(to); URL.revokeObjectURL(v.src); reject(new Error('טעינת הסרטון נכשלה')); };
   });
   try {
+    if (state.provider === 'unified-server')
+      throw new Error('המנוע המאוחד בשרת תומך כרגע בקטלוג סרט בודד — לתור סרטים בחר ספק אחר בהגדרות API');
     if (state.provider === 'pipeline')   return await callPipeline();
     if (state.provider === 'cli-hybrid') return await callCliHybrid();
     if (state.provider === 'gemini')     return await callGemini();
@@ -1052,7 +1056,9 @@ function refreshButtons() {
 }
 
 function providerLabel() {
-  return state.provider === 'pipeline'
+  return state.provider === 'unified-server'
+    ? 'המנוע המאוחד בשרת'
+    : state.provider === 'pipeline'
     ? 'Pipeline (Gemini → Claude)'
     : state.provider === 'cli-hybrid'
       ? 'CLI Hybrid (Gemini → Claude CLI)'
@@ -1060,6 +1066,8 @@ function providerLabel() {
 }
 // Run the currently selected provider against state.film and return the result.
 function callActiveProvider() {
+  if (state.provider === 'unified-server')
+    throw new Error('המנוע המאוחד בשרת תומך כרגע בקטלוג סרט בודד (כפתור "זהה את הסרט") — לתור/חלקים בחר ספק אחר');
   return state.provider === 'pipeline'   ? callPipeline()
     : state.provider === 'cli-hybrid' ? callCliHybrid()
     : (state.provider === 'gemini' ? callGemini() : callAnthropic());
@@ -1068,6 +1076,21 @@ function callActiveProvider() {
 identifyBtn.addEventListener('click', async () => {
   identifyBtn.disabled = true;
   identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel() + '…';
+  // Unified server engine: upload → SSE progress → produced catalog HTML.
+  // Runs fully server-side (Gemini + Claude CLI + validation) — no browser keys.
+  if (state.provider === 'unified-server') {
+    try {
+      await runUnifiedServer();
+    } catch (err) {
+      console.error(err);
+      showStatus('שגיאה: ' + err.message, 'err');
+    } finally {
+      identifyBtn.disabled = false;
+      identifyBtn.innerHTML = '🔍 זהה את הסרט';
+      refreshButtons();
+    }
+    return;
+  }
   showStatus('שולח את הסרט ל-' + providerLabel() + ' (30-180 שניות)…', 'info');
   try {
     const result = await callActiveProvider();
@@ -1096,6 +1119,59 @@ identifyBtn.addEventListener('click', async () => {
 });
 
 function showStatus(msg, kind) { identifyStatus.textContent = msg; identifyStatus.className = 'status-msg show ' + (kind || ''); }
+
+// =====================================================================
+//  UNIFIED SERVER ENGINE — upload to /api/items, stream SSE, link output.
+//  Uses the same local-server base URL as the CLI flow (state.localServerUrl);
+//  empty base ⇒ relative URLs (works when the page is served by the server).
+// =====================================================================
+async function runUnifiedServer() {
+  if (!state.film) throw new Error('אין סרט');
+  const base = state.localServerUrl || '';
+  if (!base && location.hostname.endsWith('pages.dev'))
+    throw new Error('הזן URL של השרת המקומי (⚙ הגדרות API → שרת CLI מקומי)');
+
+  const fd = new FormData();
+  fd.append('file', state.film);
+  fd.append('kind', 'film');
+  fd.append('context', contextEl.value.trim());
+  showStatus('מעלה את הסרט לשרת המאוחד…', 'info');
+
+  const res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
+  if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
+
+  showStatus('מנתח בשרת (Gemini → Claude → ולידציה)… סרט — כמה דקות', 'info');
+  await new Promise((resolve, reject) => {
+    const es = new EventSource(base + '/api/jobs/' + j.jobId + '/events');
+    let serverErr = '';
+    es.onmessage = e => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.type === 'error') serverErr = ev.message || '';
+        else if (ev.text) {
+          const line = String(ev.text).trim().split('\n').pop().slice(0, 160);
+          if (line) showStatus('🛠 ' + line, 'info');
+        }
+      } catch (ignore) {}
+    };
+    es.addEventListener('end', e => {
+      es.close();
+      let fin = {};
+      try { fin = JSON.parse(e.data); } catch (ignore) {}
+      if (fin.status === 'done' && fin.outputName) {
+        const url = base + '/api/output/' + encodeURIComponent(fin.outputName);
+        identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+        identifyStatus.className = 'status-msg show ok';
+        resolve();
+      } else {
+        reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
+      }
+    });
+    es.onerror = () => { /* SSE auto-reconnects; terminal state arrives via "end" */ };
+  });
+}
 
 const fileToBase64 = file => new Promise((resolve, reject) => {
   const r = new FileReader();

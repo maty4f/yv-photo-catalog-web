@@ -373,7 +373,8 @@
     <div class="row">
       <label>ספק API</label>
       <select id="api-provider">
-        <option value="anthropic" selected>⭐ Anthropic (Claude) בלבד (מומלץ — מהיר, מנוע יחיד)</option>
+        <option value="unified-server" selected>⭐ מנוע מאוחד בשרת (מומלץ — חינם, בלי מפתחות; תצלום ~15ש׳)</option>
+        <option value="anthropic">Anthropic (Claude) בלבד (מהיר, מנוע יחיד)</option>
         <option value="hybrid">Hybrid: Gemini קורא ויזואלית → Claude כותב ובודק (שתי קריאות עוקבות)</option>
         <option value="gemini">🆓 Google (Gemini) בלבד (חינם — free tier)</option>
         <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (חינם — דורש שרת מקומי)</option>
@@ -940,7 +941,7 @@ const state = {
   studios: [],                              // loaded + user-added
   studioById: {},                           // index
   identification: null,                     // last API response JSON
-  provider: localStorage.getItem('yv_api_provider') || 'anthropic',
+  provider: localStorage.getItem('yv_api_provider') || 'unified-server',
   apiKeys: {
     anthropic: localStorage.getItem('yv_api_key_anthropic') || localStorage.getItem('yv_api_key') || '',
     gemini:    localStorage.getItem('yv_api_key_gemini') || '',
@@ -1288,6 +1289,8 @@ async function identifyQueueItem(item) {
   const savedPhotos = { ...state.photos };
   state.photos = { front: item.front, back: item.back };
   try {
+    if (state.provider === 'unified-server')
+      throw new Error('המנוע המאוחד בשרת תומך כרגע בקטלוג תצלום בודד — לתור אוסף בחר ספק אחר בהגדרות API');
     if (state.provider === 'hybrid')     return await callHybrid();
     if (state.provider === 'cli-hybrid') return await callCliHybrid();
     if (state.provider === 'gemini')     return await callGemini();
@@ -1512,6 +1515,9 @@ function syncProviderRows() {
       row.style.display = row.dataset.provider === 'cli-hybrid' ? 'none' : 'grid';
     } else if (state.provider === 'cli-hybrid') {
       row.style.display = (row.dataset.provider === 'cli-hybrid' || row.dataset.provider === 'gemini') ? 'grid' : 'none';
+    } else if (state.provider === 'unified-server') {
+      // unified-server needs no keys — only the local-server URL row (for pages.dev)
+      row.style.display = row.querySelector('#local-server-url') ? 'grid' : 'none';
     } else {
       row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none';
     }
@@ -1670,7 +1676,8 @@ const identifyStatus = document.getElementById('identify-status');
 
 function refreshButtons() {
   const hasFront = !!state.photos.front;
-  const hasKey = state.provider === 'hybrid' ? hasHybridKeys()
+  const hasKey = state.provider === 'unified-server' ? true /* server-side engine — no browser key needed */
+    : state.provider === 'hybrid' ? hasHybridKeys()
     : state.provider === 'cli-hybrid' ? hasCliHybridReady()
     : !!getActiveApiKey();
   identifyBtn.disabled = !(hasFront && hasKey);
@@ -1682,7 +1689,9 @@ function refreshButtons() {
     else if (!state.localServerUrl) missingMsg = 'מצב CLI Hybrid דורש URL של שרת CLI מקומי';
   }
   identifyBtn.title = !hasFront ? 'יש להעלות חזית תצלום' : (!hasKey ? missingMsg : '');
-  identifyBtn.innerHTML = state.provider === 'hybrid'
+  identifyBtn.innerHTML = state.provider === 'unified-server'
+    ? '🔍 קטלג תצלום (מנוע מאוחד בשרת)'
+    : state.provider === 'hybrid'
     ? '🔍 זהה תצלום (Gemini→Claude)'
     : state.provider === 'cli-hybrid'
       ? '🔍 זהה תצלום (Gemini→Claude CLI)'
@@ -1704,6 +1713,22 @@ copyPromptBtn.addEventListener('click', async () => {
 
 // Auto: call API (Anthropic, Gemini, or Hybrid)
 identifyBtn.addEventListener('click', async () => {
+  // Unified server engine: upload → SSE progress → download produced catalog HTML.
+  // Runs fully server-side (Gemini + Claude CLI + validation) — no browser keys needed.
+  if (state.provider === 'unified-server') {
+    identifyBtn.disabled = true;
+    identifyBtn.innerHTML = '<span class="spinner"></span>מקטלג בשרת המאוחד…';
+    try {
+      await runUnifiedServer();
+    } catch (err) {
+      console.error(err);
+      showStatus('שגיאה: ' + err.message, 'err');
+    } finally {
+      identifyBtn.disabled = false;
+      refreshButtons();
+    }
+    return;
+  }
   identifyBtn.disabled = true;
   const providerLabel = state.provider === 'hybrid' ? 'Hybrid (Gemini→Claude)'
     : state.provider === 'cli-hybrid' ? 'Gemini→Claude CLI'
@@ -1734,6 +1759,60 @@ identifyBtn.addEventListener('click', async () => {
     refreshButtons();
   }
 });
+
+// =====================================================================
+//  UNIFIED SERVER ENGINE — upload to /api/items, stream SSE, link output.
+//  Uses the same local-server base URL as the CLI flows (state.localServerUrl);
+//  empty base ⇒ relative URLs (works when the page is served by the server).
+// =====================================================================
+async function runUnifiedServer() {
+  const f = state.photos.front;
+  if (!f) throw new Error('יש להעלות חזית תצלום');
+  const base = state.localServerUrl || '';
+  if (!base && location.hostname.endsWith('pages.dev'))
+    throw new Error('הזן URL של השרת המקומי (⚙ הגדרות API → שרת CLI מקומי)');
+
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('kind', 'photo');
+  fd.append('context', contextEl.value.trim());
+  showStatus('מעלה לשרת המאוחד…', 'info');
+
+  const res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
+  if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
+
+  showStatus('מנתח בשרת (Gemini → Claude → ולידציה)… תצלום ~15 שניות', 'info');
+  await new Promise((resolve, reject) => {
+    const es = new EventSource(base + '/api/jobs/' + j.jobId + '/events');
+    let serverErr = '';
+    es.onmessage = e => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.type === 'error') serverErr = ev.message || '';
+        else if (ev.text) {
+          const line = String(ev.text).trim().split('\n').pop().slice(0, 160);
+          if (line) showStatus('🛠 ' + line, 'info');
+        }
+      } catch (ignore) {}
+    };
+    es.addEventListener('end', e => {
+      es.close();
+      let fin = {};
+      try { fin = JSON.parse(e.data); } catch (ignore) {}
+      if (fin.status === 'done' && fin.outputName) {
+        const url = base + '/api/output/' + encodeURIComponent(fin.outputName);
+        identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+        identifyStatus.className = 'status-msg show ok';
+        resolve();
+      } else {
+        reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
+      }
+    });
+    es.onerror = () => { /* SSE auto-reconnects; terminal state arrives via "end" */ };
+  });
+}
 
 // Raw file → base64 (no re-encoding). Used for PDFs, which can't be canvas-scaled.
 const fileToBase64 = file => new Promise((resolve, reject) => {
