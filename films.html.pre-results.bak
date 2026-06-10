@@ -1156,7 +1156,7 @@ async function runUnifiedServer() {
         }
       } catch (ignore) {}
     };
-    es.addEventListener('end', async e => {
+    es.addEventListener('end', e => {
       es.close();
       let fin = {};
       try { fin = JSON.parse(e.data); } catch (ignore) {}
@@ -1164,7 +1164,6 @@ async function runUnifiedServer() {
         const url = base + '/api/output/' + encodeURIComponent(fin.outputName);
         identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
         identifyStatus.className = 'status-msg show ok';
-        await loadUnifiedResults(base, fin.outputName); // fills the editable results; fail-soft
         resolve();
       } else {
         reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
@@ -1172,82 +1171,6 @@ async function runUnifiedServer() {
     });
     es.onerror = () => { /* SSE auto-reconnects; terminal state arrives via "end" */ };
   });
-}
-
-// =====================================================================
-//  unified-server → editable results section.
-//  The engine writes a fields-JSON sidecar next to the output HTML (same
-//  name, .json extension). Map its template keys (TITLE_HE, SUMMARY_HE,
-//  TIMELINE_SCENES, …) onto the page's results model and reuse fillResults
-//  so the archivist can edit the fields before copying. Fail-soft: old
-//  outputs without a sidecar keep the download links only.
-// =====================================================================
-async function loadUnifiedResults(base, outputName) {
-  const jsonUrl = base + '/api/output/' + encodeURIComponent(outputName.replace(/\.html$/i, '.json'));
-  try {
-    const res = await fetch(jsonUrl);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const fields = await res.json();
-    const result = mapUnifiedFilmFields(fields);
-    state.identification = result;
-    fillResults(result);
-    document.getElementById('results').classList.add('show');
-    document.getElementById('no-results').style.display = 'none';
-    document.getElementById('download-bar').style.display = 'flex';
-    identifyStatus.innerHTML += ' · השדות נטענו למטה לעריכה ✎';
-    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (err) {
-    console.warn('unified-server: fields JSON unavailable —', err);
-    identifyStatus.innerHTML += ' · <span style="color:var(--muted)">(שדות לעריכה אינם זמינים לפלט זה)</span>';
-  }
-}
-
-// HTML field value → plain text: confidence spans / <h4> subheads stripped,
-// block ends become newlines. "— … —" placeholders are treated as empty.
-function unifiedFieldText(v) {
-  if (typeof v !== 'string') return '';
-  const div = document.createElement('div');
-  div.innerHTML = v.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|h4|li|tr)>/gi, '\n');
-  const t = div.textContent.replace(/\n{3,}/g, '\n\n').trim();
-  return /^—.+—$/.test(t) ? '' : t;
-}
-
-// TIMELINE_SCENES (HTML <div class="scene"> blocks per templates/film.html)
-// → the page's timeline rows {start, end, description_he/en, confidence}.
-function parseUnifiedScenes(html) {
-  if (typeof html !== 'string' || !html.trim()) return [];
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  return [...div.querySelectorAll('.scene')].map(s => {
-    const tc = (s.querySelector('.tc')?.textContent || '')
-      .split(/[↓\n]+/).map(t => t.trim()).filter(Boolean);
-    const cellText = sel => {
-      const c = s.querySelector(sel);
-      if (!c) return '';
-      const clone = c.cloneNode(true);
-      clone.querySelectorAll('.scene-num').forEach(n => n.remove());
-      return clone.textContent.replace(/\s+/g, ' ').trim();
-    };
-    // Worst inline V/H mark in the scene → row confidence.
-    const confidence = s.querySelector('.c-low') ? 'low' : s.querySelector('.c-mid') ? 'medium' : 'high';
-    return {
-      start: tc[0] || '00:00:00', end: tc[1] || tc[0] || '00:00:00',
-      description_he: cellText('.he-cell'), description_en: cellText('.en-cell'),
-      confidence,
-    };
-  });
-}
-
-// Sidecar template keys → the results-model shape fillResults expects.
-function mapUnifiedFilmFields(f) {
-  const txt = k => unifiedFieldText(f[k]);
-  return {
-    title_he: txt('TITLE_HE'), title_en: txt('TITLE_EN'),
-    summary_he: txt('SUMMARY_HE'), summary_en: txt('SUMMARY_EN'),
-    duration: txt('DURATION'),
-    archive_id: txt('ARCHIVE_ID'),
-    timeline: parseUnifiedScenes(f.TIMELINE_SCENES),
-  };
 }
 
 const fileToBase64 = file => new Promise((resolve, reject) => {

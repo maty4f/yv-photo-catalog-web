@@ -1797,7 +1797,7 @@ async function runUnifiedServer() {
         }
       } catch (ignore) {}
     };
-    es.addEventListener('end', async e => {
+    es.addEventListener('end', e => {
       es.close();
       let fin = {};
       try { fin = JSON.parse(e.data); } catch (ignore) {}
@@ -1805,7 +1805,6 @@ async function runUnifiedServer() {
         const url = base + '/api/output/' + encodeURIComponent(fin.outputName);
         identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
         identifyStatus.className = 'status-msg show ok';
-        await loadUnifiedResults(base, fin.outputName); // fills "תוצאות הזיהוי"; fail-soft
         resolve();
       } else {
         reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
@@ -1813,117 +1812,6 @@ async function runUnifiedServer() {
     });
     es.onerror = () => { /* SSE auto-reconnects; terminal state arrives via "end" */ };
   });
-}
-
-// =====================================================================
-//  unified-server → editable results ("תוצאות הזיהוי").
-//  The engine writes a fields-JSON sidecar next to the output HTML (same
-//  name, .json extension). Map its template keys (TITLE_HE, INFO_HE, …)
-//  onto the page's results model and reuse fillResultsForm so the
-//  archivist can edit the fields before copying to Sapir.
-//  Fail-soft: old outputs without a sidecar keep the download links only.
-// =====================================================================
-async function loadUnifiedResults(base, outputName) {
-  const jsonUrl = base + '/api/output/' + encodeURIComponent(outputName.replace(/\.html$/i, '.json'));
-  try {
-    const res = await fetch(jsonUrl);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const fields = await res.json();
-    const result = mapUnifiedPhotoFields(fields);
-    state.identification = result;
-    fillResultsForm(result);
-    document.getElementById('results').classList.add('show');
-    document.getElementById('no-results').style.display = 'none';
-    document.getElementById('download-bar').style.display = 'flex';
-    identifyStatus.innerHTML += ' · השדות נטענו למטה לעריכה ✎';
-    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (err) {
-    console.warn('unified-server: fields JSON unavailable —', err);
-    identifyStatus.innerHTML += ' · <span style="color:var(--muted)">(שדות לעריכה אינם זמינים לפלט זה)</span>';
-  }
-}
-
-// HTML field value → plain text: confidence spans / <h4> subheads stripped,
-// block ends become newlines. "— … —" placeholders are treated as empty.
-function unifiedFieldText(v) {
-  if (typeof v !== 'string') return '';
-  const div = document.createElement('div');
-  div.innerHTML = v.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|h4|li|tr)>/gi, '\n');
-  const t = div.textContent.replace(/\n{3,}/g, '\n\n').trim();
-  return /^—.+—$/.test(t) ? '' : t;
-}
-
-// Split INFO_HE / INFO_EN by their <h4> subheads into the page's info fields.
-function splitUnifiedInfo(html) {
-  const out = {};
-  if (typeof html !== 'string') return out;
-  const KEYS = [
-    [/ויזואלי|visual/i, 'visual'],
-    [/קונטקסט|context/i, 'context'],
-    [/איש|אנש|person/i, 'persons'],
-    [/חפצ|object/i, 'objects'],
-    [/כיתוב|inscription/i, 'inscriptions'],
-    [/סטודיו|studio/i, 'studio'],
-    [/ביוגרפ|biograph/i, 'bio'],
-    [/הער|note/i, 'notes'],
-  ];
-  const put = (key, body) => { if (body) out[key] = out[key] ? out[key] + '\n' + body : body; };
-  const parts = html.split(/<h4[^>]*>([\s\S]*?)<\/h4>/i);
-  put('visual', unifiedFieldText(parts[0])); // lead text (or whole field when no <h4>)
-  for (let i = 1; i < parts.length; i += 2) {
-    const hit = KEYS.find(([re]) => re.test(parts[i] || ''));
-    put(hit ? hit[1] : 'notes', unifiedFieldText(parts[i + 1] || ''));
-  }
-  return out;
-}
-
-// Sidecar template keys → the results-model shape fillResultsForm expects.
-function mapUnifiedPhotoFields(f) {
-  const txt = k => unifiedFieldText(f[k]);
-  const he = splitUnifiedInfo(f.INFO_HE), en = splitUnifiedInfo(f.INFO_EN);
-  const chips = s => {
-    const out = [], re = /<span class="chip">([^<]*)<\/span>/g;
-    let m; while ((m = re.exec(s || ''))) { const t = m[1].trim(); if (t) out.push(t); }
-    return out;
-  };
-  const rows = html => {
-    if (typeof html !== 'string' || html.indexOf('<tr') === -1) return [];
-    const div = document.createElement('div');
-    div.innerHTML = html;
-    return [...div.querySelectorAll('tr')]
-      .map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()))
-      .filter(c => c.length && c.some(Boolean));
-  };
-  const heRows = rows(f.ID_TABLE_HE), enRows = rows(f.ID_TABLE_EN);
-  return {
-    title_he: txt('TITLE_HE'), title_en: txt('TITLE_EN'),
-    places_en: txt('PLACES_EN'),
-    material_type: txt('MATERIAL_TYPE'), color: txt('COLOR'),
-    rights_owner: txt('RIGHTS_OWNER'), classification: txt('CLASSIFICATION'),
-    negative: txt('NEGATIVE'), photographer: txt('PHOTOGRAPHER'),
-    creation_date: txt('CREATION_DATE'), recon_date: txt('RECON_DATE'),
-    photo_size: txt('PHOTO_SIZE'), show_internet: txt('SHOW_INTERNET'),
-    show_intranet: txt('SHOW_INTRANET'), copies: txt('COPIES'),
-    donor_he: txt('DONOR_HE'), donor_en: txt('DONOR_EN'),
-    source_he: txt('SOURCE_HE'), source_en: txt('SOURCE_EN'),
-    info: {
-      visual_he: he.visual || '', visual_en: en.visual || '',
-      context_he: he.context || '', context_en: en.context || '',
-      persons_he: he.persons || '', persons_en: en.persons || '',
-      objects_he: he.objects || '', objects_en: en.objects || '',
-      inscriptions_he: he.inscriptions || '', inscriptions_en: en.inscriptions || '',
-      studio_he: he.studio || '', studio_en: en.studio || '',
-      biography_he: he.bio || '', biography_en: en.bio || '',
-      notes_he: he.notes || txt('ADMIN_NOTES'), notes_en: en.notes || '',
-    },
-    id_table: heRows.map((c, i) => ({
-      num: c[0] || String(i + 1), name: c[1] || '',
-      position_he: c.slice(2).join(' · '),
-      position_en: (enRows[i] || []).slice(2).join(' · '),
-    })),
-    subjects_he: chips(f.SUBJECTS_HE_CHIPS),
-    subjects_en: chips(f.SUBJECTS_EN_CHIPS),
-  };
 }
 
 // Raw file → base64 (no re-encoding). Used for PDFs, which can't be canvas-scaled.
