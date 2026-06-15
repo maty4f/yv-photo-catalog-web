@@ -335,12 +335,12 @@
 </head>
 <body>
 <!-- Build marker lives next to the H1 title; console line for quick DevTools check. -->
-<script>console.log('%c[yv photos] build 2026-06-15 · verso#-anywhere (front+back pairing)', 'color:#6b5b3e;font-weight:bold');</script>
+<script>console.log('%c[yv photos] build 2026-06-15b · גב חוצה-העלאות-anywhere (front+back pairing)', 'color:#6b5b3e;font-weight:bold');</script>
 <div class="wrap">
 
   <header class="doc">
     <div>
-      <h1>📷 קטלוג תצלומים — יד ושם <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small> <span id="yv-build" title="גרסת קוד טעונה — אם זה לא העדכני, נקה cache + service worker" style="font-size:11px; color:#8a7758; background:#f3eee2; padding:1px 8px; border-radius:8px; font-family:monospace; font-weight:400; vertical-align:middle;">build 2026-06-15 · verso#</span></h1>
+      <h1>📷 קטלוג תצלומים — יד ושם <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small> <span id="yv-build" title="גרסת קוד טעונה — אם זה לא העדכני, נקה cache + service worker" style="font-size:11px; color:#8a7758; background:#f3eee2; padding:1px 8px; border-radius:8px; font-family:monospace; font-weight:400; vertical-align:middle;">build 2026-06-15b · גב חוצה-העלאות</span></h1>
       <div class="sub">העלאה, פיענוח, זיהוי אוטומטי וייצוא — הכל בדפדפן</div>
     </div>
     <div class="actions-top">
@@ -995,7 +995,7 @@ document.querySelectorAll('.file-input').forEach(input => {
 // A front + its back selected/dropped together → fill both slots, so the back
 // (עורף) is analyzed together with the front. Reuses the batch pairing.
 function loadFrontBackPair(files) {
-  const pairs = pairFilesByHash(files);
+  const { pairs } = pairFilesByHash(files);
   const p = pairs[0] || { front: files[0], back: null };
   loadPhoto('front', p.front);
   if (p.back) loadPhoto('back', p.back);
@@ -1072,29 +1072,37 @@ const QUEUE_STATUSES = {
 //                     5030_001.jpg ↔ 5030_001#.jpg
 // Files NOT containing # are treated as fronts
 // Files WITH # at end-of-basename are backs that match a front of same basename
+// Normalize separators so "13090_90", "13090-90", "13090 90" all match.
+const PAIR_NORM = s => s.replace(/[ _-]+/g, '_').replace(/^_+|_+$/g, '');
+const PAIR_WORD_RE = /[ _-]?(?:עורף|גב|verso|back)$/i;
+// Classify one file → { key, isBack }. A back (verso/"עורף") is marked by '#'
+// ANYWHERE in the name, or a trailing עורף/גב/verso/back word. The key is the
+// front's basename (marker removed) so a back pairs to its front and is
+// cataloged TOGETHER with it, not as a separate photo.
+function fileKind(file) {
+  const base = file.name.replace(/\.[^.]+$/, '').trim();
+  if (base.includes('#')) return { key: PAIR_NORM(base.replace(/#/g, '')), isBack: true };
+  if (PAIR_WORD_RE.test(base)) return { key: PAIR_NORM(base.replace(PAIR_WORD_RE, '')), isBack: true };
+  return { key: PAIR_NORM(base), isBack: false };
+}
+const frontKeyOf = file => fileKind(file).key;
+
+// Returns { pairs:[{front,back,key}], orphanBacks:{key→file} }. orphanBacks are
+// backs with no matching front in THIS batch — used for cross-upload pairing.
 function pairFilesByHash(files) {
-  const fronts = [];
-  const backs = {};  // normalized front basename → back file
-  // The verso ("עורף") is marked by a '#' ANYWHERE in the filename (or a
-  // trailing עורף/גב/verso/back word). Its front is the same name with the
-  // marker removed — so the back pairs to its front and is cataloged TOGETHER
-  // (not as a separate photo). Separators (space/_/-) are normalized so
-  // "13090_90", "13090-90", "13090 90" all match.
-  const norm = s => s.replace(/[ _-]+/g, '_').replace(/^_+|_+$/g, '');
-  const WORD_RE = /[ _-]?(?:עורף|גב|verso|back)$/i;
+  const fronts = [], backs = {};
   for (const f of files) {
-    const base = f.name.replace(/\.[^.]+$/, '').trim();   // strip extension
-    let key = null;
-    if (base.includes('#')) key = norm(base.replace(/#/g, ''));        // '#' anywhere
-    else if (WORD_RE.test(base)) key = norm(base.replace(WORD_RE, '')); // trailing word
-    if (key !== null) backs[key] = f;
-    else fronts.push({ file: f, key: norm(base) });
+    const { key, isBack } = fileKind(f);
+    if (isBack) backs[key] = f; else fronts.push({ file: f, key });
   }
-  // Build queue items: each front, paired with its matching back if one exists.
-  return fronts.map(({ file, key }) => ({
-    front: file,
-    back: backs[key] || null,
-  }));
+  const used = new Set();
+  const pairs = fronts.map(({ file, key }) => {
+    if (backs[key]) used.add(key);
+    return { front: file, key, back: backs[key] || null };
+  });
+  const orphanBacks = {};
+  for (const k in backs) if (!used.has(k)) orphanBacks[k] = backs[k];
+  return { pairs, orphanBacks };
 }
 
 async function fileToDataUrl(file) {
@@ -1366,7 +1374,31 @@ function sortPairsByPhotoNumber(pairs) {
 
 async function addFilesToQueue(files) {
   if (!files.length) return;
-  const pairs = sortPairsByPhotoNumber(pairFilesByHash(files));
+  const { pairs, orphanBacks } = pairFilesByHash(files);
+  // Cross-upload pairing: a front and its back may arrive in SEPARATE uploads.
+  // Carry unmatched backs in state.orphan_backs and reunite them with fronts
+  // whenever either side shows up — so the back never becomes a separate photo.
+  const allOrphans = { ...(state.orphan_backs || {}), ...orphanBacks };
+  // (1) new fronts still missing a back → take from carried-over orphan backs
+  for (const p of pairs) {
+    if (!p.back && allOrphans[p.key]) { p.back = allOrphans[p.key]; delete allOrphans[p.key]; }
+  }
+  // (2) leftover orphan backs → attach to a back-less item ALREADY in the queue
+  let attachedToExisting = false;
+  for (const k of Object.keys(allOrphans)) {
+    const target = state.photo_queue.find(it => !it.back && frontKeyOf(it.front) === k);
+    if (target) { target.back = allOrphans[k]; delete allOrphans[k]; attachedToExisting = true; }
+  }
+  state.orphan_backs = allOrphans;  // keep still-unmatched backs for future fronts
+  if (attachedToExisting) renderQueuePanel();  // show the # badge on updated items
+  const sortedPairs = sortPairsByPhotoNumber(pairs);
+  // back-compat: the rest of this function expects `pairs`
+  const _pairsForQueue = sortedPairs;
+  return addPairsToQueue(_pairsForQueue);
+}
+
+// Build queue items from already-paired {front,back} pairs (post cross-upload).
+async function addPairsToQueue(pairs) {
   if (state.photo_queue.length + pairs.length > BATCH_MAX) {
     const can = BATCH_MAX - state.photo_queue.length;
     if (can <= 0) {
