@@ -672,7 +672,7 @@
             </span>
             <span class="filename" style="display:none"></span>
           </div>
-          <input type="file" class="file-input" data-side="front" accept="image/*" hidden>
+          <input type="file" class="file-input" data-side="front" accept="image/*" multiple hidden>
         </div>
 
         <div class="photo-slot" id="slot-back">
@@ -974,16 +974,30 @@ document.querySelectorAll('.drop').forEach(drop => {
   ['dragleave', 'drop'].forEach(evt =>
     drop.addEventListener(evt, e => { e.preventDefault(); drop.classList.remove('dragover'); }));
   drop.addEventListener('drop', e => {
-    const f = e.dataTransfer.files?.[0];
-    if (f && f.type.startsWith('image/')) loadPhoto(side, f);
+    const files = [...(e.dataTransfer.files || [])].filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    // Front + its back (#/עורף) dropped together on the front slot → fill both.
+    if (side === 'front' && files.length > 1) { loadFrontBackPair(files); return; }
+    loadPhoto(side, files[0]);
   });
 });
 document.querySelectorAll('.file-input').forEach(input => {
   input.addEventListener('change', () => {
-    const f = input.files?.[0];
-    if (f) loadPhoto(input.dataset.side, f);
+    const files = [...(input.files || [])];
+    if (!files.length) return;
+    if (input.dataset.side === 'front' && files.length > 1) { loadFrontBackPair(files); return; }
+    loadPhoto(input.dataset.side, files[0]);
   });
 });
+
+// A front + its back selected/dropped together → fill both slots, so the back
+// (עורף) is analyzed together with the front. Reuses the batch pairing.
+function loadFrontBackPair(files) {
+  const pairs = pairFilesByHash(files);
+  const p = pairs[0] || { front: files[0], back: null };
+  loadPhoto('front', p.front);
+  if (p.back) loadPhoto('back', p.back);
+}
 document.querySelectorAll('.delete-btn').forEach(btn =>
   btn.addEventListener('click', e => {
     e.stopPropagation();
@@ -1059,10 +1073,12 @@ const QUEUE_STATUSES = {
 function pairFilesByHash(files) {
   const fronts = [];
   const backs = {};  // front basename → back file
-  // A back (verso) is any scan whose basename ends in '#', optionally preceded
-  // by a space, underscore or hyphen: name#, "name #", name_#, name-#. The key
-  // is the front's basename (the marker + separator stripped) so it pairs.
-  const BACK_RE = /^(.*?)[ _-]?#$/;
+  // A back (verso/עורף) is any scan whose basename ends in a back-marker —
+  // '#', 'עורף', 'גב', 'verso' or 'back' — optionally preceded by a space,
+  // underscore or hyphen: name#, "name עורף", name_עורף, name-verso, etc.
+  // Everything before the marker is the front basename, so the back pairs to
+  // its front and is cataloged TOGETHER with it (not as a separate photo).
+  const BACK_RE = /^(.*?)[ _-]?(?:#|עורף|גב|verso|back)$/i;
   for (const f of files) {
     const base = f.name.replace(/\.[^.]+$/, '').trim();   // strip extension
     const m = base.match(BACK_RE);
