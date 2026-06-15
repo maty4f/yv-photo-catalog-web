@@ -1530,7 +1530,7 @@ async function identifyQueueItem(item) {
       // Batch via the server engine: the collection profile + this photo's
       // intake row ride along in the `context` field (the engine reads it as
       // the .context.txt sidecar). Returns the same shape as the direct paths.
-      const { base, outputName } = await runUnifiedJob(item.front, collectionContextFor(item));
+      const { base, outputName } = await runUnifiedJob(item.front, collectionContextFor(item), null, item.back);
       const jsonUrl = base + '/api/output/' + encodeURIComponent(outputName.replace(/\.html$/i, '.json'));
       const fres = await fetch(jsonUrl);
       if (!fres.ok) throw new Error('סיכום שדות לא זמין מהשרת (HTTP ' + fres.status + ')');
@@ -2023,7 +2023,7 @@ async function resolveUnifiedBase() {
 // Core: POST one file to the unified server and wait for the job to finish.
 // Returns { base, outputName }. No field-fetch, no UI side-effects — callers
 // (single-photo and the batch queue) handle the result their own way.
-async function runUnifiedJob(file, contextText, onStatus) {
+async function runUnifiedJob(file, contextText, onStatus, backFile) {
   if (!file) throw new Error('יש להעלות חזית תצלום');
   const base = await resolveUnifiedBase();
   if (base === null)
@@ -2033,7 +2033,8 @@ async function runUnifiedJob(file, contextText, onStatus) {
   fd.append('file', file);
   fd.append('kind', 'photo');
   fd.append('context', (contextText || '').trim());
-  if (onStatus) onStatus('מעלה לשרת המאוחד…');
+  if (backFile) fd.append('back', backFile);   // verso — read alongside the front
+  if (onStatus) onStatus('מעלה לשרת המאוחד…' + (backFile ? ' (חזית + גב)' : ''));
 
   const res = await fetch(base + '/api/items', { method: 'POST', body: fd });
   const j = await res.json().catch(() => ({}));
@@ -2067,7 +2068,7 @@ async function runUnifiedJob(file, contextText, onStatus) {
 
 // Single-photo path: run the job, then show download links + load editable fields.
 async function runUnifiedServer() {
-  const { base, outputName } = await runUnifiedJob(state.photos.front, contextEl.value.trim(), m => showStatus(m, 'info'));
+  const { base, outputName } = await runUnifiedJob(state.photos.front, contextEl.value.trim(), m => showStatus(m, 'info'), state.photos.back);
   const url = base + '/api/output/' + encodeURIComponent(outputName);
   identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
   identifyStatus.className = 'status-msg show ok';
@@ -2470,7 +2471,8 @@ ${itemBlock}
 ## שמות מקומות — אנגלית בלבד, גבולות 01/09/1939
 - Brussels, Belgium (לא Brussel Belgien)
 - Linz ≠ Lienz
-- אם רק מדינה ידועה: \`Poland\`, \`France\`
+- אם רק המדינה ידועה בוודאות (ראיה/קונטקסט): \`Poland\`, \`France\`
+- 🛑 **אם אין מקום מזוהה כלל** → השאר את שדה המקומות (PLACES_EN) **ריק לחלוטין** (string ריק). אל תכתוב "—", "מיקום לא ידוע", "unknown", ואל תנחש מדינה/עיר ללא ראיה. שדה ריק עדיף על ניחוש.
 
 ## ארץ ישראל — חוק חובה לכותר האנגלית
 - **לפני 14/05/1948**: \`Mandatory Palestine\` (ולא Israel, ולא Palestine, ולא British Mandate)
@@ -2652,7 +2654,16 @@ ${ctx ? '## מידע מוקדם\n\n' + ctx + '\n\n' : ''}## דרישות
 // =====================================================================
 //  RESULTS FORM — fill from JSON
 // =====================================================================
+// An unidentified place/date is shown EMPTY — never a placeholder ('לא ידוע' /
+// 'unknown' / '—') or a guessed country. (Engine output is already blanked
+// server-side; this enforces it for the gemini/anthropic direct paths too.)
+const UNKNOWN_FIELD_RE = /^\s*(—|-+|לא ידוע|מיקום לא ידוע|תאריך לא ידוע|unknown|undated|n\/?a|none|אין)\s*$/i;
+function blankUnknown(v) { return (typeof v === 'string' && UNKNOWN_FIELD_RE.test(v)) ? '' : v; }
+
 function fillResultsForm(d) {
+  d.places_en = blankUnknown(d.places_en);
+  d.creation_date = blankUnknown(d.creation_date);
+  d.recon_date = blankUnknown(d.recon_date);
   setVal('r-title-he', d.title_he);
   setVal('r-title-en', d.title_en);
   setVal('r-places', d.places_en);
