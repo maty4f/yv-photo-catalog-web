@@ -247,11 +247,9 @@
       <label>ספק API</label>
       <select id="api-provider">
         <option value="claude-cli" selected>⭐ Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini)</option>
-        <option value="hybrid">Hybrid: Gemini OCR + Claude קטלוג</option>
         <option value="anthropic">Anthropic (Claude API) בלבד (קורא ישירות, בתשלום)</option>
         <option value="gemini">🆓 Google (Gemini) בלבד (חינם)</option>
         <option value="transkribus">🇪🇺 Transkribus + Claude (כתב יד אירופאי — Sütterlin, Kurrent, יידיש)</option>
-        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי</option>
       </select>
     </div>
     <div class="row provider-row" data-provider="claude-cli">
@@ -272,13 +270,6 @@
       <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
         Claude קורא את <b>המסמך עצמו</b> (PDF/סריקה) דרך <code>claude</code> CLI שרץ במחשב שלך — ומפיק את שדות ספיר בפעולה אחת. <b>בלי Gemini בכלל</b>.<br>
         <b>דורש:</b> שרת מקומי פעיל ב-URL למעלה. בהרצה מקומית מ-localhost הכתובת מוגדרת אוטומטית. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
-      </div>
-    </div>
-    <div class="row provider-row" data-provider="cli-hybrid">
-      <label>איך זה עובד</label>
-      <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        Gemini עושה OCR ראשוני (API חינמי) → Claude בונה את שדות ספיר ומאמת היסטורית, אבל דרך <code>claude</code> CLI שרץ במחשב שלך (במקום API בתשלום).<br>
-        <b>דורש:</b> מפתח Gemini (למטה) + שרת מקומי פעיל ב-URL למעלה. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
       </div>
     </div>
     <div class="row">
@@ -734,7 +725,7 @@
 <script type="module">
 const state = {
   document: null, docMeta: null, identification: null,
-  provider: localStorage.getItem('yv_api_provider') || 'claude-cli',
+  provider: (['claude-cli','anthropic','gemini','transkribus'].includes(localStorage.getItem('yv_api_provider')) ? localStorage.getItem('yv_api_provider') : 'claude-cli'),
   apiKeys: {
     anthropic: localStorage.getItem('yv_api_key_anthropic') || '',
     gemini: localStorage.getItem('yv_api_key_gemini') || '',
@@ -843,7 +834,7 @@ apiKeyAnthropic.value = state.apiKeys.anthropic;
 apiKeyGemini.value = state.apiKeys.gemini;
 providerSel.value = state.provider;
 
-// CLI-Hybrid: local server URL (used when state.provider === 'cli-hybrid')
+// Local server URL (used by claude-cli and as proxy for gemini/docling)
 state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
 state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
 // Auto-config: when served from the local machine, talk to this same origin.
@@ -1017,8 +1008,6 @@ function syncProviderRows() {
   // Which setting-rows each provider needs visible (by data-provider token).
   const rowsFor = {
     'claude-cli': ['claude-cli'],                  // local server URL only — no API key
-    'cli-hybrid': ['claude-cli', 'cli-hybrid', 'gemini'], // server URL + how-it-works + Gemini key
-    'hybrid':     ['anthropic', 'gemini'],
     'transkribus':['transkribus', 'anthropic'],
     'gemini':     ['gemini'],
     'anthropic':  ['anthropic'],
@@ -1028,12 +1017,6 @@ function syncProviderRows() {
   });
 }
 function getActiveApiKey() {
-  if (state.provider === 'hybrid') {
-    return state.apiKeys.anthropic && state.apiKeys.gemini ? state.apiKeys.gemini : '';
-  }
-  if (state.provider === 'cli-hybrid') {
-    return state.apiKeys.gemini && state.localServerUrl ? state.apiKeys.gemini : '';
-  }
   if (state.provider === 'transkribus') {
     // Transkribus needs: TK credentials (or 'manual' model) AND Anthropic key
     const tk = state.tk_credentials;
@@ -1041,12 +1024,6 @@ function getActiveApiKey() {
     return hasTk && state.apiKeys.anthropic ? state.apiKeys.anthropic : '';
   }
   return state.apiKeys[state.provider] || '';
-}
-function hasHybridKeys() {
-  return !!state.apiKeys.anthropic && !!state.apiKeys.gemini;
-}
-function hasCliHybridReady() {
-  return !!state.apiKeys.gemini && !!state.localServerUrl;
 }
 function hasClaudeCliReady() {
   return !!state.localServerUrl;
@@ -1298,8 +1275,6 @@ async function identifyDocQueueItem(item) {
   state.docMeta = { mime: item.file.type, size_bytes: item.file.size, page_count: 1 };
   try {
     if (state.provider === 'claude-cli') return await callClaudeCliDirect();
-    if (state.provider === 'hybrid') return await callHybrid();
-    if (state.provider === 'cli-hybrid') return await callCliHybrid();
     if (state.provider === 'transkribus') return await callTranskribus();
     if (state.provider === 'gemini') return await callGemini();
     return await callAnthropic();
@@ -1796,44 +1771,7 @@ function promptForManualOCR(reason) {
   });
 }
 
-// =====================================================================
-//  HYBRID: Gemini OCR → Claude structured catalog
-// =====================================================================
-async function callHybrid() {
-  if (!hasHybridKeys()) {
-    throw new Error('מצב Hybrid דורש מפתח Anthropic וגם מפתח Gemini.');
-  }
-
-  const sizeMB = state.document ? state.document.size / 1024 / 1024 : 0;
-  const useDoclingForThisFile = state.useDocling && state.localServerUrl
-    && state.document?.type === 'application/pdf'
-    && sizeMB > DOCLING_PDF_THRESHOLD_MB;
-
-  let ocrResult;
-  if (useDoclingForThisFile) {
-    // === STEP 1 (Docling) === bypass Gemini Files API, use local Docling
-    showStatus(`🔬 שלב 1/2 · קובץ גדול (${sizeMB.toFixed(0)}MB) — שולח ל-Docling במחשב המקומי…`, 'info');
-    const dResult = await doclingExtract(state.document);
-    showStatus(`Docling חילץ ${dResult.num_chars.toLocaleString()} תווים מ-${dResult.num_pages} עמודים (${dResult.elapsed_sec}s).`, 'info');
-    // Truncate if extremely large (cap at ~200K chars = ~50K tokens to leave room for prompt)
-    ocrResult = dResult.markdown || '';
-    if (ocrResult.length > 200000) {
-      const head = ocrResult.slice(0, 100000);
-      const tail = ocrResult.slice(-80000);
-      ocrResult = head + '\n\n[...טקסט מהאמצע הושמט בגלל אורך — ' + (dResult.num_chars - 180000).toLocaleString() + ' תווים...]\n\n' + tail;
-    }
-  } else {
-    // === STEP 1 (Gemini) === default path — Gemini OCR
-    showStatus('שלב 1/2 · Gemini מבצע OCR על המסמך…', 'info');
-    ocrResult = await geminiOCROnly();
-  }
-
-  // STEP 2: Claude takes the OCR text + cataloging rules → structured JSON
-  showStatus('שלב 2/2 · Claude מבנה את הקטלוג לפי חוקי ספיר…', 'info');
-  return await claudeStructureFromOCR(ocrResult);
-}
-
-// CLI-Hybrid: same as callHybrid but Step 2 routes through user's local claude CLI
+// ── Claude CLI direct read ──────────────────────────────────────────────
 // ── Claude CLI direct read ──────────────────────────────────────────────
 // Claude reads the document image/PDF DIRECTLY via the local server's
 // /api/ask-async endpoint (the server writes the bytes to a temp file and has
@@ -1911,69 +1849,6 @@ async function callClaudeCliDirect() {
   const prompt = buildDocPrompt() +
     '\n\n🛑 הקובץ המצורף הוא סריקה אמיתית של מסמך היסטורי מארכיון יד ושם — קרא אותו במלואו. אם זה PDF רב-עמודים, קרא את כל העמודים (בטווחים אם צריך, למשל pages:"1-10") ואל תעצור אחרי העמוד הראשון. הפק את רשומת ספיר לפי הסכימה.\n\n⚠ החזר JSON תקין בלבד ללא code-fence ובלי טקסט הקדמה.';
   let text = await runClaudeJobDocs(prompt, images);
-  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-  return parseJson(text, 'Claude CLI');
-}
-
-// (via the local-server tunnel) instead of api.anthropic.com — free, uses Claude Max.
-async function callCliHybrid() {
-  if (!hasCliHybridReady()) {
-    throw new Error('מצב CLI Hybrid דורש מפתח Gemini + URL של שרת CLI מקומי.');
-  }
-
-  const sizeMB = state.document ? state.document.size / 1024 / 1024 : 0;
-  const useDoclingForThisFile = state.useDocling && state.localServerUrl
-    && state.document?.type === 'application/pdf'
-    && sizeMB > DOCLING_PDF_THRESHOLD_MB;
-
-  let ocrResult;
-  if (useDoclingForThisFile) {
-    showStatus(`🔬 שלב 1/2 · קובץ גדול (${sizeMB.toFixed(0)}MB) — שולח ל-Docling במחשב המקומי…`, 'info');
-    const dResult = await doclingExtract(state.document);
-    showStatus(`Docling חילץ ${dResult.num_chars.toLocaleString()} תווים מ-${dResult.num_pages} עמודים (${dResult.elapsed_sec}s).`, 'info');
-    ocrResult = dResult.markdown || '';
-    if (ocrResult.length > 200000) {
-      const head = ocrResult.slice(0, 100000);
-      const tail = ocrResult.slice(-80000);
-      ocrResult = head + '\n\n[...טקסט מהאמצע הושמט בגלל אורך — ' + (dResult.num_chars - 180000).toLocaleString() + ' תווים...]\n\n' + tail;
-    }
-  } else {
-    showStatus('שלב 1/2 · Gemini מבצע OCR על המסמך…', 'info');
-    ocrResult = await geminiOCROnly();
-  }
-  showStatus('שלב 2/2 · Claude CLI מקומי מבנה את הקטלוג…', 'info');
-  return await claudeStructureFromOCR_viaCLI(ocrResult);
-}
-
-async function claudeStructureFromOCR_viaCLI(ocrText) {
-  const rulesPrompt = buildDocPrompt();
-  const ctxText = contextEl.value.trim();
-  const prompt = `אני שולח לך **OCR שכבר בוצע ע"י Gemini** של מסמך היסטורי מארכיון יד ושם. תפקידך: לקחת את הטקסט הזה + מידע מוקדם + חוקי הקטלוג של ספיר → להפיק JSON מובנה לפי הסכימה.
-
-⚠ חשוב: אינך רואה את המסמך עצמו, רק את ה-OCR. אל תוסיף מידע מעבר למה שמופיע ב-OCR. אם Gemini סימן \`[?]\` או \`[לא קריא]\` — שמור על זה. אסור לנחש או להמציא.
-
-## OCR של Gemini
-
-\`\`\`
-${ocrText}
-\`\`\`
-
-## מידע מוקדם
-
-${ctxText || '(אין)'}
-
-## חוקי קטלוג + סכימת JSON
-
-${rulesPrompt}
-
-⚠ הערה: בשדה \`original_text\` השתמש בטקסט שלמעלה כפי שהוא — אל תשנה, אל תתקן, אל תוסיף.
-
-החזר JSON תקין בלבד (ללא קוד-בלוק markdown, ללא טקסט הקדמה).`;
-
-  // Text-only structuring — route through the async /api/ask-async job runner so
-  // the call survives the Cloudflare quick-tunnel ~100s limit.
-  let text = (await runClaudeJobDocs(prompt, [])).trim();
-  // claude CLI may wrap JSON in ```json ... ``` — strip if present
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
   return parseJson(text, 'Claude CLI');
 }
@@ -2293,15 +2168,6 @@ function refreshButtons() {
   if (state.provider === 'claude-cli') {
     hasKey = hasClaudeCliReady();
     if (!hasKey) missingMsg = 'מצב Claude CLI דורש URL של שרת מקומי (בהרצה מ-localhost מוגדר אוטומטית)';
-  } else if (state.provider === 'hybrid') {
-    hasKey = hasHybridKeys();
-    if (!hasKey) missingMsg = 'מצב Hybrid דורש שני מפתחות: Anthropic וגם Gemini';
-  } else if (state.provider === 'cli-hybrid') {
-    hasKey = hasCliHybridReady();
-    if (!hasKey) {
-      if (!state.apiKeys.gemini) missingMsg = 'מצב CLI Hybrid דורש מפתח Gemini';
-      else if (!state.localServerUrl) missingMsg = 'מצב CLI Hybrid דורש URL של שרת CLI מקומי';
-    }
   } else if (state.provider === 'transkribus') {
     hasKey = hasTranskribusReady();
     const tk = state.tk_credentials;
@@ -2318,24 +2184,18 @@ function refreshButtons() {
   identifyBtn.title = !hasDoc ? 'יש להעלות מסמך' : (!hasKey ? missingMsg : '');
   identifyBtn.innerHTML = state.provider === 'claude-cli'
     ? '🔍 פענח (Claude קורא ישירות)'
-    : state.provider === 'hybrid'
-    ? '🔍 פענח (Gemini→Claude)'
-    : state.provider === 'cli-hybrid'
-      ? '🔍 פענח (Gemini→Claude CLI)'
-      : state.provider === 'transkribus'
-        ? (state.tk_credentials.model === 'manual' ? '🔍 פענח (Transkribus ידני→Claude)' : '🔍 פענח (Transkribus→Claude)')
-        : state.provider === 'gemini' ? '🔍 פענח (Gemini)' : '🔍 פענח (Claude)';
+    : state.provider === 'transkribus'
+      ? (state.tk_credentials.model === 'manual' ? '🔍 פענח (Transkribus ידני→Claude)' : '🔍 פענח (Transkribus→Claude)')
+      : state.provider === 'gemini' ? '🔍 פענח (Gemini)' : '🔍 פענח (Claude)';
 }
 
 identifyBtn.addEventListener('click', async () => {
   identifyBtn.disabled = true;
-  const providerLabel = state.provider === 'claude-cli' ? 'Claude (קריאה ישירה)' : state.provider === 'hybrid' ? 'Gemini+Claude' : state.provider === 'gemini' ? 'Gemini' : 'Claude';
+  const providerLabel = state.provider === 'claude-cli' ? 'Claude (קריאה ישירה)' : state.provider === 'gemini' ? 'Gemini' : 'Claude';
   identifyBtn.innerHTML = '<span class="spinner"></span>מפענח דרך ' + providerLabel + '…';
   showStatus('שולח את המסמך ל-' + providerLabel + ' לפיענוח (30-90 שניות)…', 'info');
   try {
     const result = state.provider === 'claude-cli' ? await callClaudeCliDirect()
-      : state.provider === 'hybrid' ? await callHybrid()
-      : state.provider === 'cli-hybrid' ? await callCliHybrid()
       : state.provider === 'transkribus' ? await callTranskribus()
       : state.provider === 'gemini' ? await callGemini() : await callAnthropic();
     state.identification = result;

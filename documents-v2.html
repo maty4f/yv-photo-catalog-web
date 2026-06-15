@@ -116,8 +116,6 @@
       <select id="mode">
         <option value="unified-server" selected>⭐ מנוע מאוחד בשרת (מומלץ — חינם, בלי מפתחות; מסמך — כמה דקות)</option>
         <option value="claude-cli">Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini)</option>
-        <option value="hybrid">Hybrid: Gemini + Claude API</option>
-        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini + Claude CLI מקומי</option>
         <option value="gemini-only">Gemini בלבד</option>
       </select>
     </div>
@@ -297,8 +295,9 @@
 // =====================================================================
 //  State
 // =====================================================================
+const VALID_MODES = ['unified-server', 'claude-cli', 'gemini-only'];
 const state = {
-  mode: localStorage.getItem('yv_v2_mode') || 'unified-server',
+  mode: VALID_MODES.includes(localStorage.getItem('yv_v2_mode')) ? localStorage.getItem('yv_v2_mode') : 'unified-server',
   apiKey: localStorage.getItem('yv_v2_api_key') || '',
   apiKeyAnthropic: localStorage.getItem('yv_v2_api_key_anthropic') || '',
   model: localStorage.getItem('yv_v2_model') || 'gemini-3.5-flash',
@@ -343,10 +342,9 @@ modelSel.value = state.model;
 claudeModelSel.value = state.claudeModel;
 
 function syncModeUI() {
-  // Anthropic API key only needed for cloud Hybrid
-  rowAnthropic.style.display = state.mode === 'hybrid' ? 'grid' : 'none';
-  // Claude model selector irrelevant for CLI (server picks default model)
-  rowClaudeModel.style.display = state.mode === 'hybrid' ? 'grid' : 'none';
+  // Anthropic key and Claude model rows were only for the removed hybrid mode — always hidden.
+  rowAnthropic.style.display = 'none';
+  rowClaudeModel.style.display = 'none';
 }
 syncModeUI();
 
@@ -513,8 +511,6 @@ function refresh() {
     hasKey = !!state.localServerUrl;
   } else {
     hasKey = !!state.apiKey;
-    if (state.mode === 'hybrid' && !state.apiKeyAnthropic) hasKey = false;
-    if (state.mode === 'cli-hybrid' && !state.localServerUrl) hasKey = false;
   }
   analyzeBtn.disabled = !(state.pdf && hasKey);
   let missing = '';
@@ -522,18 +518,12 @@ function refresh() {
   else if (state.mode === 'unified-server' && !hasKey) missing = 'מצב מנוע מאוחד דורש URL של השרת המקומי (שדה "שרת Docling" למעלה)';
   else if (state.mode === 'claude-cli' && !state.localServerUrl) missing = 'מצב Claude CLI דורש URL של שרת מקומי (בהרצה מ-localhost מוגדר אוטומטית)';
   else if (state.mode !== 'claude-cli' && !state.apiKey) missing = 'יש להזין מפתח Gemini';
-  else if (state.mode === 'hybrid' && !state.apiKeyAnthropic) missing = 'מצב Hybrid דורש גם מפתח Anthropic';
-  else if (state.mode === 'cli-hybrid' && !state.localServerUrl) missing = 'מצב CLI Hybrid דורש URL של שרת מקומי (למטה)';
   analyzeBtn.title = missing;
   analyzeBtn.textContent = state.mode === 'unified-server'
     ? '🔍 הפק רישום (מנוע מאוחד בשרת)'
     : state.mode === 'claude-cli'
     ? '🔍 הפק רישום (Claude קורא ישירות)'
-    : state.mode === 'hybrid'
-    ? '🔍 הפק רישום (Gemini→Claude API)'
-    : state.mode === 'cli-hybrid'
-      ? '🔍 הפק רישום (Gemini→Claude CLI)'
-      : '🔍 הפק רישום ארכיוני';
+    : '🔍 הפק רישום ארכיוני';
 }
 refresh();
 
@@ -1006,7 +996,7 @@ analyzeBtn.addEventListener('click', async () => {
       parts = [{ file_data: { file_uri: uploaded.uri, mime_type: uploaded.mimeType || 'application/pdf' } }];
     }
 
-    const stageLabel = state.mode === 'hybrid' ? 'שלב 1/2 · ' : '';
+    const stageLabel = '';
     showStatus(sampleInfo
       ? `${stageLabel}Gemini מפיק רישום מתוך ${sampleInfo.sampled} דגימות (${sampleInfo.total} עמודים סה"כ)…`
       : `${stageLabel}Gemini מפיק רישום ארכיוני…`);
@@ -1042,31 +1032,10 @@ analyzeBtn.addEventListener('click', async () => {
       parsed = JSON.parse(m[0]);
     }
 
-    // === Stage 2 — Claude refines the Gemini draft (Hybrid / CLI Hybrid) ===
-    let final = parsed;
-    if (state.mode === 'hybrid' || state.mode === 'cli-hybrid') {
-      const label = state.mode === 'cli-hybrid' ? 'Claude CLI מקומי' : 'Claude API';
-      showStatus(`שלב 2/2 · ${label} מאמת היסטורית ומחדד את הרישום…`);
-      try {
-        final = state.mode === 'cli-hybrid'
-          ? await claudeRefineViaCLI(parsed, contextEl.value.trim(), sampleInfo)
-          : await claudeRefine(parsed, contextEl.value.trim(), sampleInfo);
-      } catch (claudeErr) {
-        console.error('Claude refine failed:', claudeErr);
-        showStatus(`⚠ Gemini הצליח אבל ${label} נכשל: ${claudeErr.message}\n\nמוצג רישום מ-Gemini בלבד.`, 'err');
-        final = parsed;
-      }
-    }
-
-    state.result = final;
-    fillForm(final);
+    state.result = parsed;
+    fillForm(parsed);
     resultsEl.classList.add('show');
-    const okMsg = state.mode === 'hybrid'
-      ? '✓ הרישום הופק והועשר ע"י Claude API.'
-      : state.mode === 'cli-hybrid'
-        ? '✓ הרישום הופק והועשר ע"י Claude CLI המקומי (חינם).'
-        : '✓ הרישום הופק בהצלחה. סקור את השדות וערוך לפי הצורך.';
-    showStatus(okMsg, 'ok');
+    showStatus('✓ הרישום הופק בהצלחה. סקור את השדות וערוך לפי הצורך.', 'ok');
     resultsEl.scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
     console.error(err);

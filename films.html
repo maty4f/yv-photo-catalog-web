@@ -282,13 +282,11 @@
       <label>ספק API</label>
       <select id="api-provider">
         <option value="unified-server" selected>⭐ מנוע מאוחד בשרת (מומלץ — חינם, בלי מפתחות; סרט — כמה דקות)</option>
-        <option value="pipeline">Pipeline: Gemini → Claude (דיוק היסטורי)</option>
         <option value="gemini">🆓 Google (Gemini) — וידאו ישיר, מהיר (חינם — free tier)</option>
         <option value="anthropic">Anthropic (Claude) — פריימים בלבד (בתשלום)</option>
-        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (חינם — דורש שרת מקומי)</option>
       </select>
     </div>
-    <div class="row provider-row" data-provider="cli-hybrid unified-server" style="display:none;">
+    <div class="row provider-row" data-provider="unified-server" style="display:none;">
       <label>שרת CLI מקומי (URL)</label>
       <div>
         <input type="text" id="local-server-url" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="direction:ltr; text-align:left; width:100%;">
@@ -301,14 +299,6 @@
         <div style="margin-top:4px; font-size:11px; color:#888;">⚠ URL זמני — משתנה בכל הפעלה מחדש של ה-tunnel. למשהו קבוע: <code>local-server/SETUP_CLOUDFLARE.md</code></div>
       </div>
     </div>
-    <div class="row provider-row" data-provider="cli-hybrid" style="display:none;">
-      <label>איך זה עובד</label>
-      <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        Gemini עושה ניתוח וידאו ראשוני (API חינמי) → Claude מאמת היסטורית ומפיק timeline מובנה דרך <code>claude</code> CLI במחשב שלך.<br>
-        <b>הערה:</b> בניגוד ל-Pipeline הרגיל, ה-CLI לא מקבל פריימים (רק טקסט) — אז שכבת האימות החזותית מוותרת. עדיין מקבלת תוצאה מובנית ואמינה, אבל פחות מדויקת ויזואלית.<br>
-        <b>דורש:</b> מפתח Gemini (למטה) + שרת מקומי פעיל ב-URL למעלה.
-      </div>
-    </div>
     <div class="row">
       <label>⚙ עקיפת firewall</label>
       <div style="font-size:12.5px;">
@@ -319,22 +309,22 @@
         <div style="margin-top:4px; color:#888; font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן.</div>
       </div>
     </div>
-    <div class="row provider-row" data-provider="anthropic pipeline">
+    <div class="row provider-row" data-provider="anthropic">
       <label>מפתח Anthropic</label>
       <input type="password" id="api-key-anthropic" placeholder="sk-ant-…" autocomplete="off">
     </div>
-    <div class="row provider-row" data-provider="anthropic pipeline">
+    <div class="row provider-row" data-provider="anthropic">
       <label>מודל Claude</label>
       <select id="api-model-anthropic">
         <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (מומלץ — איזון איכות/עלות)</option>
         <option value="claude-opus-4-6">Claude Opus 4.6 (הכי מדויק)</option>
       </select>
     </div>
-    <div class="row provider-row" data-provider="gemini pipeline">
+    <div class="row provider-row" data-provider="gemini">
       <label>מפתח Gemini</label>
       <input type="password" id="api-key-gemini" placeholder="AIza…" autocomplete="off">
     </div>
-    <div class="row provider-row" data-provider="gemini pipeline">
+    <div class="row provider-row" data-provider="gemini">
       <label>מודל Gemini</label>
       <select id="api-model-gemini">
         <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (מומלץ — יציב, תומך וידאו)</option>
@@ -636,7 +626,7 @@
 const state = {
   film: null, filmMeta: null, identification: null,
   filmParts: [], currentPartIdx: -1, autoRunning: false,
-  provider: localStorage.getItem('yv_api_provider') || 'unified-server',
+  provider: (['unified-server','gemini','anthropic'].includes(localStorage.getItem('yv_api_provider')) ? localStorage.getItem('yv_api_provider') : 'unified-server'),
   apiKeys: {
     anthropic: localStorage.getItem('yv_api_key_anthropic') || '',
     gemini: localStorage.getItem('yv_api_key_gemini') || '',
@@ -728,8 +718,6 @@ function getActiveApiKey() { return state.apiKeys[state.provider] || ''; }
 function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
 function hasAllRequiredKeys() {
   if (state.provider === 'unified-server') return true; // server-side engine — no browser keys needed
-  if (state.provider === 'pipeline') return !!state.apiKeys.gemini && !!state.apiKeys.anthropic;
-  if (state.provider === 'cli-hybrid') return !!state.apiKeys.gemini && !!state.localServerUrl;
   return !!getActiveApiKey();
 }
 settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('open'));
@@ -976,8 +964,6 @@ async function identifyFilmQueueItem(item) {
   try {
     if (state.provider === 'unified-server')
       throw new Error('המנוע המאוחד בשרת תומך כרגע בקטלוג סרט בודד — לתור סרטים בחר ספק אחר בהגדרות API');
-    if (state.provider === 'pipeline')   return await callPipeline();
-    if (state.provider === 'cli-hybrid') return await callCliHybrid();
     if (state.provider === 'gemini')     return await callGemini();
     return await callAnthropic();
   } finally {
@@ -1046,31 +1032,20 @@ function refreshButtons() {
   const hasFilm = !!state.film;
   const hasKey = hasAllRequiredKeys();
   identifyBtn.disabled = !(hasFilm && hasKey);
-  let missingMsg = 'יש להגדיר API key';
-  if (state.provider === 'pipeline') missingMsg = 'יש להגדיר שני מפתחות: Gemini ו-Anthropic';
-  else if (state.provider === 'cli-hybrid') {
-    if (!state.apiKeys.gemini) missingMsg = 'מצב CLI Hybrid דורש מפתח Gemini';
-    else if (!state.localServerUrl) missingMsg = 'מצב CLI Hybrid דורש URL של שרת CLI מקומי';
-  }
+  const missingMsg = 'יש להגדיר API key';
   identifyBtn.title = !hasFilm ? 'יש להעלות סרט' : (!hasKey ? missingMsg : '');
 }
 
 function providerLabel() {
   return state.provider === 'unified-server'
     ? 'המנוע המאוחד בשרת'
-    : state.provider === 'pipeline'
-    ? 'Pipeline (Gemini → Claude)'
-    : state.provider === 'cli-hybrid'
-      ? 'CLI Hybrid (Gemini → Claude CLI)'
-      : (state.provider === 'gemini' ? 'Gemini' : 'Claude');
+    : (state.provider === 'gemini' ? 'Gemini' : 'Claude');
 }
 // Run the currently selected provider against state.film and return the result.
 function callActiveProvider() {
   if (state.provider === 'unified-server')
     throw new Error('המנוע המאוחד בשרת תומך כרגע בקטלוג סרט בודד (כפתור "זהה את הסרט") — לתור/חלקים בחר ספק אחר');
-  return state.provider === 'pipeline'   ? callPipeline()
-    : state.provider === 'cli-hybrid' ? callCliHybrid()
-    : (state.provider === 'gemini' ? callGemini() : callAnthropic());
+  return state.provider === 'gemini' ? callGemini() : callAnthropic();
 }
 
 identifyBtn.addEventListener('click', async () => {
@@ -1536,67 +1511,6 @@ async function callAnthropic() {
 // =====================================================================
 //  PIPELINE: Gemini drafts → Claude historically validates
 // =====================================================================
-async function callPipeline() {
-  if (!state.apiKeys.gemini) throw new Error('חסר מפתח Gemini (נדרש לשלב הניתוח הראשוני)');
-  if (!state.apiKeys.anthropic) throw new Error('חסר מפתח Anthropic (נדרש לשלב האימות ההיסטורי)');
-
-  // Stage 1 — Gemini analyzes the full video
-  showStatus('שלב 1/3: Gemini מנתח את הסרט במלואו…', 'info');
-  const savedProvider = state.provider;
-  state.provider = 'gemini';
-  let draft;
-  try { draft = await callGemini(); }
-  finally { state.provider = savedProvider; }
-
-  // Stage 2 — Extract 20 frames as visual evidence for Claude
-  showStatus('שלב 2/3: מחלץ 20 פריימים לאימות חזותי של Claude…', 'info');
-  const frames = await extractKeyframes(state.film, 20);
-
-  // Stage 3 — Claude validates against frames + provided context
-  showStatus('שלב 3/3: Claude מאמת היסטורית ומתקן…', 'info');
-  const validatorPrompt = buildValidatorPrompt(draft);
-  const content = [{
-    type: 'text',
-    text: 'להלן ניתוח ראשוני של סרט שביצע Gemini, שראה את הסרט במלואו. מצורפים 20 פריימים מתוך הסרט כראיה חזותית עבורך (אתה לא ראית את הסרט עצמו). תפקידך: לאמת את הניתוח מול הפריימים והקונטקסט, ולתקן.'
-  }];
-  for (const f of frames) {
-    content.push({ type: 'text', text: `--- ${f.tc} ---` });
-    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.b64 } });
-  }
-  content.push({ type: 'text', text: validatorPrompt });
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': state.apiKeys.anthropic,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: modelSelAnthropic.value,
-      max_tokens: 16000,
-      messages: [{ role: 'user', content }]
-    })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error('שלב האימות (Claude) נכשל: ' + (err.error?.message || `HTTP ${res.status}`));
-  }
-  const data = await res.json();
-  const revised = parseJson(data.content?.[0]?.text || '', 'Claude (validator)');
-
-  // Merge validation_notes into admin_notes so the archivist sees what changed
-  if (revised.validation_notes) {
-    const header = '──────── אימות Claude ────────';
-    const existing = (revised.admin_notes || '').trim();
-    revised.admin_notes = existing
-      ? `${existing}\n\n${header}\n${revised.validation_notes}`
-      : `${header}\n${revised.validation_notes}`;
-    delete revised.validation_notes;
-  }
-  return revised;
-}
 
 // POST a job to /api/ask-async and poll until done. Async so a long Claude run
 // survives the Cloudflare quick-tunnel ~100s limit (the synchronous /api/ask
@@ -1631,106 +1545,7 @@ async function runClaudeJob(prompt, images) {
   throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. נסה סרט קצר יותר.');
 }
 
-// CLI-Hybrid: Gemini analyzes video, then Claude CLI validates *text-only*
-// (no frames sent — local /api/ask endpoint accepts only text prompts).
-async function callCliHybrid() {
-  if (!state.apiKeys.gemini) throw new Error('חסר מפתח Gemini');
-  if (!state.localServerUrl) throw new Error('חסר URL של שרת CLI מקומי');
 
-  // Stage 1 — Gemini analyzes the full video
-  showStatus('שלב 1/2 · Gemini מנתח את הסרט במלואו…', 'info');
-  const savedProvider = state.provider;
-  state.provider = 'gemini';
-  let draft;
-  try { draft = await callGemini(); }
-  finally { state.provider = savedProvider; }
-
-  // Stage 2 — Claude CLI validates the JSON draft using text + context only
-  showStatus('שלב 2/2 · Claude CLI מקומי מאמת היסטורית…', 'info');
-  const validatorPrompt = buildValidatorPrompt(draft);
-  const prompt = `להלן ניתוח ראשוני של סרט שביצע Gemini, שראה את הסרט במלואו. אתה לא רואה את הסרט עצמו ולא את הפריימים — רק את הניתוח של Gemini ואת הקונטקסט. תפקידך: לאמת היסטורית את הניתוח ולתקן.
-
-⚠ אם פרט תלוי בראיה חזותית שאתה לא רואה — סמן ⟨V?⟩ ושמור על מה ש-Gemini כתב, אל תמחק.
-
-## הניתוח של Gemini (JSON)
-
-\`\`\`json
-${JSON.stringify(draft, null, 2)}
-\`\`\`
-
-## חוקי האימות
-
-${validatorPrompt}
-
-החזר JSON תקין בלבד (ללא קוד-בלוק markdown, ללא טקסט הקדמה).`;
-
-  // Text-only validation — route through the async /api/ask-async job runner so
-  // the call survives the Cloudflare quick-tunnel ~100s limit.
-  let text = (await runClaudeJob(prompt, [])).trim();
-  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-  const revised = parseJson(text, 'Claude CLI (validator)');
-
-  if (revised.validation_notes) {
-    const header = '──────── אימות Claude CLI ────────';
-    const existing = (revised.admin_notes || '').trim();
-    revised.admin_notes = existing
-      ? `${existing}\n\n${header}\n${revised.validation_notes}`
-      : `${header}\n${revised.validation_notes}`;
-    delete revised.validation_notes;
-  }
-  return revised;
-}
-
-function buildValidatorPrompt(draft) {
-  const ctx = (contextEl.value || '').trim();
-  const ctxBlock = ctx
-    ? `\n## קונטקסט מהמוסר (אוטוריטטיבי כשתואם ויזואלית)\n${ctx}\n`
-    : '';
-  return `אתה היסטוריון בכיר ביד ושם, מומחה לתקופה 1930-1945 (שואה, אנטישמיות, מלחמת העולם השנייה, התנגדות יהודית). תפקידך לאמת ולתקן ניתוח ראשוני של סרט ארכיוני שביצע Gemini.
-
-🎯 משימותיך — בסדר הזה:
-
-1. **בדוק כל זיהוי מול הפריימים**: מקום, אדם, אירוע, יחידה צבאית, מדים, סמלים. אם אין ביסוס בפריימים → סמן ב-(?), הוסף הסתייגות, או הסר.
-2. **תאריכים** — אם Gemini נתן תאריך ספציפי בלי כיתוב מתועד או ראיה מוצקה → רחב לתקופה (חודש/שנה/"שנות ה-30"/"לפני המלחמה"), או השאר ריק. **אסור לנחש שנה.**
-3. **טרמינולוגיית יד-ושם** — החלף מונחים גנריים במונחים סטנדרטיים:
-   - "פעולה" → "אקציה"
-   - "העברה" / "פינוי" → "גירוש" (אם זה ההקשר)
-   - "ועד יהודים" / "מנהל יהודי" → "יודנראט"
-   - "מחנה" → "מחנה ריכוז" / "מחנה השמדה" / "מחנה עבודה" (לפי הזהות הידועה, או "מחנה (לא מזוהה)")
-   - "פליטים" → "ניצולים" / "שארית הפליטה" (אם אחרי 1945)
-4. **שמות מקומות** — איות סטנדרטי לפי גבולות **01/09/1939**:
-   - Łódź ולא Lodz; Brussels ולא Brussel; Lwów (לא Lviv לפני 1945); Wilno (לא Vilnius לפני 1945)
-   - אם Gemini זיהה מחנה/גטו ספציפי בלי שלט/אדריכלות חד-משמעית → רחב ל"גטו במזרח אירופה (לא מזוהה)" / "מחנה ריכוז (לא מזוהה)"
-5. **מדים וסמלים** — תקן זיהויים: Wehrmacht שהוא בעצם SS, חייל פשוט שהוא בעצם קצין, מדים גנריים שהם דגם ספציפי. אם אינך בטוח — הכלל את הקטגוריה הרחבה.
-6. **כיתובי-ביניים / שלטים** — עבור על תעתיק יידיש (תקן YIVO), גרמנית גותית, פולנית, רוסית. תקן שגיאות תעתיק או תרגום.
-7. **שמות אנשים** — שמות שניתנו בלי כיתוב גלוי, ללא קונטקסט אוטוריטטיבי, וללא דמות היסטורית מובהקת → הסר או הפוך ל-(?) עם תיאור פיזי.
-8. **סימוני ודאות Dual-Axis** — חובה לכל זיהוי בשדות persons / inscriptions / summary. ראה \`reference/confidence_dual_axis.md\`:
-   - **V (Visual)** ✓/~/? — עד כמה הסרט מראה את הקביעה.
-   - **H (Historical)** ✓/~/? — עד כמה תואם היסטוריה מתועדת.
-   - שניהם "low" → להוריד את הקביעה. ב-JSON: \`confidence\` = H, הוסף \`v_confidence\` נפרד.
-   - בטקסט HTML: זוג spans \`<span class="cv c-mid">V~</span><span class="ch c-high">H✓</span>\` אחרי כל קביעה.
-
-⚠️ חוקים קריטיים:
-
-- **לא להמציא**. אתה מאמת/מתקן/מסיר/מרחיב — לא מוסיף סצנות, אנשים, מקומות, אירועים שאינם בטיוטה ולא נראים בפריימים.
-- **בספק → השאר את הגרסה של Gemini** עם סימן (?) ושמור עליה כפי שהיא.
-- **שמור על אותה JSON-schema בדיוק**. אל תוסיף/תסיר שדות.
-- **שמור על הטיימליין** — אל תמחק סצנות; תקן רק תיאורים שגויים.
-
-📝 שדה אחד יחיד שמותר להוסיף:
-
-\`"validation_notes"\`: טקסט עברי קצר (עד 250 מילים) שמתאר באופן תמציתי את התיקונים העיקריים שעשית — מה שונה, מה הוסר, מה רוחב, ולמה. הארכיבאית תקרא את זה כדי להבין את ההפרש בין הטיוטה של Gemini לגרסה הסופית. אם לא היו תיקונים מהותיים, כתוב "ללא תיקונים מהותיים — הטיוטה של Gemini אומתה".
-${ctxBlock}
----
-
-## הטיוטה של Gemini (JSON לעיבוד):
-
-\`\`\`json
-${JSON.stringify(draft, null, 2)}
-\`\`\`
-
-החזר **JSON תקין בלבד** באותה סכמה, עם התיקונים שלך + שדה validation_notes. ללא טקסט נוסף מחוץ ל-JSON.`;
-}
 
 async function extractKeyframes(file, count) {
   const video = document.createElement('video');
