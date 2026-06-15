@@ -1058,6 +1058,12 @@ state.queue_processor_running = false;
 state.collection_mode = !!state.collection;
 
 const BATCH_MAX = 40;
+// How many photos the queue identifies AT ONCE. Parallel only helps (and is only
+// race-safe) for the unified-server engine — each runUnifiedJob is self-contained,
+// whereas the gemini/anthropic direct paths share state.photos and must stay 1.
+// The server gates the real concurrency (YV_*_CONCURRENCY); keep them in sync.
+// Override per-browser via localStorage 'yv_queue_concurrency'.
+const QUEUE_CONCURRENCY = Math.max(1, Number(localStorage.getItem('yv_queue_concurrency')) || 3);
 const QUEUE_STATUSES = {
   pending:   { icon: '⏳', label: 'ממתין',     color: '#8a7140' },
   analyzing: { icon: '🔄', label: 'מנתח',      color: '#0d47a1' },
@@ -1547,46 +1553,52 @@ function loadQueueItemIntoUI(item) {
 async function startQueueProcessor() {
   if (state.queue_processor_running) return;
   state.queue_processor_running = true;
+  // Run N workers in parallel for the server engine (race-safe — each job is
+  // self-contained); the direct gemini/anthropic paths share state.photos so
+  // they must stay serial.
+  const workers = state.provider === 'unified-server' ? QUEUE_CONCURRENCY : 1;
   try {
-    while (true) {
-      const nextItem = state.photo_queue.find(it => it.status === 'pending');
-      if (!nextItem) break;
-      nextItem.status = 'analyzing';
-      // Update photo_seq if not set (use intake_items mapping or sequential)
-      if (nextItem.photo_seq == null) {
-        const photoIdx = state.photo_queue.filter(it => it !== nextItem).filter(it => it.photo_seq != null).length + 1;
-        const initialSeq = state.current_photo_index || 1;
-        const offset = state.photo_queue.indexOf(nextItem);
-        nextItem.photo_seq = initialSeq + offset;
-      }
-      renderQueuePanel();
-      // If no item is currently being reviewed, make this the active one once ready
-      const isFirst = state.current_queue_index < 0;
-
-      try {
-        const result = await identifyQueueItem(nextItem);
-        nextItem.identification = result;
-        nextItem.status = 'ready';
-        // If user has no active item yet → make this it
-        if (state.current_queue_index < 0) {
-          state.current_queue_index = state.photo_queue.indexOf(nextItem);
-          loadQueueItemIntoUI(nextItem);
-        }
-      } catch (err) {
-        nextItem.status = 'error';
-        nextItem.error = err.message;
-        console.error(`Queue item ${nextItem.id} failed:`, err);
-      }
-      renderQueuePanel();
-
-      // Small pause to avoid rate-limit hits (Gemini Pro Free = 5 RPM).
-      // Downscaled images (see prepareImage) cut per-request load, so the Gemini
-      // pause is shorter than before.
-      const delay = state.provider === 'gemini' ? 3000 : 1500;
-      await new Promise(r => setTimeout(r, delay));
-    }
+    await Promise.all(Array.from({ length: workers }, () => queueWorker()));
   } finally {
     state.queue_processor_running = false;
+  }
+}
+
+// One worker loop: pull the next pending item, identify it, repeat until drained.
+// The find()+status='analyzing' assignment is synchronous (no await between), so
+// JS's single thread guarantees two workers never claim the same item.
+async function queueWorker() {
+  while (true) {
+    const item = state.photo_queue.find(it => it.status === 'pending');
+    if (!item) break;
+    item.status = 'analyzing';
+    // Assign photo_seq if not set (sequential from the collection's start index)
+    if (item.photo_seq == null) {
+      const initialSeq = state.current_photo_index || 1;
+      item.photo_seq = initialSeq + state.photo_queue.indexOf(item);
+    }
+    renderQueuePanel();
+
+    try {
+      const result = await identifyQueueItem(item);
+      item.identification = result;
+      item.status = 'ready';
+      // If user has no active item yet → make this it
+      if (state.current_queue_index < 0) {
+        state.current_queue_index = state.photo_queue.indexOf(item);
+        loadQueueItemIntoUI(item);
+      }
+    } catch (err) {
+      item.status = 'error';
+      item.error = err.message;
+      console.error(`Queue item ${item.id} failed:`, err);
+    }
+    renderQueuePanel();
+
+    // Small pause to avoid rate-limit hits (Gemini Pro Free = 5 RPM).
+    // Downscaled images (see prepareImage) cut per-request load.
+    const delay = state.provider === 'gemini' ? 3000 : 1500;
+    await new Promise(r => setTimeout(r, delay));
   }
 }
 
