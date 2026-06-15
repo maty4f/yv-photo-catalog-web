@@ -1072,23 +1072,26 @@ const QUEUE_STATUSES = {
 // Files WITH # at end-of-basename are backs that match a front of same basename
 function pairFilesByHash(files) {
   const fronts = [];
-  const backs = {};  // front basename → back file
-  // A back (verso/עורף) is any scan whose basename ends in a back-marker —
-  // '#', 'עורף', 'גב', 'verso' or 'back' — optionally preceded by a space,
-  // underscore or hyphen: name#, "name עורף", name_עורף, name-verso, etc.
-  // Everything before the marker is the front basename, so the back pairs to
-  // its front and is cataloged TOGETHER with it (not as a separate photo).
-  const BACK_RE = /^(.*?)[ _-]?(?:#|עורף|גב|verso|back)$/i;
+  const backs = {};  // normalized front basename → back file
+  // The verso ("עורף") is marked by a '#' ANYWHERE in the filename (or a
+  // trailing עורף/גב/verso/back word). Its front is the same name with the
+  // marker removed — so the back pairs to its front and is cataloged TOGETHER
+  // (not as a separate photo). Separators (space/_/-) are normalized so
+  // "13090_90", "13090-90", "13090 90" all match.
+  const norm = s => s.replace(/[ _-]+/g, '_').replace(/^_+|_+$/g, '');
+  const WORD_RE = /[ _-]?(?:עורף|גב|verso|back)$/i;
   for (const f of files) {
     const base = f.name.replace(/\.[^.]+$/, '').trim();   // strip extension
-    const m = base.match(BACK_RE);
-    if (m) backs[m[1].trim()] = f;
-    else fronts.push({ file: f, base });
+    let key = null;
+    if (base.includes('#')) key = norm(base.replace(/#/g, ''));        // '#' anywhere
+    else if (WORD_RE.test(base)) key = norm(base.replace(WORD_RE, '')); // trailing word
+    if (key !== null) backs[key] = f;
+    else fronts.push({ file: f, key: norm(base) });
   }
   // Build queue items: each front, paired with its matching back if one exists.
-  return fronts.map(({ file, base }) => ({
+  return fronts.map(({ file, key }) => ({
     front: file,
-    back: backs[base] || null,
+    back: backs[key] || null,
   }));
 }
 
