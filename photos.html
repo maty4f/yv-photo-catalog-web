@@ -1058,21 +1058,18 @@ const QUEUE_STATUSES = {
 // Files WITH # at end-of-basename are backs that match a front of same basename
 function pairFilesByHash(files) {
   const fronts = [];
-  const backs = {};  // basename (no #) → back file
+  const backs = {};  // front basename → back file
+  // A back (verso) is any scan whose basename ends in '#', optionally preceded
+  // by a space, underscore or hyphen: name#, "name #", name_#, name-#. The key
+  // is the front's basename (the marker + separator stripped) so it pairs.
+  const BACK_RE = /^(.*?)[ _-]?#$/;
   for (const f of files) {
-    const base = f.name.replace(/\.[^.]+$/, '');     // strip extension
-    if (base.endsWith('#')) {
-      // Back — basename without trailing #
-      const matchBase = base.slice(0, -1);
-      backs[matchBase] = f;
-    } else if (base.endsWith(' #') || base.endsWith('_#')) {
-      const matchBase = base.replace(/[ _]?#$/, '');
-      backs[matchBase] = f;
-    } else {
-      fronts.push({ file: f, base });
-    }
+    const base = f.name.replace(/\.[^.]+$/, '').trim();   // strip extension
+    const m = base.match(BACK_RE);
+    if (m) backs[m[1].trim()] = f;
+    else fronts.push({ file: f, base });
   }
-  // Build queue items: each front, paired with matching back if exists
+  // Build queue items: each front, paired with its matching back if one exists.
   return fronts.map(({ file, base }) => ({
     front: file,
     back: backs[base] || null,
