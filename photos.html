@@ -374,14 +374,12 @@
       <label>ספק API</label>
       <select id="api-provider">
         <option value="unified-server" selected>⭐ מנוע מאוחד בשרת (מומלץ — חינם, בלי מפתחות; תצלום ~15ש׳)</option>
-        <option value="anthropic">Anthropic (Claude) בלבד (מהיר, מנוע יחיד)</option>
-        <option value="hybrid">Hybrid: Gemini קורא ויזואלית → Claude כותב ובודק (שתי קריאות עוקבות)</option>
         <option value="gemini">🆓 Google (Gemini) בלבד (חינם — free tier)</option>
-        <option value="cli-hybrid">⌨️ Hybrid CLI: Gemini API + Claude CLI מקומי (חינם — דורש שרת מקומי)</option>
+        <option value="anthropic">Anthropic (Claude) בלבד (מהיר, מנוע יחיד)</option>
       </select>
     </div>
 
-    <div class="row provider-row" data-provider="cli-hybrid" style="display:none;">
+    <div class="row provider-row" data-provider="unified-server" style="display:none;">
       <label>שרת CLI מקומי (URL)</label>
       <div>
         <input type="text" id="local-server-url" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="direction:ltr; text-align:left; width:100%;">
@@ -392,13 +390,6 @@
           <button type="button" id="fill-tunnel-btn" style="padding:3px 10px; font-size:11px; background:#8a7758; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">⬇ הזן</button>
         </div>
         <div style="margin-top:4px; font-size:11px; color:#888;">⚠ URL זמני — משתנה בכל הפעלה מחדש של ה-tunnel. למשהו קבוע: <code>local-server/SETUP_CLOUDFLARE.md</code></div>
-      </div>
-    </div>
-    <div class="row provider-row" data-provider="cli-hybrid" style="display:none;">
-      <label>איך זה עובד</label>
-      <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
-        Gemini הוא העיניים — קריאה ויזואלית בלבד (API חינמי) → Claude בודק את הקריאה של Gemini ובונה את שדות ספיר (טקסט בלבד, לא רואה את התמונה), דרך <code>claude</code> CLI שרץ במחשב שלך (במקום API בתשלום).<br>
-        <b>דורש:</b> מפתח Gemini (למטה) + שרת מקומי פעיל ב-URL למעלה. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
       </div>
     </div>
     <div class="row">
@@ -941,7 +932,11 @@ const state = {
   studios: [],                              // loaded + user-added
   studioById: {},                           // index
   identification: null,                     // last API response JSON
-  provider: localStorage.getItem('yv_api_provider') || 'unified-server',
+  // Only these three pipelines are supported. A stale saved value (e.g. the
+  // retired 'hybrid'/'cli-hybrid') falls back to the default instead of breaking.
+  provider: (['unified-server', 'gemini', 'anthropic']
+    .includes(localStorage.getItem('yv_api_provider'))
+    ? localStorage.getItem('yv_api_provider') : 'unified-server'),
   apiKeys: {
     anthropic: localStorage.getItem('yv_api_key_anthropic') || localStorage.getItem('yv_api_key') || '',
     gemini:    localStorage.getItem('yv_api_key_gemini') || '',
@@ -1273,9 +1268,9 @@ async function startQueueProcessor() {
       renderQueuePanel();
 
       // Small pause to avoid rate-limit hits (Gemini Pro Free = 5 RPM).
-      // Downscaled images (see prepareImage) cut per-request load, so the Gemini/
-      // Hybrid pauses are shorter than before. Hybrid still pays for 2 calls/item.
-      const delay = state.provider === 'hybrid' ? 6000 : (state.provider === 'gemini' ? 3000 : 1500);
+      // Downscaled images (see prepareImage) cut per-request load, so the Gemini
+      // pause is shorter than before.
+      const delay = state.provider === 'gemini' ? 3000 : 1500;
       await new Promise(r => setTimeout(r, delay));
     }
   } finally {
@@ -1291,8 +1286,6 @@ async function identifyQueueItem(item) {
   try {
     if (state.provider === 'unified-server')
       throw new Error('המנוע המאוחד בשרת תומך כרגע בקטלוג תצלום בודד — לתור אוסף בחר ספק אחר בהגדרות API');
-    if (state.provider === 'hybrid')     return await callHybrid();
-    if (state.provider === 'cli-hybrid') return await callCliHybrid();
     if (state.provider === 'gemini')     return await callGemini();
     return await callAnthropic();
   } finally {
@@ -1508,14 +1501,8 @@ apiKeyGemini.addEventListener('input', () => {
 });
 
 function syncProviderRows() {
-  // hybrid → show both anthropic + gemini; cli-hybrid → gemini + cli-hybrid rows
   document.querySelectorAll('.provider-row').forEach(row => {
-    if (state.provider === 'hybrid') {
-      // hide cli-hybrid rows in hybrid mode
-      row.style.display = row.dataset.provider === 'cli-hybrid' ? 'none' : 'grid';
-    } else if (state.provider === 'cli-hybrid') {
-      row.style.display = (row.dataset.provider === 'cli-hybrid' || row.dataset.provider === 'gemini') ? 'grid' : 'none';
-    } else if (state.provider === 'unified-server') {
+    if (state.provider === 'unified-server') {
       // unified-server needs no keys — only the local-server URL row (for pages.dev)
       row.style.display = row.querySelector('#local-server-url') ? 'grid' : 'none';
     } else {
@@ -1525,22 +1512,7 @@ function syncProviderRows() {
 }
 
 function getActiveApiKey() {
-  // Hybrid needs both keys present; for single-provider modes return that key
-  if (state.provider === 'hybrid') {
-    return state.apiKeys.anthropic && state.apiKeys.gemini
-      ? state.apiKeys.gemini  // returning the gemini key as a "presence" indicator
-      : '';
-  }
-  if (state.provider === 'cli-hybrid') {
-    return state.apiKeys.gemini && state.localServerUrl ? state.apiKeys.gemini : '';
-  }
   return state.apiKeys[state.provider] || '';
-}
-function hasHybridKeys() {
-  return !!state.apiKeys.anthropic && !!state.apiKeys.gemini;
-}
-function hasCliHybridReady() {
-  return !!state.apiKeys.gemini && !!state.localServerUrl;
 }
 function getActiveModel() {
   return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value;
@@ -1677,25 +1649,14 @@ const identifyStatus = document.getElementById('identify-status');
 function refreshButtons() {
   const hasFront = !!state.photos.front;
   const hasKey = state.provider === 'unified-server' ? true /* server-side engine — no browser key needed */
-    : state.provider === 'hybrid' ? hasHybridKeys()
-    : state.provider === 'cli-hybrid' ? hasCliHybridReady()
     : !!getActiveApiKey();
   identifyBtn.disabled = !(hasFront && hasKey);
   copyPromptBtn.disabled = !hasFront;
-  let missingMsg = 'יש להגדיר API key (כפתור "הגדרות API" למעלה)';
-  if (state.provider === 'hybrid') missingMsg = 'מצב Hybrid דורש שני מפתחות: Anthropic + Gemini';
-  else if (state.provider === 'cli-hybrid') {
-    if (!state.apiKeys.gemini) missingMsg = 'מצב CLI Hybrid דורש מפתח Gemini';
-    else if (!state.localServerUrl) missingMsg = 'מצב CLI Hybrid דורש URL של שרת CLI מקומי';
-  }
+  const missingMsg = 'יש להגדיר API key (כפתור "הגדרות API" למעלה)';
   identifyBtn.title = !hasFront ? 'יש להעלות חזית תצלום' : (!hasKey ? missingMsg : '');
   identifyBtn.innerHTML = state.provider === 'unified-server'
     ? '🔍 קטלג תצלום (מנוע מאוחד בשרת)'
-    : state.provider === 'hybrid'
-    ? '🔍 זהה תצלום (Gemini→Claude)'
-    : state.provider === 'cli-hybrid'
-      ? '🔍 זהה תצלום (Gemini→Claude CLI)'
-      : state.provider === 'gemini' ? '🔍 זהה תצלום (Gemini)' : '🔍 זהה תצלום (Claude)';
+    : state.provider === 'gemini' ? '🔍 זהה תצלום (Gemini)' : '🔍 זהה תצלום (Claude)';
 }
 
 contextEl.addEventListener('input', refreshButtons);
@@ -1730,16 +1691,12 @@ identifyBtn.addEventListener('click', async () => {
     return;
   }
   identifyBtn.disabled = true;
-  const providerLabel = state.provider === 'hybrid' ? 'Hybrid (Gemini→Claude)'
-    : state.provider === 'cli-hybrid' ? 'Gemini→Claude CLI'
-    : state.provider === 'gemini' ? 'Gemini' : 'Claude';
+  const providerLabel = state.provider === 'gemini' ? 'Gemini' : 'Claude';
   identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel + '…';
   showStatus(`שולח ל-${providerLabel}…`, 'info');
 
   try {
-    const result = state.provider === 'hybrid' ? await callHybrid()
-      : state.provider === 'cli-hybrid' ? await callCliHybrid()
-      : state.provider === 'gemini' ? await callGemini() : await callAnthropic();
+    const result = state.provider === 'gemini' ? await callGemini() : await callAnthropic();
     state.identification = result;
     fillResultsForm(result);
     document.getElementById('results').classList.add('show');
@@ -2091,249 +2048,6 @@ async function callGemini() {
   const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
   if (!text) throw new Error('Gemini החזיר תגובה ריקה. בדוק את DevTools.');
   return parseJsonResponse(text, 'Gemini');
-}
-
-// ─── HYBRID: Gemini (vision) → Claude (validate + structured catalog) ──────
-// Division of labour: Gemini is the eyes (visual reading only); Claude is the
-// text + the checker. Step 2 Claude does NOT see the image — it validates
-// Gemini's reading for plausibility/contradictions, downgrades over-claims,
-// and produces the structured JSON. Text-only input keeps Claude ~50× cheaper.
-async function callHybrid() {
-  if (!hasHybridKeys()) {
-    throw new Error('מצב Hybrid דורש מפתח Anthropic וגם מפתח Gemini. הגדר ב-⚙ הגדרות API.');
-  }
-
-  // STEP 1: Gemini analyzes the image and returns a plain-text visual description
-  showStatus('שלב 1/2 · Gemini מנתח את התצלום ויזואלית…', 'info');
-  const visualDescription = await geminiVisualExtract();
-
-  // STEP 2: Claude validates Gemini's reading (plausibility, contradictions,
-  // over-claims) and produces the full structured JSON catalog — text-only.
-  showStatus('שלב 2/2 · Claude בודק את הקריאה של Gemini ובונה קטלוג מובנה…', 'info');
-  return await claudeStructureFromVisual(visualDescription);
-}
-
-// CLI-Hybrid: same as callHybrid but Step 2 routes through user's local claude CLI
-// (via the local-server tunnel) instead of api.anthropic.com.
-async function callCliHybrid() {
-  if (!hasCliHybridReady()) {
-    throw new Error('מצב CLI Hybrid דורש מפתח Gemini + URL של שרת CLI מקומי.');
-  }
-  showStatus('שלב 1/2 · Gemini מנתח את התצלום ויזואלית…', 'info');
-  const visualDescription = await geminiVisualExtract();
-  showStatus('שלב 2/2 · Claude (CLI) בודק את הקריאה של Gemini ובונה קטלוג…', 'info');
-  return await claudeStructureFromVisual_viaCLI(visualDescription);
-}
-
-async function claudeStructureFromVisual_viaCLI(visualDescription) {
-  const ctxText = contextEl.value.trim();
-  const studiosBrief = state.studios.map(s => `${s.id} | ${s.name} (${s.city}, ${s.country})`).join('\n');
-  const rulesPrompt = buildSystemRules(ctxText, studiosBrief);
-
-  // Claude is text-only here: Gemini is the eyes, Claude is the text + checker.
-  // No image is sent to the CLI — Claude validates Gemini's reading, not the photo.
-  const prompt = `אני שולח לך **ניתוח ויזואלי שכבר בוצע ע"י Gemini** של תצלום ארכיוני. אתה **לא** רואה את התמונה עצמה — Gemini הוא העיניים, אתה הטקסט והבקרה. תפקידך כפול:
-
-**(א) בקרה על הקריאה של Gemini.** עבור על הניתוח של Gemini בעין ביקורתית — לא לקבל אותו כפשוטו:
-- סתירות פנימיות (פרט אחד שמכחיש פרט אחר באותו ניתוח).
-- אי-התאמות תקופתיות (מדים/רכבים/סגנון שלא תואמים את התאריך שצוין).
-- זיהויים שמוצגים בביטחון-יתר ללא בסיס ויזואלי מספק (שם איש, מחנה/גטו ספציפי, יחידה צבאית). במקרה כזה **הנמך את רמת הוודאות** או הורד לתיאור גנרי.
-- התנגשות עם פרופיל האוסף / תיאור הפריט מטופס האיסוף (אם יש).
-כל הערת בקרה כזו נכנסת לשדה "הערות" בנוסח **"בדיקת קלוד: ..."**.
-
-**(ב) הפקת הקטלוג המובנה.** על בסיס הניתוח של Gemini (אחרי הבקרה) + פרופיל האוסף + תיאור הפריט + חוקי הקטלוג של יד ושם — הפק JSON מובנה לפי הסכימה. שדה התיאור הויזואלי כפרוזה נקייה בלבד ללא תגיות HTML.
-
-מגבלות קשיחות:
-- אסור להוסיף תוכן ויזואלי שלא הופיע אצל Gemini (אתה לא רואה את התמונה). אם Gemini אמר "[לא ברור]" — שמור על אי-הוודאות.
-- מותר ומומלץ **להוריד** ביטחון או לסייג זיהוי שנראה לך מופרך — אסור **להעלות** ביטחון על סמך השערה שלך.
-
-## הניתוח הויזואלי של Gemini
-
-${visualDescription}
-
-## חוקי הקטלוג + פרופיל האוסף + תיאור פריט (אם יש)
-
-${rulesPrompt}
-
-החזר JSON תקין בלבד (ללא קוד-בלוק markdown, ללא טקסט הקדמה).`;
-
-  // Use the model picked in the UI (default Sonnet = fast). Without this the CLI
-  // falls back to its own default, which may be the slow Opus.
-  const model = modelSelAnthropic.value.includes('opus') ? 'opus' : 'sonnet';
-
-  // Use the ASYNC endpoint + polling. A full Sapir catalog is a long Claude run
-  // that can exceed the Cloudflare quick-tunnel ~100s limit (HTTP 524 → "Failed
-  // to fetch") on the synchronous /api/ask. POST returns a jobId immediately;
-  // we poll until done. Same pattern as documents-tik.html.
-  const base = state.localServerUrl;
-  let res;
-  try {
-    res = await fetch(base + '/api/ask-async', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, model }),
-    });
-  } catch (e) {
-    throw new Error(`לא ניתן להגיע לשרת CLI המקומי (${base}). ודא שהשרת + tunnel פעילים, ושכתובת ה-tunnel מעודכנת (היא מתחלפת בכל הפעלה). (${e.message})`);
-  }
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`שרת CLI החזיר HTTP ${res.status}: ${err.error || err.stderr || ''}`);
-  }
-  const { jobId } = await res.json();
-  if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
-
-  // Poll up to ~5 minutes. Building one structured catalog is far shorter than a
-  // multi-page תיק, but allow headroom for cold starts / slow models.
-  const started = Date.now(), maxMs = 5 * 60 * 1000;
-  while (Date.now() - started < maxMs) {
-    await new Promise(r => setTimeout(r, 3000));
-    let pr;
-    try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; } // transient — keep polling
-    if (!pr.ok) continue;
-    const j = await pr.json();
-    const secs = Math.round((Date.now() - started) / 1000);
-    showStatus(`שלב 2/2 · Claude (CLI) בודק ובונה קטלוג… (${secs} שניות)`, 'info');
-    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
-    if (j.status === 'done') {
-      let text = (j.text || '').trim();
-      text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-      return parseJsonResponse(text, 'Claude CLI');
-    }
-  }
-  throw new Error('הריצה נמשכה מעל 5 דקות ולא הסתיימה. נסה שוב, או בדוק שהשרת המקומי תקין.');
-}
-
-// Gemini step — pure vision, returns descriptive Hebrew text (no JSON)
-async function geminiVisualExtract() {
-  const front = await prepareImage(state.photos.front);
-  const back = state.photos.back ? await prepareImage(state.photos.back) : null;
-  const frontB64 = front.data, frontMime = front.mime;
-  const backB64 = back?.data ?? null, backMime = back?.mime ?? 'image/jpeg';
-
-  const visualPrompt = `אתה מקטלג בארכיון יד ושם, מתבונן בתצלום היסטורי. תפקידך: לתאר ויזואלית מה אתה רואה — בלי לנחש, בלי להזיז, בלי להמציא.
-
-החזר טקסט עברי תיאורי (לא JSON) במבנה הבא:
-
-[ויזואלי כללי]
-- מבנה הפריים, גודל, איכות הצילום (חד/מטושטש), צבעוניות (שחור-לבן/צבעוני)
-- תיאור הקומפוזיציה (פורטרט/קבוצתי/נוף/חדר)
-
-[אנשים]
-- כמה אנשים נראים? תיאור גיל בערך, מין, לבוש, פעולות
-- אם רואים פנים בבירור — תאר; אישים מוכרים היסטורית — ציין רק עם דמיון מלא לתצלום מאומת
-- אם הקבוצה גדולה — תאר את הסידור (שורות, מיקומים)
-
-[אובייקטים]
-- מדים: סוג, צבע, סמלים נראים (Wehrmacht/SS/Schupo/יודנראט וכו׳ — רק אם בולט)
-- חפצים יהודיים: כיפה, שטריימל, טלית, אות קלון/טלאי צהוב
-- רכבים: סוג, אם זוהה
-- נשק / סמלים פוליטיים — אם נראים
-
-[מקום ותקופה]
-- אדריכלות נראית — סגנון (אורתודוקסי, קלאסיציסטי, מודרניסטי, שטעטל)
-- שלטי רחוב, שמות עסקים — לתעתק מילולית
-- מאפיינים תקופתיים: סגנון לבוש, רכבים, פוטוגרפיה (sepia/דהוי/וכו׳)
-- **זיהוי אתר מובהק**: אם האדריכלות/המבנה מתועדים ומזוהים בבירור (למשל שער הכניסה והמסילה של אושוויץ-בירקנאו, צריחי שמירה, רמפת סלקציה, שער "Arbeit macht frei") — ציין זאת במפורש עם רמת ודאות (ודאי/סביר). אל תנחש מקום עלום, אבל אל תימנע מזיהוי אתר איקוני מתועד שרואים בבירור.
-
-[כיתובים]
-לכל טקסט שאתה רואה — שלטים, כיתובי גב, חותמות סטודיו, כתב יד:
-* שפה: [גרמנית/יידיש/פולנית/רוסית/וכו׳]
-* תעתיק: [המילים בדיוק כפי שכתובות]
-* אם לא קריא: [לא קריא] / [?]
-
-[חותמת סטודיו (אם נראה)]
-- שם הסטודיו, עיר, כתובת — רק אם נראה בבירור
-
-⚠ חוקים קריטיים:
-- אם אינך רואה משהו בבירור — אל תכלול אותו
-- אסור לנחש שמות אישים, יחידות, או מקומות עלומים — אך **כן לזהות** אתר מתועד ומובהק (כמו אושוויץ-בירקנאו) כשרואים מאפיין ויזואלי ייחודי, עם רמת ודאות
-- אם פרט מטושטש — סמן [לא ברור] במקום להמציא
-- שמור על תיאור עובדתי, לא פרשני
-
-החזר טקסט עברי נקי ללא code-fence.`;
-
-  const parts = [{ text: visualPrompt }];
-  parts.push({ text: '## חזית התצלום' });
-  parts.push({ inline_data: { mime_type: frontMime, data: frontB64 } });
-  if (backB64) {
-    parts.push({ text: '## גב התצלום' });
-    parts.push({ inline_data: { mime_type: backMime, data: backB64 } });
-  }
-
-  const url = geminiBase() + '/v1beta/models/' + modelSelGemini.value + ':generateContent';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0, maxOutputTokens: 6000 },
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`Gemini (שלב 1) HTTP ${res.status}: ${err.error?.message || ''}`);
-  }
-  const data = await res.json();
-  const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
-  if (!text) throw new Error('Gemini החזיר ניתוח ויזואלי ריק');
-  return text;
-}
-
-// Claude step — text-only, takes Gemini's visual + rules → structured JSON
-async function claudeStructureFromVisual(visualDescription) {
-  const ctxText = contextEl.value.trim();
-  const studiosBrief = state.studios.map(s => `${s.id} | ${s.name} (${s.city}, ${s.country})`).join('\n');
-  const rulesPrompt = buildSystemRules(ctxText, studiosBrief);
-
-  const claudeContent = [
-    { type: 'text', text: `אני שולח לך **ניתוח ויזואלי שכבר בוצע ע"י Gemini** של תצלום ארכיוני. אתה **לא** רואה את התמונה עצמה — Gemini הוא העיניים, אתה הטקסט והבקרה. תפקידך כפול:
-
-**(א) בקרה על הקריאה של Gemini.** עבור על הניתוח של Gemini בעין ביקורתית — לא לקבל אותו כפשוטו:
-- סתירות פנימיות (פרט אחד שמכחיש פרט אחר באותו ניתוח).
-- אי-התאמות תקופתיות (מדים/רכבים/סגנון שלא תואמים את התאריך שצוין).
-- זיהויים שמוצגים בביטחון-יתר ללא בסיס ויזואלי מספק (שם איש, מחנה/גטו ספציפי, יחידה צבאית). במקרה כזה **הנמך את רמת הוודאות** או הורד לתיאור גנרי.
-- התנגשות עם פרופיל האוסף / תיאור הפריט מטופס האיסוף (אם יש).
-כל הערת בקרה כזו נכנסת לשדה "הערות" בנוסח **"בדיקת קלוד: ..."**.
-
-**(ב) הפקת הקטלוג המובנה.** על בסיס הניתוח של Gemini (אחרי הבקרה) + פרופיל האוסף + תיאור הפריט + חוקי הקטלוג של יד ושם — הפק JSON מובנה לפי הסכימה.
-
-מגבלות קשיחות:
-- אסור להוסיף תוכן ויזואלי שלא הופיע אצל Gemini (אתה לא רואה את התמונה). אם Gemini אמר "[לא ברור]" — שמור על אי-הוודאות.
-- מותר ומומלץ **להוריד** ביטחון או לסייג זיהוי שנראה לך מופרך — אסור **להעלות** ביטחון על סמך השערה שלך.
-
-## הניתוח הויזואלי של Gemini
-
-${visualDescription}
-
-## חוקי הקטלוג + פרופיל האוסף + תיאור פריט (אם יש)
-
-${rulesPrompt}
-
-החזר JSON תקין בלבד.`}
-  ];
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': state.apiKeys.anthropic,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: modelSelAnthropic.value,
-      max_tokens: 16000,
-      messages: [{ role: 'user', content: claudeContent }],
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`Claude (שלב 2) HTTP ${res.status}: ${err.error?.message || ''}`);
-  }
-  const data = await res.json();
-  const text = (data.content?.[0]?.text || '').trim();
-  return parseJsonResponse(text, 'Claude');
 }
 
 function buildSystemRules(ctxText, studiosBrief) {
