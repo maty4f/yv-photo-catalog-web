@@ -1412,18 +1412,34 @@ async function callGemini() {
     videoPart = { file_data: { file_uri: uploadedFile.uri, mime_type: uploadedFile.mimeType || state.film.type || 'video/mp4' } };
   }
 
-  const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
+  const model = getActiveModel();
+  const url = geminiBase() + '/v1beta/models/' + model + ':generateContent';
+  // Gemini 2.5 models spend part of the output budget on internal "thinking";
+  // a low cap truncates the JSON mid-string (finishReason MAX_TOKENS) and it
+  // fails to parse. Give each model its real max (2.0 tops out at 8192).
+  const maxOut = model.includes('2.0') ? 8192 : 65536;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [videoPart, { text: buildFilmPrompt() }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 16000, responseMimeType: 'application/json' }
+      generationConfig: { temperature: 0.2, maxOutputTokens: maxOut, responseMimeType: 'application/json' }
     })
   });
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
   const data = await res.json();
-  const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  // Surface the real failure instead of a downstream "invalid JSON".
+  const block = data.promptFeedback?.blockReason;
+  if (block) throw new Error(`Gemini חסם את הבקשה (${block}) — ייתכן בשל תוכן הסרט. נסה ספק אחר או קטע אחר של הסרט.`);
+  const cand = data.candidates?.[0];
+  const finish = cand?.finishReason;
+  const text = (cand?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  if (finish === 'MAX_TOKENS') {
+    throw new Error(`Gemini נקטע באמצע התשובה (חרג מ-${maxOut} טוקנים) — ה-timeline ארוך מדי לתשובה אחת. חתוך את הסרט לסגמנטים (כפתור החיתוך) או השתמש ב-Pipeline/Claude.`);
+  }
+  if (finish && finish !== 'STOP' && !text) {
+    throw new Error(`Gemini הסתיים ללא פלט (finishReason: ${finish}). נסה שוב או בחר מודל/ספק אחר.`);
+  }
   if (!text) throw new Error('Gemini תגובה ריקה');
   return parseJson(text, 'Gemini');
 }
@@ -1770,7 +1786,7 @@ function parseJson(text, label) {
     while (nB < openB) { repaired += '}'; nB++; }
     try { return JSON.parse(repaired); } catch (e2) {
       console.error(`${label} raw response:`, text);
-      const err = new Error(`${label} החזיר תגובה לא JSON תקין`);
+      const err = new Error(`${label} החזיר תגובה לא JSON תקין (${e2.message})`);
       err.rawText = text; err.parseError = e2.message; err.label = label;
       throw err;
     }
