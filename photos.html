@@ -626,10 +626,12 @@
   <section class="step" id="step-photo">
     <div class="head">
       <span class="num">1</span>
-      <span class="title">תצלום <small>Photograph — העלאה בודדת או batch (עד 20 בו-זמנית)</small></span>
+      <span class="title">תצלום <small>Photograph — בודד, batch או תיקייה שלמה (עד 40 בו-זמנית)</small></span>
       <div style="margin-inline-start:auto; display:flex; gap:6px;">
-        <button type="button" id="batch-add-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📤 העלה batch (עד 20)</button>
+        <button type="button" id="batch-add-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📤 העלה batch</button>
+        <button type="button" id="batch-folder-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📁 העלה תיקייה</button>
         <input type="file" id="batch-file-input" accept="image/*" multiple hidden>
+        <input type="file" id="batch-folder-input" accept="image/*" webkitdirectory multiple hidden>
       </div>
     </div>
     <div class="body">
@@ -648,6 +650,14 @@
         </div>
         <div id="queue-list" style="display:flex; gap:8px; overflow-x:auto; padding:4px; align-items:stretch;"></div>
         <div id="queue-rate-warn" style="display:none; margin-top:6px; padding:6px 10px; background:#fff3cd; border:1px solid #ffe69c; border-radius:4px; font-size:11.5px; color:#856404;"></div>
+        <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #e0cf8a; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#6b4f0f; cursor:pointer;">
+            <input type="checkbox" id="collection-mode-toggle" style="margin:0;">
+            <span>מצב אוסף — כל התצלומים שייכים לאוסף אחד (הצלבה ושיפור הדדי)</span>
+          </label>
+          <button type="button" id="collection-pass-btn" class="ghost" style="display:none; padding:3px 10px; font-size:11.5px; border-color:#1d6f42; color:#1d6f42;" title="הצלב ישויות בין כל התצלומים, אחד שמות/מקומות, הפץ זיהויים ודאיים וסמן סתירות">🔁 מעבר אוסף — הצלבה ואיחוד</button>
+          <span id="collection-pass-status" style="font-size:11.5px; color:#8a7140;"></span>
+        </div>
       </div>
 
       <div class="photo-row">
@@ -1026,8 +1036,12 @@ function clearPhoto(side) {
 state.photo_queue = [];          // [{ id, photo_seq, front, back, status, identification, error, thumb }]
 state.current_queue_index = -1;  // -1 = no active item
 state.queue_processor_running = false;
+// Collection mode: when on, a batch/folder is treated as one collection — items
+// inherit the collection profile, auto-save into state.collection.photos[], and
+// the collection second pass (cross-ref/unify/propagate) becomes available.
+state.collection_mode = !!state.collection;
 
-const BATCH_MAX = 20;
+const BATCH_MAX = 40;
 const QUEUE_STATUSES = {
   pending:   { icon: '⏳', label: 'ממתין',     color: '#8a7140' },
   analyzing: { icon: '🔄', label: 'מנתח',      color: '#0d47a1' },
@@ -1084,6 +1098,228 @@ document.getElementById('batch-file-input').addEventListener('change', e => {
   e.target.value = ''; // allow re-selecting same files later
   addFilesToQueue(files);
 });
+// Folder picker — same queue, filtered to image files (a folder may contain
+// thumbs.db, .txt sidecars, etc.). webkitdirectory yields the whole subtree.
+document.getElementById('batch-folder-btn').addEventListener('click', () =>
+  document.getElementById('batch-folder-input').click());
+document.getElementById('batch-folder-input').addEventListener('change', e => {
+  const files = [...e.target.files].filter(f => /\.(jpe?g|png|webp|gif|tif?f|bmp)$/i.test(f.name));
+  e.target.value = '';
+  if (!files.length) { alert('לא נמצאו קבצי תמונה בתיקייה שנבחרה.'); return; }
+  addFilesToQueue(files);
+});
+
+// ─── Collection mode: mark a batch/folder as one collection ───
+const collectionModeToggle = document.getElementById('collection-mode-toggle');
+collectionModeToggle.checked = state.collection_mode;
+collectionModeToggle.addEventListener('change', () => {
+  state.collection_mode = collectionModeToggle.checked;
+  if (state.collection_mode && !state.collection) ensureCollectionForMode();
+  refreshCollectionPassBar();
+});
+document.getElementById('collection-pass-btn').addEventListener('click', () => runCollectionSecondPass());
+
+// Collection mode on but no Step-0 profile yet → create a minimal collection so
+// photos group and memory persists. The archivist can fill the full profile later.
+function ensureCollectionForMode() {
+  if (state.collection) return;
+  const id = 'batch_' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+  state.collection = { id, profile: { intake_items: [], key_people: [] }, photos: [], last_updated: new Date().toISOString() };
+  state.saved_collections[id] = state.collection;
+  state.current_photo_index = 1;
+  showStatus('נוצר אוסף זמני (' + id + ') — אפשר להשלים פרופיל בשלב 0', 'info');
+}
+
+// Per-photo records the second pass works on: queue items already analyzed +
+// photos already saved to the collection (deduped by sequence). Each carries the
+// raw result object so the reconciler can extract entities regardless of shape.
+function collectionReadyRecords() {
+  const recs = [], seen = new Set();
+  state.photo_queue.forEach((it, i) => {
+    if (it.identification && (it.status === 'ready' || it.status === 'done')) {
+      const seq = it.photo_seq ?? (i + 1);
+      recs.push({ seq, photo_id: state.collection ? `${state.collection.id}/${seq}` : String(seq), source: 'queue', result: it.identification, item: it });
+      seen.add(seq);
+    }
+  });
+  (state.collection?.photos || []).forEach(p => {
+    if (!seen.has(p.sequence)) recs.push({ seq: p.sequence, photo_id: p.photo_id, source: 'saved', result: p });
+  });
+  return recs.sort((a, b) => (a.seq || 0) - (b.seq || 0));
+}
+
+function refreshCollectionPassBar() {
+  const btn = document.getElementById('collection-pass-btn');
+  if (!btn) return;
+  const n = collectionReadyRecords().length;
+  btn.style.display = (state.collection_mode && n >= 2) ? 'inline-block' : 'none';
+  btn.textContent = `🔁 מעבר אוסף — הצלבה ואיחוד (${n})`;
+}
+
+// ─── Collection second pass: cross-reference, unify, propagate, flag ───
+
+// Compact entity view of one photo record (works for a queue `identification`
+// result or a saved photoEntry — both share these keys).
+function entitiesFromResult(r) {
+  const persons = (r.id_table || []).map(x => (x && x.name || '').trim()).filter(Boolean);
+  return {
+    title_he: r.title_he || '',
+    places_en: r.places_en || '',
+    creation_date: r.creation_date || '',
+    persons,
+  };
+}
+
+// Text-only LLM call routed through the active provider (no images). Used for
+// reconciliation, which operates on the already-extracted structured records.
+async function reconcileLLM(prompt, label) {
+  if (state.provider === 'unified-server') {
+    const base = await resolveUnifiedBase();
+    if (base === null) throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) למצב מנוע מאוחד');
+    const res = await fetch(base + '/api/ask', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+    if (!res.ok) throw new Error('שרת /api/ask החזיר HTTP ' + res.status);
+    const j = await res.json().catch(() => ({}));
+    return parseJsonResponse(j.text || '', label);
+  }
+  if (state.provider === 'gemini') {
+    const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
+    const res = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 32768, responseMimeType: 'application/json' } }),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || 'Gemini HTTP ' + res.status); }
+    const data = await res.json();
+    return parseJsonResponse(data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '', label);
+  }
+  // anthropic
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': state.apiKeys.anthropic,
+      'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model: getActiveModel(), max_tokens: 16000, messages: [{ role: 'user', content: prompt }] }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || 'Anthropic HTTP ' + res.status); }
+  const data = await res.json();
+  return parseJsonResponse(data.content?.[0]?.text || '', label);
+}
+
+function buildReconcilePrompt(recs) {
+  const p = state.collection?.profile || {};
+  const photos = recs.map(r => ({ photo_id: r.photo_id, seq: r.seq, ...entitiesFromResult(r.result) }));
+  const canon = (state.places_canonical || []).slice(0, 160);
+  const memory = state.collection?.memory || null;
+  return `אתה עורך בכיר במדור התצלומים של יד ושם. לפניך ${photos.length} רישומי קטלוג של תצלומים מאותו אוסף, שכל אחד קוטלג בנפרד. בצע מעבר הצלבה ברמת האוסף.
+
+## פרופיל האוסף
+מוסר: ${(p.donor_he || '')} ${(p.donor_en || '')}
+תקופה: ${p.period || ''} · אזור: ${p.region || ''}
+אישים מרכזיים: ${(p.key_people || []).map(x => x.name).filter(Boolean).join(', ') || '(לא צוין)'}
+${memory ? '\n## זיכרון אוסף קודם (ממעבר קודם — שמר ועדכן)\n' + JSON.stringify(memory).slice(0, 4000) + '\n' : ''}
+## איות מקומות קנוני (Sapir) — נרמל מקומות לצורות האלה כשהן תואמות
+${canon.join(' · ')}
+
+## רישומי התצלומים
+${JSON.stringify(photos, null, 1)}
+
+## משימות
+1. **איחוד ישויות**: אותו אדם/מקום/מוסד שמופיע בכמה תצלומים בכתיב שונה — אחד לצורה מועדפת אחת (מקומות לפי האיות הקנוני).
+2. **הפצה**: אם תצלום אחד מזהה ישות בוודאות, וזו מופיעה בתצלום אחר באופן לא־ודאי/חסר — חזק או תקן שם.
+3. **סתירות**: סמן אי-התאמות (אותו אדם בשנים סותרות, מקום שלא מתיישב עם התקופה וכו') — להכרעת המקטלג, אל תכריע בעצמך.
+
+החזר JSON תקין בלבד בסכמה (ללא טקסט מחוץ ל-JSON):
+{
+  "canonical_entities": {
+    "people": [{"preferred": "", "variants": [""], "note": ""}],
+    "places": [{"preferred": "", "variants": [""], "note": ""}],
+    "dates": [{"value": "", "note": ""}],
+    "institutions": [{"preferred": "", "variants": [""]}]
+  },
+  "per_photo_deltas": [
+    {"photo_id": "", "places_en": "<מחרוזת מקומות מאוחדת, או null אם אין שינוי>", "persons": [{"name": "", "action": "unify|propagate|confirm", "note": ""}], "flags": ["טקסט עברי קצר לכל סתירה"]}
+  ],
+  "collection_summary": "סיכום קצר של האוסף ושל מה שאוחד/הופץ"
+}`;
+}
+
+function applyCollectionDeltas(reconciled, recs) {
+  const byId = {};
+  recs.forEach(r => { byId[r.photo_id] = r; });
+  let changed = 0; const flags = [];
+  (reconciled.per_photo_deltas || []).forEach(d => {
+    const rec = byId[d.photo_id];
+    if (!rec) return;
+    const target = rec.result; // mutate in place (queue identification or saved photoEntry)
+    let touched = false;
+    if (typeof d.places_en === 'string' && d.places_en.trim() && d.places_en.trim() !== (target.places_en || '')) {
+      target.places_en = d.places_en.trim(); touched = true;
+    }
+    if (Array.isArray(d.flags) && d.flags.length) {
+      d.flags.forEach(f => flags.push({ photo_id: d.photo_id, seq: rec.seq, text: String(f) }));
+      const note = 'בדיקת אוסף: ' + d.flags.join(' · ');
+      if (!target.info) target.info = {};
+      target.info.notes_he = ((target.info.notes_he || '') + '\n' + note).trim();
+      touched = true;
+    }
+    if (touched) changed++;
+  });
+  return { changed, flags };
+}
+
+function showCollectionFlags(flags) {
+  const anchor = document.getElementById('collection-pass-status');
+  if (!anchor) return;
+  let panel = document.getElementById('collection-flags-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'collection-flags-panel';
+    panel.style.cssText = 'margin-top:8px; padding:8px 10px; background:#fdecea; border:1px solid #f5b7b1; border-radius:6px; font-size:11.5px; color:#922b21; width:100%;';
+    anchor.parentNode.appendChild(panel);
+  }
+  panel.innerHTML = '<b>⚠ סתירות לבדיקת המקטלג:</b><br>' +
+    flags.map(f => `· [תצלום ${f.seq}] ${esc(f.text)}`).join('<br>');
+}
+
+async function runCollectionSecondPass() {
+  const recs = collectionReadyRecords();
+  if (recs.length < 2) { alert('צריך לפחות 2 תצלומים מנותחים באוסף למעבר ההצלבה.'); return; }
+  if (!state.collection) ensureCollectionForMode();
+  const statusEl = document.getElementById('collection-pass-status');
+  const btn = document.getElementById('collection-pass-btn');
+  const setS = m => { if (statusEl) statusEl.textContent = m; };
+  btn.disabled = true;
+  setS('בונה מעבר אוסף…');
+  try {
+    const prompt = buildReconcilePrompt(recs);
+    setS(`מצליב ${recs.length} רשומות דרך ${state.provider}…`);
+    const reconciled = await reconcileLLM(prompt, 'מעבר אוסף');
+    const applied = applyCollectionDeltas(reconciled, recs);
+    state.collection.memory = reconciled.canonical_entities || state.collection.memory || {};
+    state.collection.reconcile_summary = reconciled.collection_summary || '';
+    state.collection.flags = applied.flags;
+    state.collection.last_updated = new Date().toISOString();
+    if (state.collection.id) {
+      state.saved_collections[state.collection.id] = state.collection;
+      try { localStorage.setItem('yv_collections', JSON.stringify(state.saved_collections)); } catch (e) {}
+    }
+    // Refresh the open queue item so unified places / flags show immediately.
+    if (state.current_queue_index >= 0) {
+      const cur = state.photo_queue[state.current_queue_index];
+      if (cur && cur.identification) { state.identification = cur.identification; fillResultsForm(cur.identification); }
+    }
+    setS(`✓ עודכנו ${applied.changed} רשומות · ${applied.flags.length} סתירות לבדיקה`);
+    if (applied.flags.length) showCollectionFlags(applied.flags);
+    else { const old = document.getElementById('collection-flags-panel'); if (old) old.remove(); }
+  } catch (err) {
+    console.error('collection second pass failed', err);
+    setS('שגיאה במעבר האוסף: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 // Sort pairs by numeric components of basename, ascending.
 // "13090_90" → [13090, 90]; "13090_91" → [13090, 91]; "13091_1" → [13091, 1]
@@ -1161,6 +1397,9 @@ function renderQueuePanel() {
   state.photo_queue.forEach(it => counts[it.status]++);
   summary.textContent = `(${state.photo_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}`;
   document.getElementById('queue-retry-btn').style.display = counts.error ? 'inline-block' : 'none';
+  const cmToggle = document.getElementById('collection-mode-toggle');
+  if (cmToggle) cmToggle.checked = state.collection_mode;
+  refreshCollectionPassBar();
 
   list.innerHTML = state.photo_queue.map((it, idx) => {
     const s = QUEUE_STATUSES[it.status] || QUEUE_STATUSES.pending;
@@ -1279,18 +1518,59 @@ async function startQueueProcessor() {
 }
 
 async function identifyQueueItem(item) {
-  // Temporarily swap state.photos to point at this item's files, run identify,
-  // then restore. The existing call* functions read from state.photos.
+  // Temporarily swap state.photos + current_photo_index to this item, run
+  // identify, then restore. The existing call* functions and buildSystemRules
+  // read from state.photos / state.current_photo_index.
   const savedPhotos = { ...state.photos };
+  const savedIdx = state.current_photo_index;
   state.photos = { front: item.front, back: item.back };
+  if (item.photo_seq != null) state.current_photo_index = item.photo_seq;
   try {
-    if (state.provider === 'unified-server')
-      throw new Error('המנוע המאוחד בשרת תומך כרגע בקטלוג תצלום בודד — לתור אוסף בחר ספק אחר בהגדרות API');
+    if (state.provider === 'unified-server') {
+      // Batch via the server engine: the collection profile + this photo's
+      // intake row ride along in the `context` field (the engine reads it as
+      // the .context.txt sidecar). Returns the same shape as the direct paths.
+      const { base, outputName } = await runUnifiedJob(item.front, collectionContextFor(item));
+      const jsonUrl = base + '/api/output/' + encodeURIComponent(outputName.replace(/\.html$/i, '.json'));
+      const fres = await fetch(jsonUrl);
+      if (!fres.ok) throw new Error('סיכום שדות לא זמין מהשרת (HTTP ' + fres.status + ')');
+      return mapUnifiedPhotoFields(await fres.json());
+    }
     if (state.provider === 'gemini')     return await callGemini();
     return await callAnthropic();
   } finally {
     state.photos = savedPhotos;
+    state.current_photo_index = savedIdx;
   }
+}
+
+// Plain-text collection context for the unified-server `context` field: the
+// shared collection profile + this photo's intake-form row + any free-text the
+// archivist typed. (gemini/anthropic get the same facts via buildSystemRules.)
+function collectionContextFor(item) {
+  const parts = [];
+  if (state.collection_mode && state.collection) {
+    const p = state.collection.profile || {};
+    const lines = [`אוסף ${state.collection.id} · תצלום מס׳ ${item.photo_seq ?? '?'}`];
+    const donor = `${p.donor_he || ''} ${p.donor_en || ''}`.trim();
+    if (donor) lines.push(`מוסר: ${donor}`);
+    if (p.donor_relation) lines.push(`קשר: ${p.donor_relation}`);
+    const source = `${p.source_he || ''} ${p.source_en || ''}`.trim();
+    if (source) lines.push(`מקור: ${source}`);
+    if (p.period) lines.push(`תקופה: ${p.period}`);
+    if (p.region) lines.push(`אזור: ${p.region}`);
+    if (p.family_biography_he) lines.push(`ביוגרפיה משפחתית: ${p.family_biography_he}`);
+    if (p.provenance_he) lines.push(`פרובננס: ${p.provenance_he}`);
+    const ppl = (p.key_people || [])
+      .map(x => `${x.name} (${x.dates || '?'}${x.relation ? ', ' + x.relation : ''})`).filter(Boolean);
+    if (ppl.length) lines.push(`אישים מרכזיים באוסף: ${ppl.join('; ')}`);
+    const it = (p.intake_items || []).find(x => x.type === 'photo' && x.photo_seq === item.photo_seq);
+    if (it) lines.push(`תיאור המוסר לתצלום זה (פריט #${it.intake_num}): ${it.description_he || it.description_en || ''}`);
+    parts.push(lines.join('\n'));
+  }
+  const free = (contextEl.value || '').trim();
+  if (free) parts.push(free);
+  return parts.join('\n\n');
 }
 
 // "Retry all failed" button — re-queue every errored item and wake the processor
@@ -1561,6 +1841,13 @@ async function loadThesaurus() {
 }
 loadThesaurus();
 
+// Canonical Sapir place spellings — used by the collection second pass to snap
+// place-name variants to one form (mirrors the server's _normalize_places).
+state.places_canonical = [];
+fetch('data/places_canonical_top.json').then(r => r.ok ? r.json() : []).then(j => {
+  state.places_canonical = Array.isArray(j) ? j : [];
+}).catch(() => {});
+
 function saveUserStudios() {
   // The seed is read-only; only user additions persist
   const seedIds = new Set();
@@ -1733,54 +2020,58 @@ async function resolveUnifiedBase() {
   return state.localServerUrl || null;
 }
 
-async function runUnifiedServer() {
-  const f = state.photos.front;
-  if (!f) throw new Error('יש להעלות חזית תצלום');
+// Core: POST one file to the unified server and wait for the job to finish.
+// Returns { base, outputName }. No field-fetch, no UI side-effects — callers
+// (single-photo and the batch queue) handle the result their own way.
+async function runUnifiedJob(file, contextText, onStatus) {
+  if (!file) throw new Error('יש להעלות חזית תצלום');
   const base = await resolveUnifiedBase();
   if (base === null)
     throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
 
   const fd = new FormData();
-  fd.append('file', f);
+  fd.append('file', file);
   fd.append('kind', 'photo');
-  fd.append('context', contextEl.value.trim());
-  showStatus('מעלה לשרת המאוחד…', 'info');
+  fd.append('context', (contextText || '').trim());
+  if (onStatus) onStatus('מעלה לשרת המאוחד…');
 
   const res = await fetch(base + '/api/items', { method: 'POST', body: fd });
   const j = await res.json().catch(() => ({}));
   if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
 
-  showStatus('מנתח בשרת (Gemini → Claude → ולידציה)… תצלום ~15 שניות', 'info');
-  await new Promise((resolve, reject) => {
+  if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… תצלום ~15 שניות');
+  return await new Promise((resolve, reject) => {
     const es = new EventSource(base + '/api/jobs/' + j.jobId + '/events');
     let serverErr = '';
     es.onmessage = e => {
       try {
         const ev = JSON.parse(e.data);
         if (ev.type === 'error') serverErr = ev.message || '';
-        else if (ev.text) {
+        else if (ev.text && onStatus) {
           const line = String(ev.text).trim().split('\n').pop().slice(0, 160);
-          if (line) showStatus('🛠 ' + line, 'info');
+          if (line) onStatus('🛠 ' + line);
         }
       } catch (ignore) {}
     };
-    es.addEventListener('end', async e => {
+    es.addEventListener('end', e => {
       es.close();
       let fin = {};
       try { fin = JSON.parse(e.data); } catch (ignore) {}
-      if (fin.status === 'done' && fin.outputName) {
-        const url = base + '/api/output/' + encodeURIComponent(fin.outputName);
-        identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
-        identifyStatus.className = 'status-msg show ok';
-        await loadUnifiedResults(base, fin.outputName); // fills "תוצאות הזיהוי"; fail-soft
-        resolve();
-      } else {
-        reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
-      }
+      if (fin.status === 'done' && fin.outputName) resolve({ base, outputName: fin.outputName });
+      else reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
     });
     es.onerror = () => { /* SSE auto-reconnects; terminal state arrives via "end" */ };
   });
+}
+
+// Single-photo path: run the job, then show download links + load editable fields.
+async function runUnifiedServer() {
+  const { base, outputName } = await runUnifiedJob(state.photos.front, contextEl.value.trim(), m => showStatus(m, 'info'));
+  const url = base + '/api/output/' + encodeURIComponent(outputName);
+  identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+  identifyStatus.className = 'status-msg show ok';
+  await loadUnifiedResults(base, outputName); // fills "תוצאות הזיהוי"; fail-soft
 }
 
 // =====================================================================
@@ -2033,7 +2324,9 @@ async function callGemini() {
       contents: [{ role: 'user', parts }],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 16000,
+        // 2.5 spends part of the budget on thinking — a low cap truncates the
+        // JSON mid-string. Give the model its real max (2.0 tops out at 8192).
+        maxOutputTokens: model.includes('2.0') ? 8192 : 65536,
         responseMimeType: 'application/json',
       },
     }),
@@ -2861,6 +3154,8 @@ function buildCollectionReport(c) {
 <div style="font-size:13px;color:#5a5a5a;margin-bottom:16px">
   עודכן: ${esc((c.last_updated || '').slice(0,10))} · ${photos.length} תצלומים קוטלגו · צפי: ${esc(p.expected_photo_count || '?')}
 </div>
+${c.reconcile_summary ? `<div style="margin-bottom:16px;padding:10px 12px;background:#eef7f0;border:1px solid #bcdcc6;border-radius:6px;font-size:13px"><b>סיכום מעבר אוסף / Collection reconciliation:</b><br>${esc(c.reconcile_summary).replace(/\n/g,'<br>')}</div>` : ''}
+${(c.flags && c.flags.length) ? `<div style="margin-bottom:16px;padding:10px 12px;background:#fdecea;border:1px solid #f5b7b1;border-radius:6px;font-size:13px;color:#922b21"><b>⚠ סתירות להכרעת המקטלג / Inconsistencies to resolve:</b><br>${c.flags.map(f => `· [תצלום ${esc(String(f.seq))}] ${esc(f.text)}`).join('<br>')}</div>` : ''}
 
 <h2>פרטי האוסף / Collection details</h2>
 <dl class="meta">
