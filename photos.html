@@ -2126,29 +2126,31 @@ async function runUnifiedJob(file, contextText, onStatus, backFile) {
   if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
 
-  if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… תצלום ~15 שניות');
-  return await new Promise((resolve, reject) => {
-    const es = new EventSource(base + '/api/jobs/' + j.jobId + '/events');
-    let serverErr = '';
-    es.onmessage = e => {
-      try {
-        const ev = JSON.parse(e.data);
-        if (ev.type === 'error') serverErr = ev.message || '';
-        else if (ev.text && onStatus) {
-          const line = String(ev.text).trim().split('\n').pop().slice(0, 160);
-          if (line) onStatus('🛠 ' + line);
-        }
-      } catch (ignore) {}
-    };
-    es.addEventListener('end', e => {
-      es.close();
-      let fin = {};
-      try { fin = JSON.parse(e.data); } catch (ignore) {}
-      if (fin.status === 'done' && fin.outputName) resolve({ base, outputName: fin.outputName });
-      else reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
-    });
-    es.onerror = () => { /* SSE auto-reconnects; terminal state arrives via "end" */ };
-  });
+  if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… ~2-3 דק׳');
+  // Poll for completion via GET /api/jobs/:id. SSE (EventSource) does NOT stream
+  // reliably through the Cloudflare tunnel — events get buffered/dropped, so the
+  // queue item would hang on "מנתח" forever even after the server finished.
+  // Polling is robust through Cloudflare.
+  const jobUrl = base + '/api/jobs/' + j.jobId;
+  const POLL_MS = 2500, MAX_MS = 20 * 60 * 1000;
+  const t0 = Date.now();
+  while (true) {
+    await new Promise(r => setTimeout(r, POLL_MS));
+    let job = null;
+    try { job = await (await fetch(jobUrl)).json(); } catch (e) { /* transient — keep polling */ }
+    if (!job) { if (Date.now() - t0 > MAX_MS) throw new Error('timeout בניתוח'); continue; }
+    if (onStatus && Array.isArray(job.events) && job.events.length) {
+      const last = job.events[job.events.length - 1];
+      const line = String(last.text || last.message || '').trim().split('\n').pop().slice(0, 160);
+      if (line) onStatus('🛠 ' + line);
+    }
+    if (job.status === 'done' && job.outputName) return { base, outputName: job.outputName };
+    if (job.status === 'error') {
+      const er = (job.events || []).filter(e => e.type === 'error').pop();
+      throw new Error((er && (er.message || er.text)) || 'הניתוח הסתיים בשגיאה בשרת');
+    }
+    if (Date.now() - t0 > MAX_MS) throw new Error('timeout — הניתוח לקח יותר מדי זמן');
+  }
 }
 
 // Single-photo path: run the job, then show download links + load editable fields.
