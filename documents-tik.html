@@ -477,19 +477,40 @@ async function callGeminiOnParts(parts,promptText){
   }catch(netErr){
     throw new Error('לא ניתן להגיע ל-Gemini ('+netErr.message+'). בדוק חיבור רשת/חסימה.');
   }
-  if(!res.ok){const t=await res.text();throw new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));}
+  if(!res.ok){
+    const t=await res.text();
+    const err=new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));
+    err.httpStatus=res.status;
+    if(res.status===429){
+      // Gemini's 429 body carries RetryInfo {retryDelay:"45s"} and a QuotaFailure
+      // whose quotaId says PerMinute (waitable) vs PerDay (can't wait it out today).
+      const md=t.match(/"retryDelay"\s*:\s*"([\d.]+)s"/);
+      if(md)err.retryMs=Math.round(parseFloat(md[1])*1000);
+      err.isDaily=/PerDay/i.test(t);
+    }
+    throw err;
+  }
   const data=await res.json();
   // Free text (not JSON) — robust against truncation; Claude turns it into the record.
   return (data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'').trim();
 }
-// Retry on rate-limit (429 / RESOURCE_EXHAUSTED) with backoff.
+// Retry on rate-limit (429 / RESOURCE_EXHAUSTED). Honour Gemini's own retryDelay
+// from the 429 body (capped at 60s), falling back to an escalating backoff. A
+// *daily* quota (RPD) can't be waited out — fail fast with a clear message rather
+// than stalling through three useless waits.
 async function callGeminiRetry(parts,promptText,onWait){
-  const tries=4;
+  const tries=5;
   for(let a=0;a<tries;a++){
     try{return await callGeminiOnParts(parts,promptText);}
     catch(e){
-      const rate=/HTTP 429|RESOURCE_EXHAUSTED|quota|rate/i.test(e.message);
-      if(rate&&a<tries-1){const wait=15000*(a+1);if(onWait)onWait(wait);await new Promise(r=>setTimeout(r,wait));continue;}
+      const rate=e.httpStatus===429||/HTTP 429|RESOURCE_EXHAUSTED|quota|rate/i.test(e.message);
+      if(rate&&e.isDaily)throw new Error('מכסת Gemini היומית (RPD) מוצתה — המתנה לא תעזור היום. עבור למנוע Claude, הפעל חיוב על מפתח Gemini, או נסה מחר.');
+      if(rate&&a<tries-1){
+        const wait=Math.min(60000,Math.max(e.retryMs||0,15000*(a+1)));
+        if(onWait)onWait(wait);
+        await new Promise(r=>setTimeout(r,wait));
+        continue;
+      }
       throw e;
     }
   }
@@ -924,7 +945,7 @@ $('run').addEventListener('click',async()=>{
           const txt=await callGeminiRetry(parts,chunkPrompt(i),wait=>showStatus(`<span class="spinner"></span>שלב 1 · מגבלת קצב של Gemini (${m.range}) — ממתין ${wait/1000} שׄ ומנסה שוב…`,'info'));
           notes[i]={range:m.range,text:txt||'(אין טקסט)'};
         }catch(err){recordFailure(i,err);}
-        if(i<chunks.length-1)await new Promise(r=>setTimeout(r,1200)); // pace Gemini RPM
+        if(i<chunks.length-1)await new Promise(r=>setTimeout(r,4000)); // pace Gemini RPM (free tier ~5–15 RPM); retryDelay handles any overflow
       }
     }else{
       // Claude mode: chunks are independent, and the server spawns one CLI process
