@@ -1425,6 +1425,8 @@ async function addPairsToQueue(pairs) {
       identification: null,
       error: null,
       thumb: null,
+      addedAt: Date.now(),   // upload time — start of the upload→done timer
+      finishedAt: null,      // set when analysis ends (ready/error)
     };
     state.photo_queue.push(item);
     return item;
@@ -1440,6 +1442,26 @@ async function addPairsToQueue(pairs) {
   }));
   // All uploads done → kick off the processor (no-op if already running).
   startQueueProcessor();
+}
+
+// ── Per-item timer: upload (addedAt) → analysis done (finishedAt) ──
+function fmtElapsed(ms) {
+  if (!ms || ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function queueTimerText(it) {
+  if (!it || !it.addedAt) return '';
+  const end = it.finishedAt || Date.now();
+  return '⏱ ' + fmtElapsed(end - it.addedAt);
+}
+// Live tick: refresh only the in-progress timer spans (no full re-render → no flicker).
+function tickQueueTimers() {
+  if (!state.photo_queue || !state.photo_queue.length) return;
+  document.querySelectorAll('#queue-list .q-timer').forEach(el => {
+    const it = state.photo_queue[parseInt(el.dataset.idx)];
+    if (it && it.addedAt && !it.finishedAt) el.textContent = queueTimerText(it);
+  });
 }
 
 function renderQueuePanel() {
@@ -1474,6 +1496,7 @@ function renderQueuePanel() {
       <div style="text-align:center; margin-top:3px; font-size:10.5px; color:${s.color}; font-weight:600;">
         ${s.icon} ${s.label}
       </div>
+      <div class="q-timer" data-idx="${idx}" title="זמן מהעלאה עד סיום הניתוח" style="text-align:center; margin-top:1px; font-size:9.5px; color:#8a7140; font-variant-numeric:tabular-nums; min-height:12px;">${queueTimerText(it)}</div>
     </div>`;
   }).join('');
 
@@ -1491,6 +1514,9 @@ function renderQueuePanel() {
       removeQueueItem(parseInt(el.dataset.idx));
     });
   });
+
+  // Start the once-per-second timer tick (lazily, once).
+  if (!state._qTimerInterval) state._qTimerInterval = setInterval(tickQueueTimers, 1000);
 }
 
 function removeQueueItem(idx) {
@@ -1583,6 +1609,7 @@ async function queueWorker() {
       const result = await identifyQueueItem(item);
       item.identification = result;
       item.status = 'ready';
+      item.finishedAt = Date.now();
       // If user has no active item yet → make this it
       if (state.current_queue_index < 0) {
         state.current_queue_index = state.photo_queue.indexOf(item);
@@ -1590,6 +1617,7 @@ async function queueWorker() {
       }
     } catch (err) {
       item.status = 'error';
+      item.finishedAt = Date.now();
       item.error = err.message;
       console.error(`Queue item ${item.id} failed:`, err);
     }
