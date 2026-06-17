@@ -1129,35 +1129,37 @@ async function runUnifiedServer() {
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
 
   showStatus('מנתח בשרת (Gemini → Claude → ולידציה)… סרט — כמה דקות', 'info');
-  await new Promise((resolve, reject) => {
-    const es = new EventSource(base + '/api/jobs/' + j.jobId + '/events');
-    let serverErr = '';
-    es.onmessage = e => {
-      try {
-        const ev = JSON.parse(e.data);
-        if (ev.type === 'error') serverErr = ev.message || '';
-        else if (ev.text) {
-          const line = String(ev.text).trim().split('\n').pop().slice(0, 160);
-          if (line) showStatus('🛠 ' + line, 'info');
-        }
-      } catch (ignore) {}
-    };
-    es.addEventListener('end', async e => {
-      es.close();
-      let fin = {};
-      try { fin = JSON.parse(e.data); } catch (ignore) {}
-      if (fin.status === 'done' && fin.outputName) {
-        const url = base + '/api/output/' + encodeURIComponent(fin.outputName);
-        identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
-        identifyStatus.className = 'status-msg show ok';
-        await loadUnifiedResults(base, fin.outputName); // fills the editable results; fail-soft
-        resolve();
-      } else {
-        reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
-      }
-    });
-    es.onerror = () => { /* SSE auto-reconnects; terminal state arrives via "end" */ };
-  });
+  // Poll for completion via GET /api/jobs/:id. SSE (EventSource) does NOT stream
+  // reliably through the Cloudflare tunnel — during the long, silent Gemini step
+  // the idle connection is dropped and the terminal "end" event is lost, so the
+  // page would hang on "מנתח" forever even after the server finished. Polling is
+  // robust through Cloudflare. (Mirrors the photos.html unified-server flow.)
+  const jobUrl = base + '/api/jobs/' + j.jobId;
+  const POLL_MS = 2500, MAX_MS = 20 * 60 * 1000;
+  const t0 = Date.now();
+  while (true) {
+    await new Promise(r => setTimeout(r, POLL_MS));
+    let job = null;
+    try { job = await (await fetch(jobUrl)).json(); } catch (ignore) { /* transient — keep polling */ }
+    if (!job) { if (Date.now() - t0 > MAX_MS) throw new Error('timeout בניתוח'); continue; }
+    if (Array.isArray(job.events) && job.events.length) {
+      const last = job.events[job.events.length - 1];
+      const line = String(last.text || last.message || '').trim().split('\n').pop().slice(0, 160);
+      if (line) showStatus('🛠 ' + line, 'info');
+    }
+    if (job.status === 'done' && job.outputName) {
+      const url = base + '/api/output/' + encodeURIComponent(job.outputName);
+      identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+      identifyStatus.className = 'status-msg show ok';
+      await loadUnifiedResults(base, job.outputName); // fills the editable results; fail-soft
+      return;
+    }
+    if (job.status === 'error') {
+      const er = (job.events || []).filter(e => e.type === 'error').pop();
+      throw new Error((er && (er.message || er.text)) || 'הניתוח הסתיים בשגיאה בשרת');
+    }
+    if (Date.now() - t0 > MAX_MS) throw new Error('timeout — הניתוח לקח יותר מדי זמן');
+  }
 }
 
 // =====================================================================
