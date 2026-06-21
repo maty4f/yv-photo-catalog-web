@@ -1174,8 +1174,10 @@ async function runFaceCluster() {
     const fd = new FormData();
     items.forEach((it, i) => {
       const seq = it.photo_seq != null ? it.photo_seq : (i + 1);
+      const names = ((it.identification && it.identification.id_table) || []).map(e => (e && e.name || '').trim()).filter(Boolean);
       fd.append('file', it.front, (it.front && it.front.name) || `photo_${seq}.jpg`);
       fd.append('seq', String(seq));
+      fd.append('name', JSON.stringify(names));   // this photo's catalog names → propagation source
     });
     const res = await fetch(base + '/api/faces', { method: 'POST', body: fd });
     const j = await res.json().catch(() => ({}));
@@ -1196,17 +1198,17 @@ async function runFaceCluster() {
         if (line) setS('🛠 ' + line);
       }
       if (job.status === 'done' && job.outputName) {
-        const url = base + '/api/output/' + encodeURIComponent(job.outputName);
-        // Render the result INLINE, inside this page (not a new tab). The sheet is
-        // self-contained RTL HTML with embedded face crops, so fetch its text and
-        // drop it into an in-page frame. Fetch is CORS-allowed for the dashboard
-        // origins; same-origin when the local server serves this page.
+        const htmlUrl = base + '/api/output/' + encodeURIComponent(job.outputName);
+        const jsonUrl = base + '/api/output/' + encodeURIComponent(job.outputName.replace(/\.html$/i, '.json'));
+        // Render an INTERACTIVE panel from the cluster JSON (crops + name-propagation
+        // proposals). Falls back to a link to the full HTML sheet on any error.
         try {
-          const sheetHtml = await (await fetch(url)).text();
-          showFaceResultsInline(sheetHtml, url);
-          setS('✓ זיהוי הפנים מוכן — מוצג למטה ↓');
+          const data = await (await fetch(jsonUrl)).json();
+          renderFaceClusters(data, htmlUrl);
+          const prop = (data.clusters || []).filter(c => c.proposed && (c.unnamed || []).length).length;
+          setS(prop ? `✓ זיהוי פנים — ${prop} שמות מוצעים להפצה ↓` : '✓ זיהוי הפנים מוכן — מוצג למטה ↓');
         } catch (e) {
-          if (statusEl) statusEl.innerHTML = '✓ מוכן — <a href="' + url + '" target="_blank" rel="noopener" style="color:#5b4b8a; font-weight:700; text-decoration:underline;">↗ פתח את הגיליון</a>';
+          if (statusEl) statusEl.innerHTML = '✓ מוכן — <a href="' + htmlUrl + '" target="_blank" rel="noopener" style="color:#5b4b8a;font-weight:700;text-decoration:underline;">↗ פתח את הגיליון</a>';
         }
         break;
       }
@@ -1224,33 +1226,87 @@ async function runFaceCluster() {
   }
 }
 
-// Render the face-cluster review sheet INLINE, inside the dashboard (not a new
-// tab). Builds a collapsible panel once (below the queue) and re-fills its frame
-// on each run. srcdoc embeds the fetched HTML directly — no cross-origin frame load.
-function showFaceResultsInline(sheetHtml, url) {
+// Render face clusters INLINE as an interactive panel: each person-cluster shows its
+// face crops + which photos it spans, and — when one photo in the cluster is named and
+// others aren't — a propagation proposal with "החל" that writes the name into the
+// unnamed photo's catalog record. House rule: archivist confirms each person ONCE —
+// nothing is applied without a click.
+function renderFaceClusters(data, htmlUrl) {
+  const clusters = (data && data.clusters) || [];
   let panel = document.getElementById('face-results-panel');
   if (!panel) {
     panel = document.createElement('div');
     panel.id = 'face-results-panel';
-    panel.style.cssText = 'margin:14px 0; border:1px solid #d9d2e6; border-radius:10px; background:#fbfaff; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.06)';
-    panel.innerHTML =
-      '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; background:#efeaf7; border-bottom:1px solid #d9d2e6;">' +
-        '<b style="color:#4a3d70; font-size:13.5px;">🧑‍🤝‍🧑 זיהוי פנים באוסף — אותו אדם לרוחב התצלומים</b>' +
-        '<span style="display:flex; gap:10px; align-items:center;">' +
-          '<a id="face-results-open" href="#" target="_blank" rel="noopener" style="font-size:12px; color:#5b4b8a;">↗ פתח בלשונית</a>' +
-          '<button type="button" id="face-results-close" class="ghost" style="padding:2px 9px; font-size:12px;">✕ סגור</button>' +
-        '</span>' +
-      '</div>' +
-      '<iframe id="face-results-frame" title="זיהוי פנים באוסף" style="width:100%; height:620px; border:0; display:block; background:#fff;"></iframe>';
+    panel.style.cssText = 'margin:14px 0;border:1px solid #d9d2e6;border-radius:10px;background:#fbfaff;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)';
     const anchor = document.getElementById('queue-panel');
     if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(panel, anchor.nextSibling);
     else document.body.appendChild(panel);
-    panel.querySelector('#face-results-close').addEventListener('click', () => { panel.style.display = 'none'; });
   }
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+  const cards = clusters.length ? clusters.map((c, ci) => {
+    const crops = (c.crops || []).map(u => `<img src="${u}" alt="" style="width:62px;height:62px;object-fit:cover;border-radius:6px;border:1px solid #ddd;margin-inline-start:4px">`).join('');
+    let body;
+    if (c.proposed && (c.unnamed || []).length) {
+      body = `<div style="font-size:13.5px">👧 <b>${esc(c.proposed)}</b> <span style="color:#777">(מתצלום ${esc((c.named || []).join(', '))})</span> `
+           + `→ להחיל על תצלום <b>${esc((c.unnamed).join(', '))}</b> `
+           + `<button type="button" class="ghost face-apply" data-ci="${ci}" style="padding:2px 11px;font-size:12px;border-color:#1d6f42;color:#1d6f42;font-weight:700">החל</button>`
+           + `<span class="face-applied" data-ci="${ci}" style="display:none;color:#1d6f42;font-weight:700;margin-inline-start:6px">✓ הוחל</span></div>`;
+    } else if (c.proposed) {
+      body = `<div style="font-size:13.5px">שם: <b>${esc(c.proposed)}</b> · מופיע בתצלומים: ${esc((c.photos || []).join(', '))}</div>`;
+    } else {
+      body = `<div style="font-size:13.5px;color:#9a2222">מופיע בתצלומים: ${esc((c.photos || []).join(', '))} — ללא שם, נא לנקב</div>`;
+    }
+    return '<div style="display:flex;gap:12px;align-items:center;background:#fff;border:1px solid #e3e0d8;border-radius:8px;padding:10px;margin:8px 12px">'
+      + `<div style="flex:0 0 auto">${crops || '<span style="color:#bbb">—</span>'}</div>`
+      + `<div style="flex:1">${body}<div style="color:#999;font-size:11.5px;margin-top:4px">${c.size} פנים · לכידוּת ${c.tight}</div></div></div>`;
+  }).join('') : '<div style="padding:16px;color:#777">לא נמצאו אשכולות של אותו אדם באוסף.</div>';
+
+  panel.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:#efeaf7;border-bottom:1px solid #d9d2e6">'
+      + '<b style="color:#4a3d70;font-size:13.5px">🧑‍🤝‍🧑 זיהוי פנים באוסף — אותו אדם לרוחב התצלומים</b>'
+      + '<span style="display:flex;gap:10px;align-items:center">'
+        + `<a href="${htmlUrl}" target="_blank" rel="noopener" style="font-size:12px;color:#5b4b8a">↗ גיליון מלא</a>`
+        + '<button type="button" id="face-results-close" class="ghost" style="padding:2px 9px;font-size:12px">✕ סגור</button>'
+      + '</span></div>'
+    + '<div style="padding:6px 0">' + cards + '</div>';
   panel.style.display = 'block';
-  panel.querySelector('#face-results-open').href = url;
-  panel.querySelector('#face-results-frame').srcdoc = sheetHtml;
+  panel.querySelector('#face-results-close').addEventListener('click', () => { panel.style.display = 'none'; });
+  panel.querySelectorAll('.face-apply').forEach(b => b.addEventListener('click', () => {
+    const c = clusters[+b.dataset.ci];
+    const n = applyFaceName(c.proposed, c.named || [], c.unnamed || []);
+    b.style.display = 'none';
+    const ok = panel.querySelector('.face-applied[data-ci="' + b.dataset.ci + '"]');
+    if (ok) ok.style.display = 'inline';
+    const st = document.getElementById('collection-pass-status');
+    if (st) st.textContent = `✓ "${c.proposed}" הוחל על ${n} תצלום(ים) — בדוק בטופס הזיהוי`;
+  }));
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Apply a propagated name to the unnamed photos' catalog records: add it to the
+// id_table and prepend a provenance note to ADMIN_NOTES (info.notes_he). Refreshes
+// the results form if one of the updated photos is the open one.
+function applyFaceName(name, fromSeqs, toSeqs) {
+  let applied = 0;
+  (toSeqs || []).forEach(seq => {
+    const it = (state.photo_queue || []).find(x => String(x.photo_seq) === String(seq));
+    if (!it) return;
+    it.identification = it.identification || {};
+    const idt = it.identification.id_table = it.identification.id_table || [];
+    if (!idt.some(e => e && (e.name || '').trim() === String(name).trim())) {
+      idt.push({ num: String(idt.length + 1), name: name, position_he: 'זוהתה ע"י התאמת פנים', position_en: 'identified via face match' });
+    }
+    it.identification.info = it.identification.info || {};
+    const prov = `זוהתה כ"${name}" ע"י התאמת פנים לתצלום ${(fromSeqs || []).join(', ')} (טעון אישור ויזואלי).`;
+    const prev = String(it.identification.info.notes_he || '').replace(/^\s*—\s*$/, '').trim();
+    it.identification.info.notes_he = (prov + (prev ? ' ' + prev : '')).trim();
+    applied++;
+    if (state.photo_queue[state.current_queue_index] === it && typeof fillResultsForm === 'function') {
+      state.identification = it.identification;
+      try { fillResultsForm(it.identification); } catch (e) { /* form refresh is best-effort */ }
+    }
+  });
+  return applied;
 }
 
 // Collection mode on but no Step-0 profile yet → create a minimal collection so
