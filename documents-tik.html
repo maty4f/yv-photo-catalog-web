@@ -188,6 +188,7 @@
   </div>
 
   <button class="go" id="run" disabled>קטלג תיק</button>
+  <button class="go" id="describe-fast" disabled style="background:#2c5d8a;margin-inline-start:8px">⚡ תיאור מהיר (Gemini→Claude)</button>
   <div class="status" id="status"></div>
   <div id="pdf-bar" style="display:none;margin-top:10px;font-size:13.5px;padding:8px 12px;border-radius:6px;background:#eef4f7;color:#234"></div>
 
@@ -363,18 +364,17 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני ביד ושם. לפנ
 }`;
 
 /* ---------- chunk extraction (Claude reads every page) & synthesis prompts ---------- */
-const CHUNK_EXTRACT_RULES = `אתה מקטלג ארכיוני ביד ושם הקורא **חלק** מתיק ארכיוני (טווח דפים שיצוין). הקבצים המצורפים הם סריקות אמיתיות של תיעוד מתקופת השואה — קרא כל אחד מהם בעיון. אלו לא כל דפי התיק — תאר את מה שאתה רואה בדפים שלפניך בלבד. הסיכום הזה ישמש אחר כך לסינתזה של רשומת-תיק אחת.
+const CHUNK_EXTRACT_RULES = `אתה מקטלג ארכיוני ביד ושם הקורא **חלק** מתיק (טווח דפים שיצוין). הקבצים הם סריקות אמיתיות מתקופת השואה — קרא בעיון. אלו לא כל דפי התיק. הסיכום ישמש אחר כך לסינתזת רשומת-תיק אחת.
 
-החזר **טקסט חופשי קצר ומובנה** (לא JSON, לא טבלאות). השתמש בכותרות קצרות:
-- **מסמכים בקטע** — פרט כל מסמך/קבוצת-דפים בקטע בשורה נפרדת: דף/טווח דפים בקטע · סוג (פרוטוקול חקירה, תעודה, מכתב, רשימה, שער תיק וכו') · תאריך אם מופיע · שפה · תיאור במשפט.
-- **תוכן עיקרי** — 2–4 משפטים: על מה הדפים, מי מעורב, מה מתואר.
-- **שמות** — כל אדם שמופיע פעם אחת בלבד (אל תחזור על אותו שם). לכל אדם, שורה אחת: שם בעברית עם הכתיב המקורי בסוגריים · תפקיד/קרבה · תאריכי לידה/פטירה אם מצוינים · מקום · גורל אם מצוין (נספה/שרד/גורש/לא ידוע) · באיזה דף בקטע מופיע.
-- **מקומות ותאריכים** — כפי שמופיעים בפועל.
-- **אירועים מתוארכים** — אירועים בעלי תאריך (גירוש, מאסר, העברה, שחרור, לידה/פטירה, הגירה) עם התאריך והמקום, אם מופיעים.
-- **שפות** — אילו שפות.
-- **יהלומים** — אם יש: עדות/תצהיר, מכתב ניצול, יומן, רשימת נספים/מגורשים/תושבים יהודים, תעודת מחנה/גטו, מסמך זהות בדויה. אם אין — כתוב "אין".
+⚠ זו **נקודת ביניים** — היה **טלגרפי**. סך הכול **עד ~500 מילים**. בלי משפטי רקע/ניתוח, בלי חזרות, בלי הקדמה/סיכום. רק עובדות, בשורות קצרות.
 
-אסור לנחש. אם דף לא קריא — ציין זאת. היה תמציתי — זו רק נקודת ביניים, לא הרשומה הסופית.`;
+החזר טקסט קצר תחת הכותרות (דלג על כותרת שאין לה תוכן):
+- **מסמכים** — שורה לכל מסמך/טווח-דפים: דפים · סוג (פרוטוקול/תעודה/מכתב/רשימה/שער…) · תאריך · שפה · תיאור ב-5-8 מילים.
+- **שמות** — שורה לכל אדם (פעם אחת בלבד): שם + כתיב מקורי בסוגריים · קרבה/תפקיד · תאריכים · מקום · גורל · דף.
+- **תאריכים/אירועים** — שורה לכל אחד: אירוע · תאריך · מקום.
+- **יהלומים** — עדות/מכתב-ניצול/יומן/רשימת-נספים/תעודת-מחנה-גטו/זהות-בדויה — אם יש; אחרת "אין".
+
+אסור לנחש. דף לא קריא → "[לא קריא: דף X]". ישר לעובדות.`;
 
 const SYNTH_RULES = `אתה מקטלג ארכיוני בכיר ביד ושם. לפניך סיכומי-טקסט שכתבת קודם אחרי שקראת את **כל דפי התיק** (מנה אחר מנה, לפי טווחי דפים). תפקידך עכשיו: לסנתז מהם **רשומת-תיק אחת** לפי נהלי ספיר — לאחד כפילויות, לזהות סתירות בין מנות, ולסמן ודאות. הסתמך על הסיכומים; אם משהו חסר/לא ברור סמן זאת.
 ${TIK_SCHEMA_RULES}
@@ -385,6 +385,18 @@ ${TIK_SCHEMA_RULES}
 היכן שהממצאים עקביים וברורים → "✓"; חלקיים/מבוסס מנה אחת → "~"; לא קריא/מוטל בספק → "?". רשום ב-review_flags כל סתירה בין מנות, דף לא-קריא, או פער שדורש בדיקת אנוש לפני הדבקה לספיר.
 
 איחוד בין מנות לאינוונטר ולמפתח השמות: document_inventory — מזג את המסמכים מכל המנות והסדר אותם לפי טווחי הדפים לרצף אחד. names_index — אם אותו אדם הופיע בכמה מנות, מזג לשורה אחת ואחד את כל הדפים (source_pages); אל תיצור שורות כפולות לאותו אדם. timeline — מזג אירועים מכל המנות, הסר כפילויות וסדר כרונולוגית.`;
+
+// Intermediate condensation for a LARGE tik: squeeze a batch of per-page-range
+// notes into one tighter summary WITHOUT losing the structured facts the final
+// synthesis needs. Lets a 300+ page tik reduce in stages so no single Claude
+// synthesis call overruns its 15-min budget.
+const REDUCE_RULES = `אתה מקטלג ארכיוני ביד ושם. לפניך סיכומי-קריאה של **חלק מתיק** (כמה טווחי דפים רצופים). תפקידך: לעבות אותם לסיכום אחד תמציתי יותר — **בלי לאבד עובדות מהותיות**. שמור במפורש:
+- **מסמכים** — שורה לכל מסמך/טווח-דפים: טווח הדפים · סוג · תאריך · שפה · תיאור קצר. אל תאחד מסמכים שונים לשורה אחת, ואל תשמיט טווחי דפים.
+- **שמות** — כל אדם (פעם אחת), עם הכתיב המקורי, תפקיד/קרבה, תאריכים, מקום, גורל, והדפים שבהם הופיע.
+- **תאריכים ואירועים מתוארכים**, **מקומות**, **שפות**.
+- **יהלומים** — עדויות/מכתבי ניצולים/יומנים/רשימות נספים/תעודות מחנה-גטו/זהות בדויה.
+- **נקודות לבדיקה** — דפים לא קריאים, סתירות, אי-ודאויות.
+החזר **טקסט חופשי מובנה בלבד** (לא JSON). תמציתי אך שלם בעובדות — זו עדיין נקודת ביניים, לא הרשומה הסופית. אסור לנחש.`;
 
 // Read an uploaded intake form (טופס איסוף) and pull the donor/archival info as
 // structured Hebrew text. This is מידע מוקדם ABOUT the תיק — never evidence FROM it.
@@ -530,9 +542,9 @@ const NET_HINT='ודא ששרת הבית רץ (node server.js), ובגישה מ�
 // POST a job to /api/ask-async and poll until done. Async POST returns a jobId
 // immediately so a long Claude run survives the Cloudflare quick-tunnel ~100s
 // limit. `onTick(secs)` updates the status line. Returns the raw text.
-async function runClaudeJob({prompt,images,onTick}){
+async function runClaudeJob({prompt,images,onTick,model}){
   const base=serverBase();
-  const model=$('model-claude').value.includes('opus')?'opus':'sonnet';
+  model=model||($('model-claude').value.includes('opus')?'opus':'sonnet');
   let res;
   try{
     res=await fetch(base+'/api/ask-async',{method:'POST',
@@ -560,12 +572,53 @@ async function runClaudeJob({prompt,images,onTick}){
 // Stage 1 — Claude READS one chunk of scans and returns free-text notes.
 async function claudeReadChunk(files,promptText,onTick){
   const images=await imagesForChunk(files);
-  return await runClaudeJob({prompt:promptText,images,onTick});
+  // Stage-1 reads run on Sonnet — ~2x faster than Opus for the bulk vision pass;
+  // the final synthesis keeps the user-selected model (Opus) for quality.
+  return await runClaudeJob({prompt:promptText,images,onTick,model:'sonnet'});
 }
 // Stage 2 — Claude SYNTHESIZES the per-chunk notes into one JSON record (no images).
 async function claudeSynthesize(promptText,onTick){
   const text=await runClaudeJob({prompt:promptText,images:[],onTick});
   return parseJson(text,'Claude');
+}
+
+// Pack consecutive items into batches each under maxChars (≥1 item/batch),
+// preserving page order so condensed summaries stay sequential.
+function packByChars(items,maxChars){
+  const out=[];let cur=[],len=0;
+  for(const it of items){
+    if(cur.length&&len+it.length>maxChars){out.push(cur);cur=[];len=0;}
+    cur.push(it);len+=it.length+2;
+  }
+  if(cur.length)out.push(cur);
+  return out;
+}
+
+// Stage 2 (full) — synthesize per-chunk notes into ONE record. For a LARGE tik the
+// combined notes overrun one Claude call's 15-min budget, so condense them in
+// batches first (recursive map-reduce) and only then run the final JSON synthesis
+// on the smaller input. A small tik skips straight to the final synthesis.
+async function synthesizeTik(notes,onStage){
+  const MAX=55000;                          // per-call input char budget (stays well under 15 min)
+  let items=notes.map(n=>`### דפים ${n.range}\n${n.text}`);
+  let round=0;
+  while(items.join('\n\n').length>MAX&&items.length>1){
+    round++;
+    const batches=packByChars(items,MAX);
+    const condensed=[];
+    for(let b=0;b<batches.length;b++){
+      const tag=`שלב 2א · עיבוי מנות התיק (סבב ${round}, חלק ${b+1}/${batches.length})`;
+      onStage&&onStage(`<span class="spinner"></span>${tag}…`);
+      const prompt=`${REDUCE_RULES}\n\n## סיכומי קריאה — חלק מהתיק (לפי טווחי דפים)\n${batches[b].join('\n\n')}\n\nהחזר סיכום מעובה אחד (טקסט חופשי, לא JSON).`;
+      const txt=await runClaudeJob({prompt,images:[],model:'sonnet',onTick:s=>onStage&&onStage(`<span class="spinner"></span>${tag}… (${s} שׄ)`)});
+      condensed.push(txt||'(אין)');
+    }
+    items=condensed;
+  }
+  const findingsText=items.join('\n\n');
+  const synthPrompt=`${SYNTH_RULES}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
+  onStage&&onStage(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק…`);
+  return await claudeSynthesize(synthPrompt,s=>onStage&&onStage(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק… (${s} שׄ)`));
 }
 
 /* ---------- render ---------- */
@@ -796,16 +849,15 @@ $('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e
 // Decode one image file, downscale to a sane edge, and return baseline JPEG bytes
 // + pixel dimensions. Re-encoding to JPEG keeps every page in one color space
 // (DeviceRGB) and keeps the merged PDF small enough for big תיקים (156+ scans).
-async function pdfPageFor(file){
+async function pdfPageFor(file,edge=2000,quality=0.85){
   const url=URL.createObjectURL(file);
   try{
     const img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('טעינת תמונה נכשלה'));im.src=url;});
-    const edge=2000;
     const scale=Math.min(1,edge/Math.max(img.naturalWidth,img.naturalHeight));
     const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
     const cv=document.createElement('canvas');cv.width=w;cv.height=h;
     cv.getContext('2d').drawImage(img,0,0,w,h);
-    const b64=cv.toDataURL('image/jpeg',0.85).split(',')[1];
+    const b64=cv.toDataURL('image/jpeg',quality).split(',')[1];
     const bin=atob(b64);const bytes=new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
     return {bytes,width:w,height:h};
@@ -969,11 +1021,11 @@ $('run').addEventListener('click',async()=>{
     }
     if(failed.length===chunks.length)throw new Error(`כל המנות נכשלו בקריאת ${reader}. `+(engine==='dual'?'בדוק מפתח/מודל/מכסת Gemini.':NET_HINT));
 
-    // Stage 2 — Claude synthesizes ALL chunk notes into ONE record (text-only; no images).
+    // Stage 2 — synthesize all chunk notes into ONE record. synthesizeTik condenses
+    // the notes in batches first when the tik is large (recursive map-reduce), so a
+    // big tik never overruns one Claude call's 15-min budget. Small tiks go direct.
     showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז ${chunks.length} מנות לרשומת-תיק אחת…`,'info');
-    const findingsText=notes.map(n=>`### דפים ${n.range}\n${n.text}`).join('\n\n');
-    const synthPrompt=`${SYNTH_RULES}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
-    const final=await claudeSynthesize(synthPrompt,secs=>showStatus(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק… (${secs} שׄ)`,'info'));
+    const final=await synthesizeTik(notes,h=>showStatus(h,'info'));
     state.chunkNotes=notes;  // grounding context for the תיק chat
     renderRecord(final);
     const warn=failed.length?` ⚠ ${failed.length} מנות נכשלו (דפים ${failed.join(', ')}) — דרושה קריאה חוזרת ידנית.`:'';
@@ -984,6 +1036,68 @@ $('run').addEventListener('click',async()=>{
     showStatus('שגיאה: '+err.message+(err.rawText?'\n\n=== תגובה גולמית ===\n'+err.rawText.slice(0,1200):''),'err');
   }finally{$('run').disabled=false;}
 });
+
+/* ---------- ⚡ fast description: ONE whole-PDF Gemini call (no page-by-page) ---------- */
+async function fastDescribe(){
+  if(!state.files.length){showStatus('העלה תיק (PDF או סריקות) קודם.','err');return;}
+  try{serverBase();}catch(e){showStatus(e.message,'err');return;}
+  $('run').disabled=true;$('describe-fast').disabled=true;
+  try{
+    // One PDF for the whole tik. For image scans, build a DOWNSIZED PDF (~1100px):
+    // a description doesn't need full-res, and the full-res merge can blow past the
+    // Cloudflare tunnel's ~100MB request cap (HTTP 413). ~1100px keeps 400 scans well
+    // under the limit and readable enough for a tik-level description.
+    let blob=null,name='tik.pdf';
+    const imgs=state.files.filter(f=>mimeOf(f)!=='application/pdf');
+    if(state.files.length===1&&mimeOf(state.files[0])==='application/pdf'){
+      blob=state.files[0];name=state.files[0].name||'tik.pdf';   // single uploaded PDF — as-is
+    }else if(imgs.length){
+      const pages=[];
+      for(let i=0;i<imgs.length;i++){
+        showStatus(`<span class="spinner"></span>תיאור מהיר · בונה PDF מוקטן לתיאור… ${i+1}/${imgs.length}`,'info');
+        pages.push(await pdfPageFor(imgs[i],1100,0.55));
+      }
+      blob=new Blob([buildImagesPdf(pages)],{type:'application/pdf'});name='tik_describe.pdf';
+    }
+    if(!blob){showStatus('צריך PDF יחיד או סריקות תמונה.','err');return;}
+    const mb=(blob.size/1024/1024).toFixed(1);
+    if(blob.size>95*1024*1024){showStatus(`⚠ ה-PDF המוקטן עדיין ${mb}MB (מעל ~100MB של המנהרה). הקטן "רוחב תמונה" או פצל את התיק.`,'err');return;}
+    // Gemini→Claude collaboration: the server has Gemini read every page and extract
+    // facts, then Claude (the historian) synthesizes the record from those facts. This
+    // prompt is Claude's synthesis brief; the server appends Gemini's extracted facts.
+    const prompt=`${TIK_SCHEMA_RULES}\n\n⚠ Gemini כבר קרא את **כל דפי התיק** וחילץ עובדות גולמיות (יצורפו בהמשך ההודעה). תפקידך כהיסטוריון ארכיוני: לסנתז מהן **רשומת-תיק אחת ברמת תיאור** — מפת המסמכים, היקף, מקומות ותקופה, אנשים מרכזיים, ויהלומים — עם **הקשר היסטורי מעמיק ומדויק**. עגן כל קביעה בעובדות בלבד (אל תמציא), והבחן בבירור בין מה שמתועד בתיק לבין ידע היסטורי כללי. החזר field_confidence (✓/~/?) לכל שדה, ו-review_flags לכל הסקה/אי-ודאות/פער שדורש אימות ארכיונאי. **לא** תמלול דף-דף ולא רשימת כל שם בכל דף.${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
+    const fd=new FormData();fd.append('file',blob,name);fd.append('prompt',prompt);
+    const t=Date.now();
+    showStatus(`<span class="spinner"></span>תיאור מהיר · מעלה את התיק לשרת (${mb}MB)…`,'info');
+    let post;try{post=await fetch(serverBase()+'/api/tik-describe',{method:'POST',body:fd});}catch(e){throw new Error('העלאה נכשלה: '+e.message);}
+    if(!post.ok){const e=await post.json().catch(()=>({}));throw new Error(e.error||('שרת HTTP '+post.status));}
+    const {jobId}=await post.json();
+    if(!jobId)throw new Error('השרת לא החזיר jobId (ודא שגרסת השרת החדשה רצה).');
+    // Poll up to ~12 min. Each poll is quick → the Cloudflare ~100s limit never bites.
+    const started=Date.now(),maxMs=12*60*1000;
+    while(Date.now()-started<maxMs){
+      await new Promise(r=>setTimeout(r,3000));
+      let pr;try{pr=await fetch(serverBase()+'/api/tik-describe/'+jobId);}catch(e){continue;}
+      if(!pr.ok)continue;
+      const j=await pr.json();
+      showStatus(`<span class="spinner"></span>תיאור מהיר · Gemini קורא את כל התיק → Claude מסנתז הקשר היסטורי… (${Math.round((Date.now()-t)/1000)} שׄ)`,'info');
+      if(j.status==='done'){
+        renderRecord(parseJson(j.text,'Claude'));
+        const split=(j.geminiSec&&j.claudeSec)?`Gemini ${j.geminiSec}שׄ + Claude ${j.claudeSec}שׄ`:(j.model||'Gemini+Claude');
+        showStatus(`✓ תיאור הושלם תוך ${j.elapsedSec||Math.round((Date.now()-t)/1000)} שׄ (${split}). בדוק את נקודות הבדיקה ו-review_flags לפני הדבקה לספיר.`,'ok');
+        $('results').scrollIntoView({behavior:'smooth'});
+        return;
+      }
+      if(j.status==='error'){
+        if(j.prohibited){showStatus('⚠ Gemini סירב לקרוא את התיק (חומר רגיש). עבור למצב "Claude בלבד" והרץ "קטלג תיק".','err');return;}
+        throw new Error(j.error||'תיאור נכשל');
+      }
+    }
+    throw new Error('התיאור נמשך מעל 12 דקות ולא הסתיים.');
+  }catch(err){console.error(err);showStatus('שגיאה בתיאור מהיר: '+err.message,'err');}
+  finally{$('run').disabled=false;$('describe-fast').disabled=false;}
+}
+$('describe-fast').addEventListener('click',fastDescribe);
 
 /* ---------- engine-mode toggle: reveal Gemini fields only in dual mode ---------- */
 function syncEngineUI(){
@@ -1031,6 +1145,7 @@ function renderFiles(){
   const more=n>60?`<div class="f"><span>… ועוד ${n-60}</span><span></span></div>`:'';
   $('filelist').innerHTML=note+rows+more;
   $('run').disabled=!n;
+  $('describe-fast').disabled=!n;
 }
 function addFiles(list){
   const files=Array.from(list)
