@@ -1419,6 +1419,7 @@ ${JSON.stringify(photos, null, 1)}
 1. **איחוד ישויות**: אותו אדם/מקום/מוסד שמופיע בכמה תצלומים בכתיב שונה — אחד לצורה מועדפת אחת (מקומות לפי האיות הקנוני).
 2. **הפצה**: אם תצלום אחד מזהה ישות בוודאות, וזו מופיעה בתצלום אחר באופן לא־ודאי/חסר — חזק או תקן שם.
 3. **סתירות**: סמן אי-התאמות (אותו אדם בשנים סותרות, מקום שלא מתיישב עם התקופה וכו') — להכרעת המקטלג, אל תכריע בעצמך.
+4. **העשרה (מידע חדש/נוסף)**: אם ניתוח כלל האוסף חושף מידע חדש או נוסף לתצלום שכבר קוטלג — שם שהתברר מתצלום אחר, מקום/תאריך שהובהרו מההקשר, או הקשר משותף לאוסף (משפחה/אירוע/מוסד/מסע) שרלוונטי לתצלום — הוסף אותו לשדות אותו תצלום: \`persons\` להוספה, \`creation_date\` אם התברר, ו-\`add_info_he\` לטקסט קצר. בסס רק על ראיות מהאוסף, אל תמציא; ציין בקצרה את המקור (איזה תצלום/מה באוסף ביסס זאת).
 
 החזר JSON תקין בלבד בסכמה (ללא טקסט מחוץ ל-JSON):
 {
@@ -1429,9 +1430,9 @@ ${JSON.stringify(photos, null, 1)}
     "institutions": [{"preferred": "", "variants": [""]}]
   },
   "per_photo_deltas": [
-    {"photo_id": "", "places_en": "<מחרוזת מקומות מאוחדת, או null אם אין שינוי>", "persons": [{"name": "", "action": "unify|propagate|confirm", "note": ""}], "flags": ["טקסט עברי קצר לכל סתירה"]}
+    {"photo_id": "", "places_en": "<מחרוזת מקומות מאוחדת, או null אם אין שינוי>", "creation_date": "<תאריך שהתברר מניתוח האוסף, או null>", "persons": [{"name": "", "action": "unify|propagate|confirm", "note": "מקור הזיהוי באוסף"}], "add_info_he": "<מידע חדש/נוסף מרמת האוסף להוספה לתצלום זה, או null>", "flags": ["טקסט עברי קצר לכל סתירה"]}
   ],
-  "collection_summary": "סיכום קצר של האוסף ושל מה שאוחד/הופץ"
+  "collection_summary": "סיכום קצר של האוסף ושל מה שאוחד/הופץ/הועשר"
 }`;
 }
 
@@ -1446,6 +1447,34 @@ function applyCollectionDeltas(reconciled, recs) {
     let touched = false;
     if (typeof d.places_en === 'string' && d.places_en.trim() && d.places_en.trim() !== (target.places_en || '')) {
       target.places_en = d.places_en.trim(); touched = true;
+    }
+    // Date clarified by the whole-collection analysis.
+    if (typeof d.creation_date === 'string' && d.creation_date.trim() && d.creation_date.trim() !== (target.creation_date || '')) {
+      target.creation_date = d.creation_date.trim(); touched = true;
+    }
+    // Persons unified/propagated from the collection → add to this photo's id_table
+    // (previously these deltas were computed but never written back).
+    if (Array.isArray(d.persons) && d.persons.length) {
+      target.id_table = target.id_table || [];
+      d.persons.forEach(p => {
+        const nm = (p && p.name || '').trim();
+        if (!nm || target.id_table.some(e => (e && e.name || '').trim() === nm)) return;
+        target.id_table.push({
+          num: String(target.id_table.length + 1), name: nm,
+          position_he: '[מתוך ניתוח האוסף]' + (p.note ? ' ' + p.note : ''),
+          position_en: 'from collection cross-reference',
+        });
+        touched = true;
+      });
+    }
+    // New / additional info the collection-level view revealed for this photo.
+    if (typeof d.add_info_he === 'string' && d.add_info_he.trim()) {
+      target.info = target.info || {};
+      const enrich = '[מתוך ניתוח האוסף] ' + d.add_info_he.trim();
+      if (!String(target.info.notes_he || '').includes(d.add_info_he.trim())) {
+        target.info.notes_he = ((target.info.notes_he || '') + '\n' + enrich).trim();
+        touched = true;
+      }
     }
     if (Array.isArray(d.flags) && d.flags.length) {
       d.flags.forEach(f => flags.push({ photo_id: d.photo_id, seq: rec.seq, text: String(f) }));
