@@ -1197,8 +1197,9 @@ async function runFaceCluster() {
       }
       if (job.status === 'done' && job.outputName) {
         const url = base + '/api/output/' + encodeURIComponent(job.outputName);
-        setS('✓ גיליון זיהוי הפנים מוכן — נפתח בלשונית חדשה');
-        window.open(url, '_blank', 'noopener');
+        window.open(url, '_blank'); // best-effort auto-open (often popup-blocked after the await)
+        // Reliable path: a clickable link in the status — opening on a real click is never blocked.
+        if (statusEl) statusEl.innerHTML = '✓ גיליון זיהוי הפנים מוכן — <a href="' + url + '" target="_blank" rel="noopener" style="color:#5b4b8a; font-weight:700; text-decoration:underline;">↗ פתח את הגיליון</a>';
         break;
       }
       if (job.status === 'error') {
