@@ -658,6 +658,7 @@
             <span>מצב אוסף — כל התצלומים שייכים לאוסף אחד (הצלבה ושיפור הדדי)</span>
           </label>
           <button type="button" id="collection-pass-btn" class="ghost" style="display:none; padding:3px 10px; font-size:11.5px; border-color:#1d6f42; color:#1d6f42;" title="הצלב ישויות בין כל התצלומים, אחד שמות/מקומות, הפץ זיהויים ודאיים וסמן סתירות">🔁 מעבר אוסף — הצלבה ואיחוד</button>
+          <button type="button" id="face-cluster-btn" class="ghost" style="padding:3px 10px; font-size:11.5px; border-color:#5b4b8a; color:#5b4b8a;" title="מצא אילו תצלומים באוסף מציגים את אותו אדם — קיבוץ פנים (InsightFace/ArcFace) ויצירת גיליון סקירה לאישור הארכיונאי. עזר לשיפוט בלבד — לא ראיה מכרעת; אַמֵּת ויזואלית לפני הפצת שם.">🧑‍🤝‍🧑 זיהוי פנים באוסף</button>
           <span id="collection-pass-status" style="font-size:11.5px; color:#8a7140;"></span>
         </div>
       </div>
@@ -1150,6 +1151,69 @@ collectionModeToggle.addEventListener('change', () => {
   refreshCollectionPassBar();
 });
 document.getElementById('collection-pass-btn').addEventListener('click', () => runCollectionSecondPass());
+document.getElementById('face-cluster-btn').addEventListener('click', () => runFaceCluster());
+
+// ─── Face clustering: "same person across the collection" (the WHO) ───
+// Sends the queue's front photos to the local InsightFace tool (via /api/faces),
+// which groups faces and returns an RTL review sheet. A JUDGMENT AID only — the
+// archivist confirms each person visually before any name/place/date is
+// disseminated. Works on raw photos, independent of cataloging/analysis status.
+async function runFaceCluster() {
+  const items = (state.photo_queue || []).filter(it => it && it.front);
+  const statusEl = document.getElementById('collection-pass-status');
+  const btn = document.getElementById('face-cluster-btn');
+  const setS = m => { if (statusEl) statusEl.textContent = m; };
+  if (items.length < 2) { alert('צריך לפחות 2 תצלומים בתור לזיהוי פנים באוסף.'); return; }
+
+  const base = await resolveUnifiedBase();
+  if (base === null) { alert('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת.'); return; }
+
+  btn.disabled = true;
+  setS(`מעלה ${items.length} תצלומים לזיהוי פנים…`);
+  try {
+    const fd = new FormData();
+    items.forEach((it, i) => {
+      const seq = it.photo_seq != null ? it.photo_seq : (i + 1);
+      fd.append('file', it.front, (it.front && it.front.name) || `photo_${seq}.jpg`);
+      fd.append('seq', String(seq));
+    });
+    const res = await fetch(base + '/api/faces', { method: 'POST', body: fd });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
+    if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/faces');
+
+    setS('מאתר ומקבץ פנים בשרת… (InsightFace/ArcFace)');
+    const jobUrl = base + '/api/jobs/' + j.jobId;
+    const t0 = Date.now(), MAX_MS = 10 * 60 * 1000;
+    while (true) {
+      await new Promise(r => setTimeout(r, 2000));
+      let job = null;
+      try { job = await (await fetch(jobUrl)).json(); } catch (e) { /* transient — keep polling */ }
+      if (!job) { if (Date.now() - t0 > MAX_MS) throw new Error('timeout בזיהוי פנים'); continue; }
+      if (Array.isArray(job.events) && job.events.length) {
+        const last = job.events[job.events.length - 1];
+        const line = String(last.text || last.message || '').trim().split('\n').pop().slice(0, 120);
+        if (line) setS('🛠 ' + line);
+      }
+      if (job.status === 'done' && job.outputName) {
+        const url = base + '/api/output/' + encodeURIComponent(job.outputName);
+        setS('✓ גיליון זיהוי הפנים מוכן — נפתח בלשונית חדשה');
+        window.open(url, '_blank', 'noopener');
+        break;
+      }
+      if (job.status === 'error') {
+        const er = (job.events || []).filter(e => e.type === 'error').pop();
+        throw new Error((er && (er.message || er.text)) || 'זיהוי הפנים הסתיים בשגיאה');
+      }
+      if (Date.now() - t0 > MAX_MS) throw new Error('timeout — זיהוי הפנים לקח יותר מדי זמן');
+    }
+  } catch (err) {
+    setS('✗ ' + (err.message || err));
+    alert('זיהוי פנים נכשל: ' + (err.message || err));
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 // Collection mode on but no Step-0 profile yet → create a minimal collection so
 // photos group and memory persists. The archivist can fill the full profile later.
