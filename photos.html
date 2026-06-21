@@ -1158,15 +1158,17 @@ document.getElementById('face-cluster-btn').addEventListener('click', () => runF
 // which groups faces and returns an RTL review sheet. A JUDGMENT AID only — the
 // archivist confirms each person visually before any name/place/date is
 // disseminated. Works on raw photos, independent of cataloging/analysis status.
-async function runFaceCluster() {
+async function runFaceCluster(opts = {}) {
+  const silent = !!opts.silent;   // auto-flow: surface issues in the status, no popups
   const items = (state.photo_queue || []).filter(it => it && it.front);
   const statusEl = document.getElementById('collection-pass-status');
   const btn = document.getElementById('face-cluster-btn');
   const setS = m => { if (statusEl) statusEl.textContent = m; };
-  if (items.length < 2) { alert('צריך לפחות 2 תצלומים בתור לזיהוי פנים באוסף.'); return; }
+  const warn = m => { if (silent) setS('⚠ ' + m); else alert(m); };
+  if (items.length < 2) { warn('צריך לפחות 2 תצלומים בתור לזיהוי פנים באוסף.'); return; }
 
   const base = await resolveUnifiedBase();
-  if (base === null) { alert('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת.'); return; }
+  if (base === null) { warn('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת.'); return; }
 
   btn.disabled = true;
   setS(`מעלה ${items.length} תצלומים לזיהוי פנים…`);
@@ -1220,7 +1222,7 @@ async function runFaceCluster() {
     }
   } catch (err) {
     setS('✗ ' + (err.message || err));
-    alert('זיהוי פנים נכשל: ' + (err.message || err));
+    warn('זיהוי פנים נכשל: ' + (err.message || err));
   } finally {
     btn.disabled = false;
   }
@@ -1774,6 +1776,35 @@ async function startQueueProcessor() {
     await Promise.all(Array.from({ length: workers }, () => queueWorker()));
   } finally {
     state.queue_processor_running = false;
+  }
+  // Batch drained → auto collection cross-reference + face recognition (collection
+  // mode only). Runs AFTER all photos finished cataloging — never concurrently —
+  // so the local face engine doesn't contend with the catalog engine for CPU/RAM.
+  maybeRunCollectionAutopasses();
+}
+
+// When a collection's photos all finish cataloging, run the two whole-collection
+// passes automatically: (1) cross-reference & unify (enriches already-cataloged
+// records with collection-level info), then (2) face recognition (same-person
+// propagation). Sequential, once per completion. Cheap vs the per-photo work; the
+// face pass is local (no API). Guarded so it won't fire while photos are pending
+// or re-fire for an unchanged collection.
+async function maybeRunCollectionAutopasses() {
+  if (!state.collection_mode || state.autopass_running) return;
+  if (state.photo_queue.some(it => it.status === 'pending' || it.status === 'analyzing')) return;
+  const ready = (typeof collectionReadyRecords === 'function') ? collectionReadyRecords() : [];
+  if (ready.length < 2) return;
+  if (state.autopass_done_for === ready.length) return;   // already ran for this count
+  state.autopass_running = true;
+  state.autopass_done_for = ready.length;
+  const setS = m => { const el = document.getElementById('collection-pass-status'); if (el) el.textContent = m; };
+  try {
+    setS('✓ סיום קיטלוג האוסף → מעבר הצלבה ואיחוד אוטומטי…');
+    try { await runCollectionSecondPass(); } catch (e) { console.error('auto collection pass failed', e); }
+    setS('→ זיהוי פנים אוטומטי באוסף…');
+    try { await runFaceCluster({ silent: true }); } catch (e) { console.error('auto face cluster failed', e); }
+  } finally {
+    state.autopass_running = false;
   }
 }
 
