@@ -761,6 +761,10 @@ function renderFilmMeta() {
   if (!state.filmMeta) { filmMetaBox.style.display = 'none'; return; }
   const m = state.filmMeta;
   const dur = formatDuration(m.duration);
+  // Expected processing time: ~45 processing-seconds per minute-of-film (keyframes +
+  // Gemini + Claude); real range ~30-70s/min. Baseline from smoke-e2e measured runs.
+  const estSec = m.duration * 45 / 60;
+  const estStr = estSec < 90 ? Math.round(estSec) + ' שׄ' : (estSec / 60).toFixed(estSec < 600 ? 1 : 0) + ' דק׳';
   const sizeMB = m.size_bytes / 1024 / 1024;
   const sizeMBStr = sizeMB.toFixed(1);
   let badge = '';
@@ -771,7 +775,7 @@ function renderFilmMeta() {
   } else {
     badge = ` <span style="color:var(--soft); font-size:10px;">⚠ &gt;2GB</span>`;
   }
-  filmMetaBox.innerHTML = `<div class="item"><b>משך:</b> <code>${dur}</code></div><div class="item"><b>רזולוציה:</b> <code>${m.width}×${m.height}</code></div><div class="item"><b>גודל:</b> <code>${sizeMBStr} MB</code>${badge}</div><div class="item"><b>פורמט:</b> <code>${m.mime}</code></div>`;
+  filmMetaBox.innerHTML = `<div class="item"><b>משך:</b> <code>${dur}</code></div><div class="item"><b>⏱ עיבוד צפוי:</b> <code>~${estStr}</code></div><div class="item"><b>רזולוציה:</b> <code>${m.width}×${m.height}</code></div><div class="item"><b>גודל:</b> <code>${sizeMBStr} MB</code>${badge}</div><div class="item"><b>פורמט:</b> <code>${m.mime}</code></div>`;
   filmMetaBox.style.display = 'grid';
   if (!document.getElementById('r-duration').value) document.getElementById('r-duration').value = dur;
 }

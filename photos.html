@@ -1662,7 +1662,12 @@ function renderQueuePanel() {
   }
   const counts = { pending: 0, analyzing: 0, ready: 0, reviewing: 0, done: 0, error: 0 };
   state.photo_queue.forEach(it => counts[it.status]++);
-  summary.textContent = `(${state.photo_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}`;
+  // Expected time for the work still queued: ~30s per photo (Gemini fast; +~5s with a
+  // verso) — measured baseline from smoke-e2e. Shown only while items remain.
+  const remaining = state.photo_queue.length - counts.done - counts.error;
+  const estSec = remaining * 30;
+  const estStr = estSec < 90 ? Math.round(estSec) + ' שׄ' : (estSec / 60).toFixed(estSec < 600 ? 1 : 0) + ' דק׳';
+  summary.textContent = `(${state.photo_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}${remaining > 0 ? ` · ⏱ ~${estStr} נותרו` : ''}`;
   document.getElementById('queue-retry-btn').style.display = counts.error ? 'inline-block' : 'none';
   const cmToggle = document.getElementById('collection-mode-toggle');
   if (cmToggle) cmToggle.checked = state.collection_mode;

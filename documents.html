@@ -1191,7 +1191,12 @@ function renderDocQueuePanel() {
   }
   const counts = { pending: 0, analyzing: 0, ready: 0, reviewing: 0, done: 0, error: 0 };
   state.doc_queue.forEach(it => counts[it.status]++);
-  summary.textContent = `(${state.doc_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}`;
+  // Expected time for the remaining docs: ~2.5 min (printed/typed) to ~4.5 min
+  // (handwritten/HTR) per unit — measured baselines from smoke-e2e. Shown as a range
+  // since per-doc type varies. Only while items remain.
+  const remaining = state.doc_queue.length - counts.done - counts.error;
+  const loMin = Math.round(remaining * 150 / 60), hiMin = Math.round(remaining * 270 / 60);
+  summary.textContent = `(${state.doc_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}${remaining > 0 ? ` · ⏱ ~${loMin}–${hiMin} דק׳ נותרו` : ''}`;
   list.innerHTML = state.doc_queue.map((it, idx) => {
     const s = DOC_QUEUE_STATUSES[it.status] || DOC_QUEUE_STATUSES.pending;
     const isActive = idx === state.current_doc_queue_index;
