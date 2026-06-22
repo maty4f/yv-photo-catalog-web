@@ -1115,29 +1115,117 @@ async function resolveUnifiedBase() {
   return state.localServerUrl || null;
 }
 
+// Cloudflare (Free/Pro) rejects any request body over 100MB with a 413 at the
+// edge — BEFORE it ever reaches the local server (which itself allows 4GB). Most
+// films exceed this, so the whole-video upload to /api/items would 413. For a
+// large film we therefore split it in the browser (ffmpeg.wasm, stream-copy —
+// fast & lossless) into sub-100MB parts, catalog each through the engine, and
+// merge the per-part timelines into one continuous film using the existing parts
+// machinery (which already offsets timecodes and re-synthesizes one summary).
+const CF_BODY_LIMIT_MB = 100;   // Cloudflare Free/Pro hard cap on request bodies
+const SAFE_UPLOAD_MB   = 95;    // upload whole only if comfortably under the cap
+const PART_TARGET_MB   = 80;    // aim each split part here, leaving VBR headroom
+
 async function runUnifiedServer() {
   if (!state.film) throw new Error('אין סרט');
   const base = await resolveUnifiedBase();
   if (base === null)
     throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
 
-  const fd = new FormData();
-  fd.append('file', state.film);
-  fd.append('kind', 'film');
-  fd.append('context', contextEl.value.trim());
-  showStatus('מעלה את הסרט לשרת המאוחד…', 'info');
+  const fileMB = state.film.size / 1024 / 1024;
 
-  const res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+  // Small enough to upload whole — the original single-film flow, unchanged.
+  if (fileMB <= SAFE_UPLOAD_MB) {
+    const outputName = await catalogViaUnified(base, state.film, contextEl.value.trim(),
+      msg => showStatus(msg, 'info'));
+    const url = base + '/api/output/' + encodeURIComponent(outputName);
+    identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+    identifyStatus.className = 'status-msg show ok';
+    await loadUnifiedResults(base, outputName); // fills the editable results; fail-soft
+    return;
+  }
+
+  // --- Large film: auto-split → catalog each part → merge into one film ---
+  const duration = state.filmMeta?.duration;
+  if (!duration || !isFinite(duration) || duration <= 0)
+    throw new Error(`הסרט גדול מ-${CF_BODY_LIMIT_MB}MB (${fileMB.toFixed(0)}MB) אך לא ניתן לקרוא את אורכו לפיצול אוטומטי. השתמש בכפתור "✂️ חתוך לחלקים" ידנית.`);
+
+  const bytesPerSec = state.film.size / duration;
+  const segSec = Math.max(15, Math.floor((PART_TARGET_MB * 1024 * 1024) / bytesPerSec));
+  const estParts = Math.ceil(duration / segSec);
+  if (estParts > 8 && !confirm(`הסרט (${fileMB.toFixed(0)}MB) חורג ממגבלת ההעלאה (${CF_BODY_LIMIT_MB}MB) ויפוצל אוטומטית ל-~${estParts} חלקים. כל חלק מנותח בנפרד בשרת — זה עשוי לקחת זמן רב. להמשיך?`))
+    throw new Error('הקטלוג בוטל. ניתן לדחוס את הסרט (HandBrake) ולנסות שוב, או לפצל ידנית.');
+
+  showStatus(`הסרט ${fileMB.toFixed(0)}MB — מעל מגבלת ההעלאה של ${CF_BODY_LIMIT_MB}MB. מפצל אוטומטית ל-~${estParts} חלקים בדפדפן…`, 'info');
+  let parts;
+  try {
+    parts = await splitFilm(state.film, segSec, msg => showStatus('✂️ ' + msg, 'info'), () => {});
+  } catch (e) {
+    throw new Error('פיצול אוטומטי נכשל: ' + e.message + ' — נסה "✂️ חתוך לחלקים" ידנית.');
+  }
+  if (!parts.length) throw new Error('הפיצול לא הניב חלקים.');
+  // Guard a rare VBR spike that left a part over the cap — fail clearly, not a 413.
+  const tooBig = parts.find(p => p.size > CF_BODY_LIMIT_MB * 1024 * 1024);
+  if (tooBig)
+    throw new Error(`חלק ${parts.indexOf(tooBig) + 1} עדיין גדול מ-${CF_BODY_LIMIT_MB}MB (${(tooBig.size / 1024 / 1024).toFixed(0)}MB). חתוך לחלקים קצרים יותר ידנית ("✂️").`);
+
+  registerFilmParts(parts);
+  state.autoRunning = true;
+  renderPartsRail();
+  try {
+    for (const part of state.filmParts) {
+      part.status = 'analyzing'; renderPartsRail();
+      const partFile = new File([part.blob], part.name, { type: part.blob.type || 'video/mp4' });
+      try {
+        const outputName = await catalogViaUnified(base, partFile, contextEl.value.trim(),
+          msg => showStatus(`חלק ${part.idx + 1}/${state.filmParts.length} — ${msg}`, 'info'));
+        part.identification = await fetchUnifiedRecord(base, outputName);
+        part.outputName = outputName;
+        part.status = 'identified';
+      } catch (e) {
+        part.status = 'error';
+        console.error('part', part.idx + 1, 'failed', e);
+        showStatus(`⚠ חלק ${part.idx + 1} נכשל: ${e.message}`, 'err');
+      }
+      renderPartsRail();
+    }
+  } finally {
+    state.autoRunning = false;
+    renderPartsRail();
+  }
+
+  const ok = state.filmParts.filter(p => p.status === 'identified').length;
+  if (!ok) throw new Error('כל החלקים נכשלו בקטלוג — ראה את ההודעות לעיל.');
+  // Merge the parts into one continuous film (offsets timecodes, one summary).
+  runCombinedIdentification(true);
+}
+
+// Upload one media file to the unified engine and poll until its catalog is
+// ready; returns the produced outputName. Shared by the single-film path and
+// the auto-split per-part path. onStatus(msg) receives progress lines.
+async function catalogViaUnified(base, file, context, onStatus) {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('kind', 'film');
+  fd.append('context', context || '');
+  if (onStatus) onStatus('מעלה את הסרט לשרת המאוחד…');
+
+  let res;
+  try {
+    res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+  } catch (e) {
+    throw new Error('ההעלאה לשרת נכשלה (רשת/תקשורת): ' + e.message);
+  }
+  if (res.status === 413)
+    throw new Error(`הקובץ נדחה ע"י Cloudflare (גדול מ-${CF_BODY_LIMIT_MB}MB). יש לפצל לחלקים קטנים יותר.`);
   const j = await res.json().catch(() => ({}));
   if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
 
-  showStatus('מנתח בשרת (Gemini → Claude → ולידציה)… סרט — כמה דקות', 'info');
-  // Poll for completion via GET /api/jobs/:id. SSE (EventSource) does NOT stream
-  // reliably through the Cloudflare tunnel — during the long, silent Gemini step
-  // the idle connection is dropped and the terminal "end" event is lost, so the
-  // page would hang on "מנתח" forever even after the server finished. Polling is
-  // robust through Cloudflare. (Mirrors the photos.html unified-server flow.)
+  if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… כמה דקות');
+  // Poll GET /api/jobs/:id. SSE (EventSource) does NOT stream reliably through the
+  // Cloudflare tunnel — during the long, silent Gemini step the idle connection is
+  // dropped and the terminal "end" event is lost. Polling is robust through CF.
   const jobUrl = base + '/api/jobs/' + j.jobId;
   const POLL_MS = 2500, MAX_MS = 20 * 60 * 1000;
   const t0 = Date.now();
@@ -1146,24 +1234,27 @@ async function runUnifiedServer() {
     let job = null;
     try { job = await (await fetch(jobUrl)).json(); } catch (ignore) { /* transient — keep polling */ }
     if (!job) { if (Date.now() - t0 > MAX_MS) throw new Error('timeout בניתוח'); continue; }
-    if (Array.isArray(job.events) && job.events.length) {
+    if (onStatus && Array.isArray(job.events) && job.events.length) {
       const last = job.events[job.events.length - 1];
       const line = String(last.text || last.message || '').trim().split('\n').pop().slice(0, 160);
-      if (line) showStatus('🛠 ' + line, 'info');
+      if (line) onStatus('🛠 ' + line);
     }
-    if (job.status === 'done' && job.outputName) {
-      const url = base + '/api/output/' + encodeURIComponent(job.outputName);
-      identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
-      identifyStatus.className = 'status-msg show ok';
-      await loadUnifiedResults(base, job.outputName); // fills the editable results; fail-soft
-      return;
-    }
+    if (job.status === 'done' && job.outputName) return job.outputName;
     if (job.status === 'error') {
       const er = (job.events || []).filter(e => e.type === 'error').pop();
       throw new Error((er && (er.message || er.text)) || 'הניתוח הסתיים בשגיאה בשרת');
     }
     if (Date.now() - t0 > MAX_MS) throw new Error('timeout — הניתוח לקח יותר מדי זמן');
   }
+}
+
+// Fetch a produced catalog's JSON sidecar and map it to the results-model shape
+// the parts-merge consumes (timeline rows, title, summary, duration).
+async function fetchUnifiedRecord(base, outputName) {
+  const jsonUrl = base + '/api/output/' + encodeURIComponent(outputName.replace(/\.html$/i, '.json'));
+  const res = await fetch(jsonUrl);
+  if (!res.ok) throw new Error('שדות הקטלוג (JSON) אינם זמינים — HTTP ' + res.status);
+  return mapUnifiedFilmFields(await res.json());
 }
 
 // =====================================================================
