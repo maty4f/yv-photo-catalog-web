@@ -550,6 +550,24 @@
             </tbody>
           </table>
           <button type="button" class="ghost" id="timeline-add-row" style="margin-top:6px; font-size:12px; padding:5px 10px;">+ הוסף שורה</button>
+          <button type="button" class="copy-btn" id="copy-timeline-he" style="margin-top:6px; margin-right:6px; font-size:12px; padding:5px 12px;" title="העתק את כל הטיימליין: זמן + תיאור עברית בלבד (ללא ודאות) — להדבקה ישירה בספיר">📋 העתק טיימליין — עברית</button>
+          <button type="button" class="copy-btn" id="copy-timeline-en" style="margin-top:6px; margin-right:6px; font-size:12px; padding:5px 12px;" title="Copy the whole timeline: time + English description only (no confidence)">📋 Copy timeline — English</button>
+        </div>
+
+        <div class="field-group">
+          <h4>תת-טיימליין: תוכן יהודי / Jewish content (sub-timeline) <small>(פירוט גבוה לסצנות הקשורות ליהודים — להעתקה ישירה לספיר)</small></h4>
+          <div class="field-row">
+            <textarea id="r-jewish-he" rows="4"></textarea>
+            <textarea id="r-jewish-en" rows="4" style="direction:ltr; text-align:left"></textarea>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>מקומות / Places <small>(מקומות שזוהו בסרט — להעתקה ישירה לספיר)</small></h4>
+          <div class="field-row">
+            <textarea id="r-places-he" rows="2"></textarea>
+            <textarea id="r-places-en" rows="2" style="direction:ltr; text-align:left"></textarea>
+          </div>
         </div>
 
         <div class="field-group">
@@ -966,8 +984,7 @@ async function identifyFilmQueueItem(item) {
     v.onerror = () => { clearTimeout(to); URL.revokeObjectURL(v.src); reject(new Error('טעינת הסרטון נכשלה')); };
   });
   try {
-    if (state.provider === 'unified-server')
-      throw new Error('המנוע המאוחד בשרת תומך כרגע בקטלוג סרט בודד — לתור סרטים בחר ספק אחר בהגדרות API');
+    if (state.provider === 'unified-server') return await catalogCurrentFilmUnified();
     if (state.provider === 'gemini')     return await callGemini();
     return await callAnthropic();
   } finally {
@@ -1047,16 +1064,126 @@ function providerLabel() {
 }
 // Run the currently selected provider against state.film and return the result.
 function callActiveProvider() {
-  if (state.provider === 'unified-server')
-    throw new Error('המנוע המאוחד בשרת תומך כרגע בקטלוג סרט בודד (כפתור "זהה את הסרט") — לתור/חלקים בחר ספק אחר');
+  if (state.provider === 'unified-server') return catalogCurrentFilmUnified();
   return state.provider === 'gemini' ? callGemini() : callAnthropic();
+}
+
+// Catalog the CURRENT state.film through the unified server engine and return the
+// result record (same shape callGemini/callAnthropic return). This lets the
+// split-parts auto-run AND the film queue use the server engine too: each part /
+// queued film is its own sub-100MB clip, so it uploads cleanly past Cloudflare's
+// 100MB cap. (A whole oversized film dropped directly is still auto-split inside
+// runUnifiedServer.) Constants/helpers below are defined in the unified section.
+// Post a prepared keyframe array to the engine; poll; return the produced outputName.
+// No video upload — only the small JPEGs travel (sidesteps the tunnel's large-upload
+// truncation). Shared by the single-film and the split-parts-as-one-film paths.
+// Wrap an onStatus(msg) so every status line is prefixed with a running clock and the
+// duration of the previous step — "⏱ 2:34 (קודם 0:48) · <msg>". A new step = the
+// message text changed; the 🛠 live-tick on the same step just advances the clock.
+function makeActionClock(onStatus) {
+  const t0 = Date.now();
+  let lastMsg = '', stepStart = t0;
+  const clk = ms => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  return (msg) => {
+    if (!onStatus || !msg) return;
+    const total = clk(Date.now() - t0);
+    const core = String(msg).replace(/^🛠\s*/, '');
+    if (core !== lastMsg) {
+      const note = lastMsg ? ` (קודם ${clk(Date.now() - stepStart)})` : '';
+      stepStart = Date.now(); lastMsg = core;
+      onStatus(`⏱ ${total}${note} · ${msg}`);
+    } else {
+      onStatus(`⏱ ${total} · ${msg}`);
+    }
+  };
+}
+
+async function postFramesCatalog(base, frames, durationSec, name, context, onStatus) {
+  if (!frames.length) throw new Error('אין keyframes לשליחה');
+  if (onStatus) onStatus(`שולח ${frames.length} keyframes לשרת (ללא העלאת וידאו)…`);
+  let res;
+  try {
+    res = await fetch(base + '/api/items-frames', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frames: frames.map(f => ({ t: f.t, b64: f.b64 })), durationSec, name: name || 'film.mp4', context: context || '' }),
+    });
+  } catch (e) { throw new Error('שליחת ה-keyframes לשרת נכשלה: ' + e.message); }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
+  if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items-frames');
+  if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… כמה דקות');
+  const out = await pollUnifiedJob(base, j.jobId, onStatus);
+  if (out.status === 'done') return out.outputName;
+  throw new Error(out.errorText || 'הניתוח הסתיים בשגיאה בשרת');
+}
+
+// Keyframes sampled across the film. The browser samples EVENLY, so more frames =
+// finer coverage = fewer missed scenes. The engine's cap (cli/yv.py) must match or
+// exceed this. 80 ≈ 2× the old 40, for more accurate scene detection. Tunable.
+const FILM_KEYFRAMES = 50;
+
+// Catalog a SINGLE film: extract keyframes in the browser, post only those.
+async function catalogFilmFrames(base, file, context, onStatus) {
+  onStatus = makeActionClock(onStatus);   // per-action clock on every status line
+  onStatus('מחלץ keyframes מהסרט בדפדפן (ללא העלאת וידאו)…');
+  const frames = await extractKeyframes(file, FILM_KEYFRAMES);   // [{tc, t, b64}]
+  if (!frames.length) throw new Error('לא הצלחתי לחלץ keyframes מהסרט');
+  const durationSec = Math.max(0, ...frames.map(f => f.t || 0)) || (state.filmMeta?.duration || 0);
+  return await postFramesCatalog(base, frames, durationSec, file.name, context, onStatus);
+}
+
+// Catalog a SPLIT film as ONE film: pull keyframes from EVERY part with CONTINUOUS
+// timecodes (each part's frames offset by its start time), then catalog them in a
+// SINGLE request → one unified record (one title/summary, one continuous timeline).
+// The parts are never treated as separate films and no per-part fields are filled.
+// Frames are budgeted to ~the engine's 40-frame cap, sampled evenly across the whole
+// film so coverage doesn't bunch at the start.
+async function catalogPartsAsOneFilm(base, context, onStatus) {
+  onStatus = makeActionClock(onStatus);   // per-action clock on every status line
+  const parts = state.filmParts || [];
+  if (!parts.length) throw new Error('אין חלקים');
+  const perPart = Math.max(3, Math.ceil(FILM_KEYFRAMES / parts.length));
+  const all = [];
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (onStatus) onStatus(`מחלץ keyframes מחלק ${i + 1}/${parts.length} (ציר זמן רציף)…`);
+    const pf = new File([p.blob], p.name, { type: (p.blob && p.blob.type) || 'video/mp4' });
+    let fr;
+    try { fr = await extractKeyframes(pf, perPart); }
+    catch (e) { console.warn('part', i + 1, 'frame extract failed', e); continue; }
+    fr.forEach(f => all.push({ t: (p.startSec || 0) + (f.t || 0), b64: f.b64 }));
+  }
+  if (!all.length) throw new Error('לא חולצו keyframes מאף חלק');
+  all.sort((a, b) => a.t - b.t); // one continuous timeline across all parts
+  let frames = all;
+  if (frames.length > FILM_KEYFRAMES) {      // even-coverage downsample to the engine cap
+    const step = frames.length / FILM_KEYFRAMES, keep = [];
+    for (let k = 0; k < FILM_KEYFRAMES; k++) keep.push(frames[Math.floor(k * step)]);
+    frames = keep;
+  }
+  const last = parts[parts.length - 1];
+  const durationSec = (last && last.endSec) || Math.max(0, ...frames.map(f => f.t));
+  const name = ((state.film && state.film.name) || parts[0].name || 'film').replace(/_part\d+.*$/i, '') + '.mp4';
+  return await postFramesCatalog(base, frames, durationSec, name, context, onStatus);
+}
+
+async function catalogCurrentFilmUnified() {
+  if (!state.film) throw new Error('אין סרט');
+  const base = await resolveUnifiedBase();
+  if (base === null)
+    throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
+  const outputName = await catalogFilmFrames(base, state.film, contextEl.value.trim(),
+    msg => showStatus(msg, 'info'));
+  return await fetchUnifiedRecord(base, outputName);
 }
 
 identifyBtn.addEventListener('click', async () => {
   identifyBtn.disabled = true;
   identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel() + '…';
-  // Unified server engine: upload → SSE progress → produced catalog HTML.
-  // Runs fully server-side (Gemini + Claude CLI + validation) — no browser keys.
+  // Unified server engine (frames-based, no video upload). ALWAYS produces ONE
+  // record: a SPLIT film → all parts as one continuous record; a whole film → the
+  // whole film. An individual part is NEVER cataloged on its own — the catalog
+  // appears only after every part has been processed.
   if (state.provider === 'unified-server') {
     try {
       await runUnifiedServer();
@@ -1084,6 +1211,7 @@ identifyBtn.addEventListener('click', async () => {
       part.identification = result;
       part.status = 'identified';
       renderPartsRail();
+      maybeAutoCombineParts();   // all parts done? → auto-build the whole-film record
     }
     showStatus('✓ הזיהוי הושלם.', 'ok');
     document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1127,125 +1255,122 @@ const SAFE_UPLOAD_MB   = 95;    // upload whole only if comfortably under the ca
 const PART_TARGET_MB   = 80;    // aim each split part here, leaving VBR headroom
 
 async function runUnifiedServer() {
-  if (!state.film) throw new Error('אין סרט');
   const base = await resolveUnifiedBase();
   if (base === null)
     throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
 
-  const fileMB = state.film.size / 1024 / 1024;
+  // ONE record, always — never a per-part catalog. A SPLIT film → keyframes from
+  // ALL parts on a continuous timeline (catalog appears only after every part is
+  // processed); a whole film → keyframes across the whole film. NO video upload
+  // (frames only), so film size / the 100MB tunnel limit are irrelevant.
+  const split = !!(state.filmParts && state.filmParts.length);
+  if (!split && !state.film) throw new Error('אין סרט');
 
-  // Small enough to upload whole — the original single-film flow, unchanged.
-  if (fileMB <= SAFE_UPLOAD_MB) {
-    const outputName = await catalogViaUnified(base, state.film, contextEl.value.trim(),
-      msg => showStatus(msg, 'info'));
-    const url = base + '/api/output/' + encodeURIComponent(outputName);
-    identifyStatus.innerHTML = '✓ הקטלוג מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
-    identifyStatus.className = 'status-msg show ok';
-    await loadUnifiedResults(base, outputName); // fills the editable results; fail-soft
-    return;
-  }
-
-  // --- Large film: auto-split → catalog each part → merge into one film ---
-  const duration = state.filmMeta?.duration;
-  if (!duration || !isFinite(duration) || duration <= 0)
-    throw new Error(`הסרט גדול מ-${CF_BODY_LIMIT_MB}MB (${fileMB.toFixed(0)}MB) אך לא ניתן לקרוא את אורכו לפיצול אוטומטי. השתמש בכפתור "✂️ חתוך לחלקים" ידנית.`);
-
-  const bytesPerSec = state.film.size / duration;
-  const segSec = Math.max(15, Math.floor((PART_TARGET_MB * 1024 * 1024) / bytesPerSec));
-  const estParts = Math.ceil(duration / segSec);
-  if (estParts > 8 && !confirm(`הסרט (${fileMB.toFixed(0)}MB) חורג ממגבלת ההעלאה (${CF_BODY_LIMIT_MB}MB) ויפוצל אוטומטית ל-~${estParts} חלקים. כל חלק מנותח בנפרד בשרת — זה עשוי לקחת זמן רב. להמשיך?`))
-    throw new Error('הקטלוג בוטל. ניתן לדחוס את הסרט (HandBrake) ולנסות שוב, או לפצל ידנית.');
-
-  showStatus(`הסרט ${fileMB.toFixed(0)}MB — מעל מגבלת ההעלאה של ${CF_BODY_LIMIT_MB}MB. מפצל אוטומטית ל-~${estParts} חלקים בדפדפן…`, 'info');
-  let parts;
-  try {
-    parts = await splitFilm(state.film, segSec, msg => showStatus('✂️ ' + msg, 'info'), () => {});
-  } catch (e) {
-    throw new Error('פיצול אוטומטי נכשל: ' + e.message + ' — נסה "✂️ חתוך לחלקים" ידנית.');
-  }
-  if (!parts.length) throw new Error('הפיצול לא הניב חלקים.');
-  // Guard a rare VBR spike that left a part over the cap — fail clearly, not a 413.
-  const tooBig = parts.find(p => p.size > CF_BODY_LIMIT_MB * 1024 * 1024);
-  if (tooBig)
-    throw new Error(`חלק ${parts.indexOf(tooBig) + 1} עדיין גדול מ-${CF_BODY_LIMIT_MB}MB (${(tooBig.size / 1024 / 1024).toFixed(0)}MB). חתוך לחלקים קצרים יותר ידנית ("✂️").`);
-
-  registerFilmParts(parts);
-  state.autoRunning = true;
-  renderPartsRail();
-  try {
-    for (const part of state.filmParts) {
-      part.status = 'analyzing'; renderPartsRail();
-      const partFile = new File([part.blob], part.name, { type: part.blob.type || 'video/mp4' });
-      try {
-        const outputName = await catalogViaUnified(base, partFile, contextEl.value.trim(),
-          msg => showStatus(`חלק ${part.idx + 1}/${state.filmParts.length} — ${msg}`, 'info'));
-        part.identification = await fetchUnifiedRecord(base, outputName);
-        part.outputName = outputName;
-        part.status = 'identified';
-      } catch (e) {
-        part.status = 'error';
-        console.error('part', part.idx + 1, 'failed', e);
-        showStatus(`⚠ חלק ${part.idx + 1} נכשל: ${e.message}`, 'err');
-      }
-      renderPartsRail();
-    }
-  } finally {
-    state.autoRunning = false;
+  let outputName;
+  if (split) {
+    state.currentPartIdx = -1;
+    state.filmParts.forEach(p => { p.status = 'analyzing'; });
     renderPartsRail();
+    outputName = await catalogPartsAsOneFilm(base, contextEl.value.trim(), msg => showStatus('⚡ ' + msg, 'info'));
+    state.filmParts.forEach(p => { p.status = 'identified'; });
+    renderPartsRail();
+  } else {
+    outputName = await catalogFilmFrames(base, state.film, contextEl.value.trim(), msg => showStatus(msg, 'info'));
   }
 
-  const ok = state.filmParts.filter(p => p.status === 'identified').length;
-  if (!ok) throw new Error('כל החלקים נכשלו בקטלוג — ראה את ההודעות לעיל.');
-  // Merge the parts into one continuous film (offsets timecodes, one summary).
-  runCombinedIdentification(true);
+  const url = base + '/api/output/' + encodeURIComponent(outputName);
+  identifyStatus.innerHTML = (split ? '✓ כל החלקים קוטלגו כסרט אחד (רשומה מאוחדת) — ' : '✓ הקטלוג מוכן — ')
+    + '<a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+  identifyStatus.className = 'status-msg show ok';
+  await loadUnifiedResults(base, outputName); // fills the editable results; fail-soft
 }
 
-// Upload one media file to the unified engine and poll until its catalog is
-// ready; returns the produced outputName. Shared by the single-film path and
-// the auto-split per-part path. onStatus(msg) receives progress lines.
-async function catalogViaUnified(base, file, context, onStatus) {
-  const fd = new FormData();
-  fd.append('file', file);
-  fd.append('kind', 'film');
-  fd.append('context', context || '');
-  if (onStatus) onStatus('מעלה את הסרט לשרת המאוחד…');
+// A truncated/corrupt upload — the Cloudflare tunnel intermittently cuts a large
+// POST body mid-stream, so the server saves an incomplete file that dies at the
+// ffprobe/keyframe stage. These are worth re-uploading (a fresh attempt usually
+// gets through intact); a genuine engine error (e.g. Gemini refusal) is not.
+function isTruncatedUploadError(text) {
+  return /moov atom not found|Invalid data found|חילוץ keyframes|ffprobe|Probing video|exited with code 1/i.test(text || '');
+}
 
-  let res;
-  try {
-    res = await fetch(base + '/api/items', { method: 'POST', body: fd });
-  } catch (e) {
-    throw new Error('ההעלאה לשרת נכשלה (רשת/תקשורת): ' + e.message);
-  }
-  if (res.status === 413)
-    throw new Error(`הקובץ נדחה ע"י Cloudflare (גדול מ-${CF_BODY_LIMIT_MB}MB). יש לפצל לחלקים קטנים יותר.`);
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
-  if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
-
-  if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… כמה דקות');
-  // Poll GET /api/jobs/:id. SSE (EventSource) does NOT stream reliably through the
-  // Cloudflare tunnel — during the long, silent Gemini step the idle connection is
-  // dropped and the terminal "end" event is lost. Polling is robust through CF.
-  const jobUrl = base + '/api/jobs/' + j.jobId;
-  const POLL_MS = 2500, MAX_MS = 20 * 60 * 1000;
+// Poll GET /api/jobs/:id to completion. Returns {status:'done',outputName} or
+// {status:'error',errorText} — never throws on a job error (caller decides).
+// SSE doesn't stream reliably through the tunnel (idle connection dropped during
+// the long silent Gemini step), so we poll.
+async function pollUnifiedJob(base, jobId, onStatus) {
+  const jobUrl = base + '/api/jobs/' + jobId;
+  const POLL_MS = 2500, MAX_MS = 35 * 60 * 1000; // long: Gemini(80 frames) + a many-scene Claude render
   const t0 = Date.now();
   while (true) {
     await new Promise(r => setTimeout(r, POLL_MS));
     let job = null;
-    try { job = await (await fetch(jobUrl)).json(); } catch (ignore) { /* transient — keep polling */ }
-    if (!job) { if (Date.now() - t0 > MAX_MS) throw new Error('timeout בניתוח'); continue; }
+    // Cache-bust each poll (unique URL defeats a proxy cache) + no-store, so a
+    // stale "running" can never be served after the job is actually done.
+    try { job = await (await fetch(jobUrl + (jobUrl.includes('?') ? '&' : '?') + '_=' + Date.now(), { cache: 'no-store' })).json(); } catch (ignore) { /* transient — keep polling */ }
+    if (!job) { if (Date.now() - t0 > MAX_MS) return { status: 'error', errorText: 'timeout בניתוח' }; continue; }
     if (onStatus && Array.isArray(job.events) && job.events.length) {
       const last = job.events[job.events.length - 1];
       const line = String(last.text || last.message || '').trim().split('\n').pop().slice(0, 160);
       if (line) onStatus('🛠 ' + line);
     }
-    if (job.status === 'done' && job.outputName) return job.outputName;
+    if (job.status === 'done' && job.outputName) return { status: 'done', outputName: job.outputName };
     if (job.status === 'error') {
       const er = (job.events || []).filter(e => e.type === 'error').pop();
-      throw new Error((er && (er.message || er.text)) || 'הניתוח הסתיים בשגיאה בשרת');
+      return { status: 'error', errorText: (er && (er.message || er.text)) || 'הניתוח הסתיים בשגיאה בשרת' };
     }
-    if (Date.now() - t0 > MAX_MS) throw new Error('timeout — הניתוח לקח יותר מדי זמן');
+    if (Date.now() - t0 > MAX_MS) return { status: 'error', errorText: 'timeout — הניתוח לקח יותר מדי זמן' };
   }
+}
+
+// Upload one media file to the unified engine and poll until its catalog is
+// ready; returns the produced outputName. Shared by the single-film path and the
+// auto-split per-part path. The Cloudflare tunnel intermittently truncates large
+// uploads (connection cut → corrupt file on the server), so we RE-UPLOAD the same
+// clip up to MAX_TRIES times when the upload is cut or the saved file is corrupt.
+async function catalogViaUnified(base, file, context, onStatus) {
+  const MAX_TRIES = 4;
+  let lastErr = '';
+  for (let tryN = 1; tryN <= MAX_TRIES; tryN++) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('kind', 'film');
+    fd.append('context', context || '');
+    if (onStatus) onStatus(tryN > 1 ? `מעלה מחדש לשרת (ניסיון ${tryN}/${MAX_TRIES})…` : 'מעלה את הסרט לשרת המאוחד…');
+
+    let res = null;
+    try {
+      res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+    } catch (e) {
+      // Connection cut during the upload itself → retry.
+      lastErr = 'ההעלאה נקטעה (' + e.message + ')';
+      if (onStatus) onStatus(`${lastErr} — מנסה שוב (${tryN}/${MAX_TRIES})…`);
+      await new Promise(r => setTimeout(r, 1200 * tryN));
+      continue;
+    }
+    if (res.status === 413)
+      throw new Error(`הקובץ נדחה ע"י Cloudflare (גדול מ-${CF_BODY_LIMIT_MB}MB). יש לפצל לחלקים קטנים יותר.`);
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.error) {
+      if (res.status >= 500 || res.status === 0) { lastErr = 'שגיאת שרת ' + res.status; await new Promise(r => setTimeout(r, 1200 * tryN)); continue; }
+      throw new Error(j.error || ('שגיאת שרת ' + res.status));
+    }
+    if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
+
+    if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… כמה דקות');
+    const out = await pollUnifiedJob(base, j.jobId, onStatus);
+    if (out.status === 'done') return out.outputName;
+
+    // Job failed. Re-upload only if the file arrived corrupt (tunnel cut);
+    // otherwise it's a real engine error — surface it.
+    lastErr = out.errorText;
+    if (isTruncatedUploadError(out.errorText) && tryN < MAX_TRIES) {
+      if (onStatus) onStatus(`הקובץ הגיע פגום (ההעלאה נקטעה) — מעלה מחדש (${tryN}/${MAX_TRIES})…`);
+      await new Promise(r => setTimeout(r, 1200 * tryN));
+      continue;
+    }
+    throw new Error(out.errorText || 'הניתוח הסתיים בשגיאה בשרת');
+  }
+  throw new Error(`ההעלאה לשרת נכשלה אחרי ${MAX_TRIES} ניסיונות — חיבור ה-tunnel נקטע שוב ושוב. פרט אחרון: ${lastErr}`);
 }
 
 // Fetch a produced catalog's JSON sidecar and map it to the results-model shape
@@ -1329,6 +1454,8 @@ function mapUnifiedFilmFields(f) {
     summary_he: txt('SUMMARY_HE'), summary_en: txt('SUMMARY_EN'),
     duration: txt('DURATION'),
     archive_id: txt('ARCHIVE_ID'),
+    places_he: txt('PLACES_HE'), places_en: txt('PLACES_EN'),
+    jewish_timeline_he: txt('JEWISH_TIMELINE_HE'), jewish_timeline_en: txt('JEWISH_TIMELINE_EN'),
     timeline: parseUnifiedScenes(f.TIMELINE_SCENES),
   };
 }
@@ -1715,6 +1842,8 @@ function fillResults(d) {
   setVal('r-donor-he', d.donor_he); setVal('r-donor-en', d.donor_en);
   setVal('r-source-he', d.source_he); setVal('r-source-en', d.source_en);
   setVal('r-summary-he', d.summary_he); setVal('r-summary-en', d.summary_en);
+  setVal('r-places-he', d.places_he); setVal('r-places-en', d.places_en);
+  setVal('r-jewish-he', d.jewish_timeline_he); setVal('r-jewish-en', d.jewish_timeline_en);
   setVal('r-persons-he', d.persons_he); setVal('r-persons-en', d.persons_en);
   setVal('r-inscriptions-he', d.inscriptions_he); setVal('r-inscriptions-en', d.inscriptions_en);
   setVal('r-admin-notes', d.admin_notes);
@@ -1822,6 +1951,35 @@ document.addEventListener('click', async e => {
   setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1100);
 });
 wrapFieldsWithCopyButtons();
+
+// Copy the WHOLE timeline as clean text for direct paste into Sapir: one line per
+// scene, "MM:SS–MM:SS  description" — time + description ONLY, NO confidence markers.
+// lang 'he' → Hebrew description column (textarea idx 2); 'en' → English (idx 3).
+// Reads the editable rows, so any manual edits are included.
+function buildTimelineText(lang) {
+  const di = lang === 'en' ? 3 : 2;
+  const rows = [...document.querySelectorAll('#r-timeline-tbody tr')].map(tr => {
+    const inp = [...tr.querySelectorAll('input, textarea')];
+    if (inp.length < 4) return null;
+    return { start: (inp[0].value || '').trim(), end: (inp[1].value || '').trim(), desc: (inp[di].value || '').trim() };
+  }).filter(s => s && s.desc);
+  if (!rows.length) return null;
+  return rows.map(s => {
+    const tc = (s.end && s.end !== s.start) ? `${s.start}–${s.end}` : (s.start || '');
+    const d = s.desc.replace(/\s*\n\s*/g, ' ');
+    return tc ? `${tc}  ${d}` : d;
+  }).join('\n');
+}
+async function copyTimeline(lang, btnId, okLabel, emptyMsg) {
+  const text = buildTimelineText(lang);
+  if (text === null) { alert(emptyMsg); return; }
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  const b = document.getElementById(btnId); const o = b.textContent;
+  b.textContent = okLabel; setTimeout(() => { b.textContent = o; }, 1300);
+}
+document.getElementById('copy-timeline-he')?.addEventListener('click', () => copyTimeline('he', 'copy-timeline-he', '✓ הועתק', 'אין סצנות בטיימליין להעתקה'));
+document.getElementById('copy-timeline-en')?.addEventListener('click', () => copyTimeline('en', 'copy-timeline-en', '✓ Copied', 'No scenes in the timeline to copy'));
 
 // Download HTML
 function buildFilmHTML() {
@@ -2276,6 +2434,17 @@ function buildCombinedFilmRecord() {
 
 // Build the unified single-film record and load it into the results form.
 // `auto` suppresses the "no parts" alert when called automatically.
+// Auto-build the combined whole-film record once EVERY split part is identified,
+// so the archivist gets one registration for the whole film without clicking
+// "זיהוי כולל". Skips during an auto-run (autoIdentifyAllParts merges at its end).
+function maybeAutoCombineParts() {
+  if (state.autoRunning) return;
+  const parts = state.filmParts || [];
+  if (parts.length >= 2 && parts.every(p => p.status === 'identified')) {
+    runCombinedIdentification(true);
+  }
+}
+
 function runCombinedIdentification(auto) {
   let combined;
   try {
@@ -2388,6 +2557,37 @@ function loadPartAwaitMeta(idx) {
 
 async function autoIdentifyAllParts() {
   if (!state.filmParts.length) return;
+
+  // Unified engine: the split film is ONE film. Pull keyframes from all parts with a
+  // continuous timeline and catalog them in a single pass → one unified record. No
+  // per-part catalogs, no per-part fields, no merge step.
+  if (state.provider === 'unified-server') {
+    const base = await resolveUnifiedBase();
+    if (base === null) { showStatus('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת', 'err'); return; }
+    state.autoRunning = true;
+    prAutoBtn.style.display = 'none'; prCancelBtn.style.display = 'block'; prCancelBtn.disabled = false;
+    prCancelBtn.textContent = '⛔ עצור'; identifyBtn.disabled = true; prCombineBtn.disabled = true;
+    state.filmParts.forEach(p => { p.status = 'analyzing'; }); renderPartsRail();
+    try {
+      const outputName = await catalogPartsAsOneFilm(base, contextEl.value.trim(), msg => showStatus('⚡ ' + msg, 'info'));
+      const url = base + '/api/output/' + encodeURIComponent(outputName);
+      identifyStatus.innerHTML = '✓ כל החלקים קוטלגו כסרט אחד (רשומה מאוחדת) — <a href="' + url + '" download>⬇ הורד</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+      identifyStatus.className = 'status-msg show ok';
+      state.currentPartIdx = -1;
+      await loadUnifiedResults(base, outputName);     // fills the one unified record below
+      state.filmParts.forEach(p => { p.status = 'identified'; });
+    } catch (e) {
+      console.error('parts-as-one failed', e);
+      state.filmParts.forEach(p => { if (p.status === 'analyzing') p.status = 'pending'; });
+      showStatus('שגיאה: ' + e.message, 'err');
+    } finally {
+      state.autoRunning = false;
+      prAutoBtn.style.display = 'block'; prCancelBtn.style.display = 'none'; identifyBtn.disabled = false;
+      refreshButtons(); renderPartsRail();
+    }
+    return;
+  }
+
   if (!hasAllRequiredKeys()) { alert('יש להגדיר API key לפני זיהוי אוטומטי'); return; }
   const todo = state.filmParts.filter(p => p.status !== 'identified');
   if (!todo.length) { alert('כל החלקים כבר זוהו'); return; }
