@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Cross-origin isolation for ffmpeg.wasm (required by SharedArrayBuffer). Must load before any other script. -->
 <script src="coi-serviceworker.min.js"></script>
-<title>קטלוג תצלומים — יד ושם</title>
+<title>קטלוג תצלומים</title>
 
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -340,7 +340,7 @@
 
   <header class="doc">
     <div>
-      <h1>📷 קטלוג תצלומים — יד ושם <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small> <span id="yv-build" title="גרסת קוד טעונה — אם זה לא העדכני, נקה cache + service worker" style="font-size:11px; color:#8a7758; background:#f3eee2; padding:1px 8px; border-radius:8px; font-family:monospace; font-weight:400; vertical-align:middle;">build 2026-06-15c · הסרה מהתור</span></h1>
+      <h1>📷 קטלוג תצלומים <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small> <span id="yv-build" title="גרסת קוד טעונה — אם זה לא העדכני, נקה cache + service worker" style="font-size:11px; color:#8a7758; background:#f3eee2; padding:1px 8px; border-radius:8px; font-family:monospace; font-weight:400; vertical-align:middle;">build 2026-06-15c · הסרה מהתור</span></h1>
       <div class="sub">העלאה, פיענוח, זיהוי אוטומטי וייצוא — הכל בדפדפן</div>
     </div>
     <div class="actions-top">
@@ -761,7 +761,7 @@
           <h4>שדות טכניים / Technical fields</h4>
           <div class="compact-row"><label>אופי החומר / Material</label><input type="text" id="r-material" value="26T קובץ סריקה"></div>
           <div class="compact-row"><label>צבע / Color</label><input type="text" id="r-color"></div>
-          <div class="compact-row"><label>בעל הזכויות / Rights</label><input type="text" id="r-rights" value="יד ושם (T9123081)"></div>
+          <div class="compact-row"><label>בעל הזכויות / Rights</label><input type="text" id="r-rights" value="הארכיון"></div>
           <div class="compact-row"><label>סיווג / Classification</label><input type="text" id="r-class" value="בלתי מסווג"></div>
           <div class="compact-row"><label>נגטיב / Negative</label><input type="text" id="r-negative" value="ל"></div>
           <div class="compact-row"><label>צלם / Photographer</label><input type="text" id="r-photographer"></div>
@@ -1404,7 +1404,7 @@ function buildReconcilePrompt(recs) {
   const photos = recs.map(r => ({ photo_id: r.photo_id, seq: r.seq, ...entitiesFromResult(r.result) }));
   const canon = (state.places_canonical || []).slice(0, 160);
   const memory = state.collection?.memory || null;
-  return `אתה עורך בכיר במדור התצלומים של יד ושם. לפניך ${photos.length} רישומי קטלוג של תצלומים מאותו אוסף, שכל אחד קוטלג בנפרד. בצע מעבר הצלבה ברמת האוסף.
+  return `אתה עורך בכיר במדור התצלומים של הארכיון. לפניך ${photos.length} רישומי קטלוג של תצלומים מאותו אוסף, שכל אחד קוטלג בנפרד. בצע מעבר הצלבה ברמת האוסף.
 
 ## פרופיל האוסף
 מוסר: ${(p.donor_he || '')} ${(p.donor_en || '')}
@@ -2598,7 +2598,7 @@ async function callAnthropic() {
   const backB64 = back?.data ?? null, backMime = back?.mime ?? 'image/jpeg';
 
   const content = [
-    { type: 'text', text: 'אני שולח לך תצלום ארכיוני של יד ושם לקטלוג מלא לפי הנהלים הרשמיים. התשובה שלך חייבת להיות JSON תקין בלבד (ללא טקסט נוסף).' },
+    { type: 'text', text: 'אני שולח לך תצלום ארכיוני לקטלוג מלא לפי הנהלים הרשמיים. התשובה שלך חייבת להיות JSON תקין בלבד (ללא טקסט נוסף).' },
     { type: 'text', text: '## חזית התצלום' },
     { type: 'image', source: { type: 'base64', media_type: frontMime, data: frontB64 } }
   ];
@@ -2641,7 +2641,7 @@ async function callGemini() {
   const backB64 = back?.data ?? null, backMime = back?.mime ?? 'image/jpeg';
 
   const parts = [
-    { text: 'אני שולח לך תצלום ארכיוני של יד ושם לקטלוג מלא לפי הנהלים הרשמיים. התשובה שלך חייבת להיות JSON תקין בלבד (ללא טקסט נוסף).' },
+    { text: 'אני שולח לך תצלום ארכיוני לקטלוג מלא לפי הנהלים הרשמיים. התשובה שלך חייבת להיות JSON תקין בלבד (ללא טקסט נוסף).' },
     { text: '## חזית התצלום' },
     { inline_data: { mime_type: frontMime, data: frontB64 } }
   ];
@@ -2755,7 +2755,7 @@ ${itemBlock}
   // Build thesaurus brief — top-300 most-used terms in the photo archive
   const thesaurusBrief = (state.thesaurus_top || []).map(t => `${t.he} | ${t.en}`).join('\n');
 
-  return collectionContext + `אתה מקטלג בכיר במדור התצלומים של יד ושם. בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים**:
+  return collectionContext + `אתה מקטלג בכיר במדור התצלומים של הארכיון. בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים**:
 
 🚨🚨🚨 **חוק קריטי — איסור הזיה (anti-hallucination)** 🚨🚨🚨
 
@@ -2880,7 +2880,7 @@ ${itemBlock}
 6. **סטודיו**: זהה חותמת/לוגו של סטודיו צילום (חזית או גב). מאגר סטודיו ידועים:
 ${studiosBrief || '(מאגר ריק — אם זיהית סטודיו, סמן "should_add: true")'}
 
-## נושאים (תזאורוס יד ושם)
+## נושאים (תזאורוס הארכיון)
 
 חובה לבחור עד **10 נושאים** הרלוונטיים ביותר לתצלום הזה **רק מהרשימה הסגורה** למטה.
 - כל נושא מסומן בעברית | אנגלית בדיוק כפי שמופיע ברשימה
@@ -2909,7 +2909,7 @@ ${ctxText || '(אין מידע מוקדם)'}
   "places_en": "comma-separated places in English",
   "material_type": "26T קובץ סריקה",
   "color": "שחור-לבן",
-  "rights_owner": "יד ושם (T9123081)",
+  "rights_owner": "הארכיון",
   "classification": "בלתי מסווג",
   "negative": "ל",
   "photographer": "",
@@ -2969,7 +2969,7 @@ ${ctxText || '(אין מידע מוקדם)'}
 
 function buildManualPrompt() {
   const ctx = contextEl.value.trim();
-  return `אנא קטלג את התצלום המצורף לפי הנהלים הרשמיים של ארכיון התצלומים, יד ושם.
+  return `אנא קטלג את התצלום המצורף לפי הנהלים הרשמיים של ארכיון התצלומים.
 
 ${ctx ? '## מידע מוקדם\n\n' + ctx + '\n\n' : ''}## דרישות
 
@@ -3007,7 +3007,7 @@ function fillResultsForm(d) {
   setVal('r-places', d.places_en);
   setVal('r-material', d.material_type || '26T קובץ סריקה');
   setVal('r-color', d.color);
-  setVal('r-rights', d.rights_owner || 'יד ושם (T9123081)');
+  setVal('r-rights', d.rights_owner || 'הארכיון');
   setVal('r-class', d.classification || 'בלתי מסווג');
   setVal('r-negative', d.negative || 'ל');
   setVal('r-photographer', d.photographer);
@@ -3431,7 +3431,7 @@ function resetPhotoForm() {
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   // Reset defaults
   document.getElementById('r-material').value = '26T קובץ סריקה';
-  document.getElementById('r-rights').value = 'יד ושם (T9123081)';
+  document.getElementById('r-rights').value = 'הארכיון';
   document.getElementById('r-class').value = 'בלתי מסווג';
   document.getElementById('r-negative').value = 'ל';
   document.getElementById('r-size').value = 'רגיל';
@@ -3593,7 +3593,7 @@ const YV_TEMPLATE = `<!DOCTYPE html>
   @media print{.copy-btn,.toast{display:none}body{background:#fff}.field{break-inside:avoid}}
 </style></head><body>
 <div class="wrap">
-<header><h1>קטלוג תצלום — מערכת ספיר / Yad Vashem Sapir Photo Catalog</h1><div class="sub">{{ANALYSIS_DATE}}</div></header>
+<header><h1>קטלוג תצלום — מערכת ספיר / Sapir Photo Catalog</h1><div class="sub">{{ANALYSIS_DATE}}</div></header>
 <div class="meta-strip"><span><b>קובץ / File:</b> {{SOURCE_FILENAME}}</span><span><b>מס׳ נכנסות:</b> {{INTAKE_NUMBER}}</span><span><b>סימול תצלום:</b> {{PHOTO_ID}}</span></div>
 <div class="preview">{{IMAGE_PREVIEW}}</div>
 
@@ -3982,7 +3982,7 @@ function buildCollectionPrompt(sources) {
   }
   const sourcesText = sourceBlocks.join('\n\n');
 
-  return `אתה מקטלג בכיר במדור התצלומים של יד ושם. ${anyPdf ? 'מצורפים PDF(ים) של מקורות מידע על האוסף.' : 'מצורפים מקורות טקסט של מידע על האוסף.'} השתמש בכל המקורות יחד כדי להוציא פרופיל מובנה של האוסף שישמש כהקשר לקטלוג כל תצלום באוסף.
+  return `אתה מקטלג בכיר במדור התצלומים של הארכיון. ${anyPdf ? 'מצורפים PDF(ים) של מקורות מידע על האוסף.' : 'מצורפים מקורות טקסט של מידע על האוסף.'} השתמש בכל המקורות יחד כדי להוציא פרופיל מובנה של האוסף שישמש כהקשר לקטלוג כל תצלום באוסף.
 
 ## חלוקת תפקידים בין המקורות (חשוב!)
 

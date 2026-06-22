@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Cross-origin isolation for ffmpeg.wasm (required by SharedArrayBuffer). Must load before any other script. -->
 <script src="coi-serviceworker.min.js"></script>
-<title>קטלוג מסמכים — יד ושם</title>
+<title>קטלוג מסמכים</title>
 
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -213,7 +213,7 @@
 
   <header class="doc">
     <div>
-      <h1>📄 קטלוג מסמכים — יד ושם <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small></h1>
+      <h1>📄 קטלוג מסמכים <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small></h1>
       <div class="sub">פיענוח מסמכים היסטוריים — מכונת כתיבה וכתב יד — בשפות אירופיות, עברית, יידיש</div>
     </div>
     <div class="actions-top">
@@ -566,7 +566,7 @@
         </div>
 
         <div class="field-group">
-          <h4>נושאים / Subjects <small>(עד 10, מתזאורוס יד ושם)</small></h4>
+          <h4>נושאים / Subjects <small>(עד 10, מתזאורוס הארכיון)</small></h4>
           <div class="subject-chips" id="r-subjects-chips"></div>
           <input type="text" id="r-subjects-add" placeholder="הקלד נושא ולחץ Enter" style="margin-top:6px;">
         </div>
@@ -656,14 +656,14 @@
                 <option value="כן">כן — יש שמות נספים/מגורשים/תושבים יהודיים מתקופת השואה</option>
               </select>
             </div>
-            <div style="font-size:11px; color:var(--muted); margin-top:4px;">💡 סמן "כן" רק אם יש שמות מלאים שניתן להעבירם להקלדה במאגר השמות של יד ושם.</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:4px;">💡 סמן "כן" רק אם יש שמות מלאים שניתן להעבירם להקלדה במאגר השמות של הארכיון.</div>
           </div>
 
           <!-- Related items (up to 5) -->
           <div class="field-group">
             <h4>פריטים נלווים / Related items <small>(עד 5, רק הקשורים ישירות לנושא התיק)</small></h4>
             <textarea id="r-related-items" rows="3" placeholder="O.33/1234 — עדות של ...&#10;דף עד של ... (מאגר השמות)"></textarea>
-            <div style="font-size:11px; color:var(--muted); margin-top:4px;">💡 פריטי המאגר הפנימי של יד ושם בלבד. עדיף לא להפנות לארכיונים חיצוניים.</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:4px;">💡 פריטי המאגר הפנימי של הארכיון בלבד. עדיף לא להפנות לארכיונים חיצוניים.</div>
           </div>
 
           <!-- Classification -->
@@ -1852,7 +1852,7 @@ async function callClaudeCliDirect() {
     throw new Error(`המסמך גדול מדי לשליחה ישירה (${approxMB.toFixed(0)}MB אחרי קידוד). חלק אותו או הקטן את הסריקה.`);
   }
   const prompt = buildDocPrompt() +
-    '\n\n🛑 הקובץ המצורף הוא סריקה אמיתית של מסמך היסטורי מארכיון יד ושם — קרא אותו במלואו. אם זה PDF רב-עמודים, קרא את כל העמודים (בטווחים אם צריך, למשל pages:"1-10") ואל תעצור אחרי העמוד הראשון. הפק את רשומת ספיר לפי הסכימה.\n\n⚠ החזר JSON תקין בלבד ללא code-fence ובלי טקסט הקדמה.';
+    '\n\n🛑 הקובץ המצורף הוא סריקה אמיתית של מסמך היסטורי מהארכיון — קרא אותו במלואו. אם זה PDF רב-עמודים, קרא את כל העמודים (בטווחים אם צריך, למשל pages:"1-10") ואל תעצור אחרי העמוד הראשון. הפק את רשומת ספיר לפי הסכימה.\n\n⚠ החזר JSON תקין בלבד ללא code-fence ובלי טקסט הקדמה.';
   let text = await runClaudeJobDocs(prompt, images);
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
   return parseJson(text, 'Claude CLI');
@@ -1871,7 +1871,7 @@ async function geminiOCROnly() {
   const writingType = document.getElementById('writing-type').value;
   const writingTypeMap = { auto: 'זיהוי אוטומטי', typewritten: 'מכונת כתיבה', handwritten: 'כתב יד', mixed: 'מעורב', printed: 'דפוס' };
 
-  const ocrPrompt = `אתה מבצע OCR קפדני של מסמך היסטורי מארכיון יד ושם.
+  const ocrPrompt = `אתה מבצע OCR קפדני של מסמך היסטורי מהארכיון.
 
 **רמזים מוקדמים**:
 - שפות צפויות: ${langs || 'זיהוי אוטומטי'}
@@ -2117,7 +2117,7 @@ async function claudeStructureFromOCR(ocrText) {
   const ctxText = contextEl.value.trim();
 
   const claudeContent = [
-    { type: 'text', text: `אני שולח לך **OCR שכבר בוצע ע"י Gemini** של מסמך היסטורי מארכיון יד ושם. תפקידך: לקחת את הטקסט הזה + מידע מוקדם + חוקי הקטלוג של ספיר → להפיק JSON מובנה לפי הסכימה.
+    { type: 'text', text: `אני שולח לך **OCR שכבר בוצע ע"י Gemini** של מסמך היסטורי מהארכיון. תפקידך: לקחת את הטקסט הזה + מידע מוקדם + חוקי הקטלוג של ספיר → להפיק JSON מובנה לפי הסכימה.
 
 ⚠ חשוב: אינך רואה את המסמך עצמו, רק את ה-OCR. אל תוסיף מידע מעבר למה שמופיע ב-OCR. אם Gemini סימן \`[?]\` או \`[לא קריא]\` — שמור על זה. אסור לנחש או להמציא.
 
@@ -2338,7 +2338,7 @@ function buildPrivateModeRules() {
 
 ### י. פריטים נלווים (related_items):
 - עד 5, רק קשורים ישירות לתיק (לאדם/למשפחה/לגוף)
-- העדף מאגרי יד ושם (דפי עד, עדויות)
+- העדף מאגרי הארכיון (דפי עד, עדויות)
 
 `;
 }
@@ -2389,7 +2389,7 @@ function buildDocPrompt() {
 - אם הטקסט גדול מאוד וייתכן חיתוך בפלט — תעדיף לחלק לפסקאות עם שורת ריק ביניהן.`;
   }
 
-  return `אתה מקטלג בכיר במדור המסמכים של ארכיון יד ושם, מומחה לפיענוח מסמכים היסטוריים מהתקופה 1900–1948.
+  return `אתה מקטלג בכיר במדור המסמכים של הארכיון, מומחה לפיענוח מסמכים היסטוריים מהתקופה 1900–1948.
 
 **סוג רישום:** ${state.doc_mode === 'private' ? '👤 מסמך ממקור פרטי (נוהל ספיר מורחב)' : '🏛 מסמך מוסדי (רישום סטנדרטי)'}
 ${privateRules}
@@ -2595,7 +2595,7 @@ ${state.doc_mode === 'private' ? `
   "content_note": "הערת תוכן — הבהרות תוכניות, סתירות, מקורות חיצוניים",
   "admin_note": "הערת אדמיניסטרציה — פנימי",
   "names_typing": "כן | לא",
-  "related_items": "פריטים נלווים (עד 5, מיד ושם בלבד אם אפשר)",
+  "related_items": "פריטים נלווים (עד 5, מהארכיון בלבד אם אפשר)",
   "classification": "בלתי מסווג | מוגבל | שמור",
   "classification_reason": "נימוק (חובה אם 'מוגבל' או 'שמור')",
   "show_intranet": "Yes | No"
@@ -3048,7 +3048,7 @@ document.getElementById('validate-btn').addEventListener('click', async () => {
 
 function buildValidationPrompt() {
   const cat = state.identification;
-  return `אתה מבקר אקדמי בכיר במדור הקטלוג של ארכיון יד ושם. תפקידך: לבצע **academic validation** של קטלוג שהופק ע"י AI, מול המסמך המקורי.
+  return `אתה מבקר אקדמי בכיר במדור הקטלוג של הארכיון. תפקידך: לבצע **academic validation** של קטלוג שהופק ע"י AI, מול המסמך המקורי.
 
 ═══════════════════════════════════════════════════════════════
 🎯 **המתודולוגיה** (מבוססת על academic-validation methodology)
@@ -3375,7 +3375,7 @@ function buildNotebookLMExport() {
 
   const today = new Date().toLocaleDateString('he-IL');
   const lines = [];
-  lines.push(`# יד ושם — אינדקס שמות · תאריכים · הקשר`);
+  lines.push(`# אינדקס שמות · תאריכים · הקשר`);
   lines.push(`מסמך ייצוא ל-NotebookLM · נוצר ${today} · ${valid.length} מסמכים`);
   lines.push('');
   lines.push(`> כל רשומה למטה היא מסמך אחד שפוענח. העלה קובץ זה כמקור ב-NotebookLM כדי לחפש שמות, להצליב בין מסמכים ולבנות ציר זמן. השמות והתאריכים חולצו ע"י Claude מתוך הסריקות — מומלץ לאמת מול המקור.`);
@@ -3483,7 +3483,7 @@ const DOC_TEMPLATE = `<!DOCTYPE html>
   @media print{.copy-btn,.toast{display:none}body{background:#fff}.field{break-inside:avoid}}
 </style></head><body><div class="wrap">
 
-<header><h1>📄 קטלוג מסמך — מערכת ספיר / Yad Vashem Sapir Document Catalog</h1><div class="sub">{{ANALYSIS_DATE}} · קובץ: {{SOURCE_FILENAME}}</div></header>
+<header><h1>📄 קטלוג מסמך — מערכת ספיר / Sapir Document Catalog</h1><div class="sub">{{ANALYSIS_DATE}} · קובץ: {{SOURCE_FILENAME}}</div></header>
 
 <div class="section-bar">כותר ופרטי קטלוג</div>
 <div class="field"><div class="head"><span class="label">כותר HE</span><button class="copy-btn" data-copy="title-he">העתק</button></div><div id="title-he" class="single he">{{TITLE_HE}}</div></div>

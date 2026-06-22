@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Cross-origin isolation for ffmpeg.wasm (required by SharedArrayBuffer). Must load before any other script. -->
 <script src="coi-serviceworker.min.js"></script>
-<title>קטלוג סרטים — יד ושם</title>
+<title>קטלוג סרטים</title>
 
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 
@@ -248,7 +248,7 @@
 
   <header class="doc">
     <div>
-      <h1>🎞 קטלוג סרטים — יד ושם <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small></h1>
+      <h1>🎞 קטלוג סרטים <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small></h1>
       <div class="sub">העלאת סרט, ניתוח אוטומטי של טיימליין, סצנות וכיתובים — הכל בדפדפן</div>
     </div>
     <div class="actions-top">
@@ -1253,7 +1253,7 @@ function buildFilmPrompt() {
   const m = state.filmMeta || {};
   const dur = formatDuration(m.duration || 0);
   const thesaurusBrief = (state.thesaurus_top || []).map(t => `${t.he} | ${t.en}`).join('\n');
-  return `אתה מקטלג בכיר במדור התיעוד הוויזואלי של יד ושם. נשלח אליך סרט ארכיוני (משך: ${dur}, רזולוציה: ${m.width}×${m.height}). בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים** והחזר JSON תקין בלבד.
+  return `אתה מקטלג בכיר במדור התיעוד הוויזואלי של הארכיון. נשלח אליך סרט ארכיוני (משך: ${dur}, רזולוציה: ${m.width}×${m.height}). בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים** והחזר JSON תקין בלבד.
 
 🚨🚨🚨 **חוק קריטי — איסור הזיה** 🚨🚨🚨
 
@@ -1891,7 +1891,7 @@ const FILM_TEMPLATE = `<!DOCTYPE html>
   @media print{.copy-btn,.toast{display:none}body{background:#fff}.field{break-inside:avoid}}
 </style></head><body><div class="wrap">
 
-<header><h1>🎞 קטלוג סרט — מערכת ספיר / Yad Vashem Sapir Film Catalog</h1><div class="sub">{{ANALYSIS_DATE}} · קובץ: {{SOURCE_FILENAME}}</div></header>
+<header><h1>🎞 קטלוג סרט — מערכת ספיר / Sapir Film Catalog</h1><div class="sub">{{ANALYSIS_DATE}} · קובץ: {{SOURCE_FILENAME}}</div></header>
 
 <div class="section-bar">כותר <small>Title</small></div>
 <div class="field"><div class="head"><span class="label">כותר HE</span><button class="copy-btn" data-copy="title-he">העתק</button></div><div id="title-he" class="single he">{{TITLE_HE}}</div></div>
