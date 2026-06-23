@@ -1152,13 +1152,22 @@ async function postFramesCatalog(base, frames, durationSec, name, context, onSta
 // Keyframes sampled across the film. The browser samples EVENLY, so more frames =
 // finer coverage = fewer missed scenes. The engine's cap (cli/yv.py) must match or
 // exceed this. 80 ≈ 2× the old 40, for more accurate scene detection. Tunable.
-const FILM_KEYFRAMES = 50;
+const FILM_KEYFRAMES_MAX = 50;
+// Keyframe budget scales DOWN for long films so Stage-2 (Claude) can render the
+// timeline + identification lists within the time limit — fewer but real, grounded
+// scenes (never fabricated). ~50 for ≤20-min films, ~30 for 70 min, floored at 24.
+function filmKeyframes(durationSec) {
+  const min = (durationSec || 0) / 60;
+  if (min <= 20) return FILM_KEYFRAMES_MAX;
+  return Math.max(24, Math.round(FILM_KEYFRAMES_MAX - (min - 20) * 0.4));
+}
 
 // Catalog a SINGLE film: extract keyframes in the browser, post only those.
 async function catalogFilmFrames(base, file, context, onStatus) {
   onStatus = makeActionClock(onStatus);   // per-action clock on every status line
-  onStatus('מחלץ keyframes מהסרט בדפדפן (ללא העלאת וידאו)…');
-  const frames = await extractKeyframes(file, FILM_KEYFRAMES);   // [{tc, t, b64}]
+  const n = filmKeyframes(state.filmMeta?.duration || 0);
+  onStatus(`מחלץ ${n} keyframes מהסרט בדפדפן (ללא העלאת וידאו)…`);
+  const frames = await extractKeyframes(file, n);   // [{tc, t, b64}]
   if (!frames.length) throw new Error('לא הצלחתי לחלץ keyframes מהסרט');
   // True film length (not the last keyframe's tc, which sits ~one interval short).
   const durationSec = Math.round(state.filmMeta?.duration || Math.max(0, ...frames.map(f => f.t || 0)));
@@ -1175,7 +1184,9 @@ async function catalogPartsAsOneFilm(base, context, onStatus) {
   onStatus = makeActionClock(onStatus);   // per-action clock on every status line
   const parts = state.filmParts || [];
   if (!parts.length) throw new Error('אין חלקים');
-  const perPart = Math.max(3, Math.ceil(FILM_KEYFRAMES / parts.length));
+  const totalDur = (parts[parts.length - 1] && parts[parts.length - 1].endSec) || 0;
+  const budget = filmKeyframes(totalDur);   // scale the budget down for long films
+  const perPart = Math.max(3, Math.ceil(budget / parts.length));
   const all = [];
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i];
@@ -1189,9 +1200,9 @@ async function catalogPartsAsOneFilm(base, context, onStatus) {
   if (!all.length) throw new Error('לא חולצו keyframes מאף חלק');
   all.sort((a, b) => a.t - b.t); // one continuous timeline across all parts
   let frames = all;
-  if (frames.length > FILM_KEYFRAMES) {      // even-coverage downsample to the engine cap
-    const step = frames.length / FILM_KEYFRAMES, keep = [];
-    for (let k = 0; k < FILM_KEYFRAMES; k++) keep.push(frames[Math.floor(k * step)]);
+  if (frames.length > budget) {      // even-coverage downsample to the scaled budget
+    const step = frames.length / budget, keep = [];
+    for (let k = 0; k < budget; k++) keep.push(frames[Math.floor(k * step)]);
     frames = keep;
   }
   const last = parts[parts.length - 1];
