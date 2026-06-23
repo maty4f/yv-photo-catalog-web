@@ -642,6 +642,7 @@
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       <button id="preview-btn" class="ghost" type="button">👁 תצוגה מקדימה</button>
       <button id="download-final-btn">⬇ הורד HTML</button>
+      <button id="next-film-btn" class="ghost" type="button" title="נקה את הסרט והתוצאות הנוכחיים, שחרר זיכרון, והתכונן לסרט הבא">➡️ סרט הבא (נקה זיכרון)</button>
     </div>
   </div>
 
@@ -844,6 +845,37 @@ function clearFilm() {
   fileInput.value = '';
   refreshButtons();
 }
+
+// Full reset for the NEXT film: clears the current film + results + parts rail and
+// frees the loaded video / extracted frames / part-blobs from browser memory — a
+// clean slate so memory doesn't accumulate across films. Leaves settings + any batch
+// queue untouched.
+function resetForNextFilm() {
+  clearFilm();                       // clears the input + frees the video (src='')
+  state.identification = null;
+  state.filmParts = [];              // drop part blobs → GC frees the memory
+  state.currentPartIdx = -1;
+  state.autoRunning = false;
+  // hide results, show the empty placeholder, hide the download bar
+  document.getElementById('results').classList.remove('show');
+  const nr = document.getElementById('no-results'); if (nr) nr.style.display = '';
+  document.getElementById('download-bar').style.display = 'none';
+  // clear every result field + the timeline + the subject chips
+  document.querySelectorAll('#results textarea, #results input').forEach(el => { el.value = ''; });
+  const tb = document.getElementById('r-timeline-tbody');
+  if (tb) tb.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted); font-style:italic; padding:14px">לחץ "זהה את הסרט" לטיימליין אוטומטי</td></tr>';
+  if (typeof renderSubjects === 'function') renderSubjects([]);
+  // hide + empty the film-parts rail
+  const rail = document.getElementById('parts-rail'); if (rail) rail.classList.remove('show');
+  ['pr-list', 'pr-progress'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
+  const prc = document.getElementById('pr-count'); if (prc) prc.textContent = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (typeof showStatus === 'function') showStatus('🧹 נוקה — מוכן לסרט הבא', 'ok');
+}
+document.getElementById('next-film-btn').addEventListener('click', () => {
+  if (!confirm('לעבור לסרט הבא? הסרט והתוצאות הנוכחיים ינוקו מהזיכרון. ודא שהורדת או העתקת מה שצריך.')) return;
+  resetForNextFilm();
+});
 
 // =====================================================================
 //  FILM BATCH QUEUE — up to 5 films at once (heavy; smaller cap than photos)
