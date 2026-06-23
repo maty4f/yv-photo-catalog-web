@@ -1207,7 +1207,8 @@ async function catalogFilmFrames(base, file, context, onStatus) {
   const frames = await extractKeyframes(file, n);   // [{tc, t, b64}]
   if (!frames.length) throw new Error('לא הצלחתי לחלץ keyframes מהסרט');
   // True film length (not the last keyframe's tc, which sits ~one interval short).
-  const durationSec = Math.round(state.filmMeta?.duration || Math.max(0, ...frames.map(f => f.t || 0)));
+  const md = state.filmMeta?.duration;   // large files can report Infinity here too
+  const durationSec = Math.round((Number.isFinite(md) && md > 0) ? md : Math.max(0, ...frames.map(f => f.t || 0)));
   return await postFramesCatalog(base, frames, durationSec, file.name, context, onStatus);
 }
 
@@ -1861,26 +1862,40 @@ async function runClaudeJob(prompt, images) {
 
 async function extractKeyframes(file, count) {
   const video = document.createElement('video');
-  video.src = URL.createObjectURL(file);
+  video.preload = 'metadata';
   video.muted = true;
-  // Wait for a media event with an 'error' + timeout guard, so a corrupt or
-  // unseekable video REJECTS instead of leaving the analysis hung forever.
-  const waitFor = (evt, ms = 30000) => new Promise((resolve, reject) => {
+  video.src = URL.createObjectURL(file);
+  // Large files decode/seek slower → scale the per-event timeout with size
+  // (~50ms/MB, 30s–120s) so a big-but-fine file isn't killed prematurely.
+  const sizeMB = (file.size || 0) / 1048576;
+  const TO = Math.min(120000, Math.max(30000, Math.round(sizeMB * 50)));
+  const waitFor = (evt, ms = TO) => new Promise((resolve, reject) => {
     const cleanup = () => { clearTimeout(to); video.removeEventListener(evt, onOk); video.removeEventListener('error', onErr); };
     const onOk = () => { cleanup(); resolve(); };
-    const onErr = () => { cleanup(); reject(new Error('שגיאה בטעינת/קריאת הווידאו')); };
-    const to = setTimeout(() => { cleanup(); reject(new Error('פג הזמן בהמתנה לאירוע "' + evt + '" של הווידאו')); }, ms);
+    const onErr = () => { cleanup(); reject(new Error('שגיאה בטעינת/קריאת הווידאו (קודק לא נתמך או קובץ פגום)')); };
+    const to = setTimeout(() => { cleanup(); reject(new Error(`פג הזמן (${Math.round(ms / 1000)}s) בהמתנה ל-"${evt}" — קובץ ${sizeMB.toFixed(0)}MB. נסה להמיר/לדחוס (HandBrake) או לחתוך את הסרט לחלקים.`)); }, ms);
     video.addEventListener(evt, onOk, { once: true });
     video.addEventListener('error', onErr, { once: true });
   });
   try {
     await waitFor('loadedmetadata');
-    const duration = video.duration;
+    let duration = video.duration;
+    // Large / transcoded archival files often report duration = Infinity (or 0)
+    // until forced to seek to the end. Without this, interval = NaN/Infinity and
+    // every seek hangs → the catalog fails on big films. Force the real duration.
+    if (!isFinite(duration) || duration <= 0) {
+      video.currentTime = 1e101;
+      await waitFor('seeked').catch(() => {});
+      duration = video.duration;
+      if (isFinite(duration) && duration > 0) { video.currentTime = 0; await waitFor('seeked').catch(() => {}); }
+    }
+    if (!isFinite(duration) || duration <= 0)
+      throw new Error('לא ניתן לקבוע את אורך הסרט (duration לא תקין). המיר/דחוס את הקובץ (HandBrake) או חתוך אותו לחלקים.');
     const interval = duration / (count + 1);
     const canvas = document.createElement('canvas');
     const targetWidth = 800;
     canvas.width = targetWidth;
-    canvas.height = Math.round(targetWidth * video.videoHeight / video.videoWidth);
+    canvas.height = Math.round(targetWidth * (video.videoHeight || 9) / (video.videoWidth || 16));
     const ctx = canvas.getContext('2d');
     const frames = [];
     for (let i = 1; i <= count; i++) {
@@ -1894,6 +1909,7 @@ async function extractKeyframes(file, count) {
     return frames;
   } finally {
     URL.revokeObjectURL(video.src);
+    video.removeAttribute('src'); video.load();   // release the decoder/memory promptly
   }
 }
 
