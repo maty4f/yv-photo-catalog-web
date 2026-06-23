@@ -1160,7 +1160,8 @@ async function catalogFilmFrames(base, file, context, onStatus) {
   onStatus('מחלץ keyframes מהסרט בדפדפן (ללא העלאת וידאו)…');
   const frames = await extractKeyframes(file, FILM_KEYFRAMES);   // [{tc, t, b64}]
   if (!frames.length) throw new Error('לא הצלחתי לחלץ keyframes מהסרט');
-  const durationSec = Math.max(0, ...frames.map(f => f.t || 0)) || (state.filmMeta?.duration || 0);
+  // True film length (not the last keyframe's tc, which sits ~one interval short).
+  const durationSec = Math.round(state.filmMeta?.duration || Math.max(0, ...frames.map(f => f.t || 0)));
   return await postFramesCatalog(base, frames, durationSec, file.name, context, onStatus);
 }
 
