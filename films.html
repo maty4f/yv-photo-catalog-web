@@ -856,6 +856,10 @@ function resetForNextFilm() {
   state.filmParts = [];              // drop part blobs → GC frees the memory
   state.currentPartIdx = -1;
   state.autoRunning = false;
+  // clear the prior-context ("מידע מוקדם") textarea + any uploaded-context file/status
+  const ctxIn = document.getElementById('context-input'); if (ctxIn) ctxIn.value = '';
+  const ctxFile = document.getElementById('ctx-file-input'); if (ctxFile) ctxFile.value = '';
+  const ctxStat = document.getElementById('ctx-file-status'); if (ctxStat) { ctxStat.textContent = ''; ctxStat.className = 'mini-status'; }
   // hide results, show the empty placeholder, hide the download bar
   document.getElementById('results').classList.remove('show');
   const nr = document.getElementById('no-results'); if (nr) nr.style.display = '';
