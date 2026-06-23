@@ -571,6 +571,38 @@
         </div>
 
         <div class="field-group">
+          <h4>אירועים / Events <small>(אירועים שניתן לתארך — להעתקה ישירה לספיר)</small></h4>
+          <div class="field-row">
+            <textarea id="r-events-he" rows="2"></textarea>
+            <textarea id="r-events-en" rows="2" style="direction:ltr; text-align:left"></textarea>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>ארגונים ויחידות / Organizations &amp; units <small>(יחידות צבא, ארגונים, מוסדות — להעתקה לספיר)</small></h4>
+          <div class="field-row">
+            <textarea id="r-orgs-he" rows="2"></textarea>
+            <textarea id="r-orgs-en" rows="2" style="direction:ltr; text-align:left"></textarea>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>אובייקטים / Objects <small>(מדים, כלי רכב, נשק, שילוט — להעתקה לספיר)</small></h4>
+          <div class="field-row">
+            <textarea id="r-objects-he" rows="2"></textarea>
+            <textarea id="r-objects-en" rows="2" style="direction:ltr; text-align:left"></textarea>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <h4>תאריכים / Dates <small>(תאריכים וטווחי זמן שזוהו — להעתקה לספיר)</small></h4>
+          <div class="field-row">
+            <textarea id="r-dates-he" rows="2"></textarea>
+            <textarea id="r-dates-en" rows="2" style="direction:ltr; text-align:left"></textarea>
+          </div>
+        </div>
+
+        <div class="field-group">
           <h4>זיהוי אישים / Persons</h4>
           <div class="field-row">
             <textarea id="r-persons-he" rows="3"></textarea>
@@ -1449,12 +1481,19 @@ function parseUnifiedScenes(html) {
 // Sidecar template keys → the results-model shape fillResults expects.
 function mapUnifiedFilmFields(f) {
   const txt = k => unifiedFieldText(f[k]);
+  const splitList = s => (!s || s === '—') ? [] : s.split(/[;,،]/).map(x => x.trim()).filter(Boolean);
   return {
     title_he: txt('TITLE_HE'), title_en: txt('TITLE_EN'),
     summary_he: txt('SUMMARY_HE'), summary_en: txt('SUMMARY_EN'),
     duration: txt('DURATION'),
     archive_id: txt('ARCHIVE_ID'),
     places_he: txt('PLACES_HE'), places_en: txt('PLACES_EN'),
+    subjects_he: splitList(txt('SUBJECTS_HE')), subjects_en: splitList(txt('SUBJECTS_EN')),
+    persons_he: txt('PERSONS_HE'), persons_en: txt('PERSONS_EN'),
+    events_he: txt('EVENTS_HE'), events_en: txt('EVENTS_EN'),
+    orgs_he: txt('ORGS_HE'), orgs_en: txt('ORGS_EN'),
+    objects_he: txt('OBJECTS_HE'), objects_en: txt('OBJECTS_EN'),
+    dates_he: txt('DATES_HE'), dates_en: txt('DATES_EN'),
     jewish_timeline_he: txt('JEWISH_TIMELINE_HE'), jewish_timeline_en: txt('JEWISH_TIMELINE_EN'),
     timeline: parseUnifiedScenes(f.TIMELINE_SCENES),
   };
@@ -1845,6 +1884,10 @@ function fillResults(d) {
   setVal('r-places-he', d.places_he); setVal('r-places-en', d.places_en);
   setVal('r-jewish-he', d.jewish_timeline_he); setVal('r-jewish-en', d.jewish_timeline_en);
   setVal('r-persons-he', d.persons_he); setVal('r-persons-en', d.persons_en);
+  setVal('r-events-he', d.events_he); setVal('r-events-en', d.events_en);
+  setVal('r-orgs-he', d.orgs_he); setVal('r-orgs-en', d.orgs_en);
+  setVal('r-objects-he', d.objects_he); setVal('r-objects-en', d.objects_en);
+  setVal('r-dates-he', d.dates_he); setVal('r-dates-en', d.dates_en);
   setVal('r-inscriptions-he', d.inscriptions_he); setVal('r-inscriptions-en', d.inscriptions_en);
   setVal('r-admin-notes', d.admin_notes);
   document.getElementById('r-media-code').value = d.media_code || 'D';
@@ -2027,6 +2070,18 @@ function buildFilmHTML() {
     .replace(/\{\{SUMMARY_EN\}\}/g, esc(get('r-summary-en')).replace(/\n/g, '<br>'))
     .replace(/\{\{TIMELINE_HE\}\}/g, tlHE)
     .replace(/\{\{TIMELINE_EN\}\}/g, tlEN)
+    .replace(/\{\{PLACES_HE\}\}/g, esc(get('r-places-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{PLACES_EN\}\}/g, esc(get('r-places-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{EVENTS_HE\}\}/g, esc(get('r-events-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{EVENTS_EN\}\}/g, esc(get('r-events-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{ORGS_HE\}\}/g, esc(get('r-orgs-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{ORGS_EN\}\}/g, esc(get('r-orgs-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{OBJECTS_HE\}\}/g, esc(get('r-objects-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{OBJECTS_EN\}\}/g, esc(get('r-objects-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{DATES_HE\}\}/g, esc(get('r-dates-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{DATES_EN\}\}/g, esc(get('r-dates-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{JEWISH_TIMELINE_HE\}\}/g, esc(get('r-jewish-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{JEWISH_TIMELINE_EN\}\}/g, esc(get('r-jewish-en')).replace(/\n/g, '<br>'))
     .replace(/\{\{PERSONS_HE\}\}/g, esc(get('r-persons-he')).replace(/\n/g, '<br>'))
     .replace(/\{\{PERSONS_EN\}\}/g, esc(get('r-persons-en')).replace(/\n/g, '<br>'))
     .replace(/\{\{INSCRIPTIONS_HE\}\}/g, esc(get('r-inscriptions-he')).replace(/\n/g, '<br>'))
@@ -2169,8 +2224,18 @@ const FILM_TEMPLATE = `<!DOCTYPE html>
 <div class="section-bar">תקציר</div>
 <div class="field"><div class="head"><span class="label">תקציר</span><button class="copy-btn" data-copy="sum-he">HE</button><button class="copy-btn alt" data-copy="sum-en">EN</button></div><div class="bilingual"><div id="sum-he" class="lang he">{{SUMMARY_HE}}</div><div id="sum-en" class="lang en">{{SUMMARY_EN}}</div></div></div>
 
+<div class="section-bar">מקומות ורשימות זיהוי <small>Places &amp; identification lists</small></div>
+<div class="field"><div class="head"><span class="label">מקומות <small>Places</small></span><button class="copy-btn" data-copy="pl-he">HE</button><button class="copy-btn alt" data-copy="pl-en">EN</button></div><div class="bilingual"><div id="pl-he" class="lang he">{{PLACES_HE}}</div><div id="pl-en" class="lang en">{{PLACES_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">אירועים <small>Events</small></span><button class="copy-btn" data-copy="ev-he">HE</button><button class="copy-btn alt" data-copy="ev-en">EN</button></div><div class="bilingual"><div id="ev-he" class="lang he">{{EVENTS_HE}}</div><div id="ev-en" class="lang en">{{EVENTS_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">ארגונים ויחידות <small>Organizations &amp; units</small></span><button class="copy-btn" data-copy="og-he">HE</button><button class="copy-btn alt" data-copy="og-en">EN</button></div><div class="bilingual"><div id="og-he" class="lang he">{{ORGS_HE}}</div><div id="og-en" class="lang en">{{ORGS_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">אובייקטים <small>Objects</small></span><button class="copy-btn" data-copy="ob-he">HE</button><button class="copy-btn alt" data-copy="ob-en">EN</button></div><div class="bilingual"><div id="ob-he" class="lang he">{{OBJECTS_HE}}</div><div id="ob-en" class="lang en">{{OBJECTS_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">תאריכים <small>Dates</small></span><button class="copy-btn" data-copy="dt-he">HE</button><button class="copy-btn alt" data-copy="dt-en">EN</button></div><div class="bilingual"><div id="dt-he" class="lang he">{{DATES_HE}}</div><div id="dt-en" class="lang en">{{DATES_EN}}</div></div></div>
+
 <div class="section-bar">טיימליין מפורט</div>
 <div class="field"><div class="head"><span class="label">טיימליין HE / EN</span></div><div class="bilingual"><div class="lang he" style="padding:0">{{TIMELINE_HE}}</div><div class="lang en" style="padding:0">{{TIMELINE_EN}}</div></div></div>
+
+<div class="section-bar">תוכן יהודי <small>Jewish content (sub-timeline)</small></div>
+<div class="field"><div class="head"><span class="label">תת-טיימליין יהודי</span><button class="copy-btn" data-copy="jw-he">HE</button><button class="copy-btn alt" data-copy="jw-en">EN</button></div><div class="bilingual"><div id="jw-he" class="lang he">{{JEWISH_TIMELINE_HE}}</div><div id="jw-en" class="lang en">{{JEWISH_TIMELINE_EN}}</div></div></div>
 
 <div class="section-bar">זיהוי אישים</div>
 <div class="field"><div class="head"><span class="label">אישים</span><button class="copy-btn" data-copy="per-he">HE</button><button class="copy-btn alt" data-copy="per-en">EN</button></div><div class="bilingual"><div id="per-he" class="lang he">{{PERSONS_HE}}</div><div id="per-en" class="lang en">{{PERSONS_EN}}</div></div></div>
