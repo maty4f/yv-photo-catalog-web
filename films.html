@@ -1152,14 +1152,15 @@ async function postFramesCatalog(base, frames, durationSec, name, context, onSta
 // Keyframes sampled across the film. The browser samples EVENLY, so more frames =
 // finer coverage = fewer missed scenes. The engine's cap (cli/yv.py) must match or
 // exceed this. 80 ≈ 2× the old 40, for more accurate scene detection. Tunable.
-const FILM_KEYFRAMES_MAX = 50;
-// Keyframe budget scales DOWN for long films so Stage-2 (Claude) can render the
-// timeline + identification lists within the time limit — fewer but real, grounded
-// scenes (never fabricated). ~50 for ≤20-min films, ~30 for 70 min, floored at 24.
+const FILM_KEYFRAMES_MAX = 72;
+// Keyframe budget is about scene GROUPING now (the Stage-2 timeout is gone, since the
+// engine renders the timeline). Sample ~1 frame/min so each scene spans several
+// consecutive frames and Gemini can merge them into ONE scene with a scene-level
+// description — instead of one shot per sparse frame. 50 for ≤50-min films, scaling
+// up to 72 (under the engine's 80-frame cap) for longer ones.
 function filmKeyframes(durationSec) {
   const min = (durationSec || 0) / 60;
-  if (min <= 20) return FILM_KEYFRAMES_MAX;
-  return Math.max(24, Math.round(FILM_KEYFRAMES_MAX - (min - 20) * 0.4));
+  return Math.min(FILM_KEYFRAMES_MAX, Math.max(50, Math.round(min)));
 }
 
 // Catalog a SINGLE film: extract keyframes in the browser, post only those.
