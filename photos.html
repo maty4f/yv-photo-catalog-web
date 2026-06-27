@@ -150,6 +150,24 @@
   button.danger:hover:not(:disabled) { background: #8b0000; }
   button.ghost { background: transparent; color: var(--accent); padding: 8px 14px; border: 1px dashed var(--accent); }
   button.ghost:hover { background: rgba(107,91,62,.08); }
+  /* Native-label upload buttons — look like button.ghost but open the file
+     picker via the browser's own <label for> → input activation. A programmatic
+     input.click() intermittently freezes the file dialog on Chrome/macOS; a real
+     label does not. Pair with .visually-hidden-file on the input. */
+  label.upload-btn {
+    display: inline-block; box-sizing: border-box; vertical-align: middle;
+    background: transparent; color: var(--accent); border: 1px dashed var(--accent);
+    border-radius: 6px; padding: 8px 14px; font-family: inherit; font-size: 14.5px;
+    font-weight: 600; cursor: pointer; transition: background .15s;
+    -webkit-user-select: none; user-select: none;
+  }
+  label.upload-btn:hover { background: rgba(107,91,62,.08); }
+  /* File input kept in the a11y tree and clickable via its label, just not shown.
+     NOT display:none / hidden — that is exactly what makes JS activation flaky. */
+  .visually-hidden-file {
+    position: absolute; width: 1px; height: 1px; opacity: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
   button.gear { background: transparent; color: var(--muted); padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
   button.gear:hover { background: var(--tint); border-color: var(--accent); color: var(--accent); }
 
@@ -496,8 +514,8 @@
       <div style="margin-top:12px; padding:12px 14px; background:#fef9e7; border:1px solid #e6d28a; border-radius:8px;">
         <label class="label" style="color:#6b4f0f">📋 טופס איסוף <small>Intake form — מהמוסר. בדרך כלל בכתב יד.</small></label>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
-          <button type="button" class="ghost" id="col-form-btn" style="border-color:#c19b2e; color:#6b4f0f">📎 העלה טופס איסוף</button>
-          <input type="file" id="col-form-input" accept=".pdf,.docx,.txt,.md,.rtf,image/*" hidden>
+          <label class="upload-btn" id="col-form-btn" for="col-form-input" style="border-color:#c19b2e; color:#6b4f0f">📎 העלה טופס איסוף</label>
+          <input type="file" id="col-form-input" accept=".pdf,.docx,.txt,.md,.rtf,image/*" class="visually-hidden-file">
           <span id="col-form-status" class="mini-status"></span>
         </div>
         <div class="form-mode-toggle" style="margin-top:8px;">
@@ -512,8 +530,8 @@
       <div style="margin-top:10px; padding:12px 14px; background:#e8eef5; border:1px solid #a1bbd9; border-radius:8px;">
         <label class="label" style="color:#1d4666">🗂 טופס רישום אוסף בספיר <small>Sapir registration printout — מודפס/דיגיטלי. AI יבצע OCR אוטומטי.</small></label>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
-          <button type="button" class="ghost" id="col-sapir-btn" style="border-color:#2c5d8a; color:#1d4666">📎 העלה רישום ספיר</button>
-          <input type="file" id="col-sapir-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
+          <label class="upload-btn" id="col-sapir-btn" for="col-sapir-input" style="border-color:#2c5d8a; color:#1d4666">📎 העלה רישום ספיר</label>
+          <input type="file" id="col-sapir-input" accept=".pdf,.docx,.txt,.md,.rtf" class="visually-hidden-file">
           <span id="col-sapir-status" class="mini-status"></span>
         </div>
         <div class="form-mode-toggle" style="margin-top:8px;">
@@ -527,8 +545,8 @@
       <div style="margin-top:10px; padding:12px 14px; background:#ebf3ed; border:1px solid #98be9f; border-radius:8px;">
         <label class="label" style="color:#1f5c38">📝 מידע נוסף <small>Additional info — מסמכי עזר. AI יבצע OCR אם מודפס.</small></label>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
-          <button type="button" class="ghost" id="col-extra-btn" style="border-color:#2e7d4e; color:#1f5c38">📎 העלה מידע נוסף</button>
-          <input type="file" id="col-extra-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
+          <label class="upload-btn" id="col-extra-btn" for="col-extra-input" style="border-color:#2e7d4e; color:#1f5c38">📎 העלה מידע נוסף</label>
+          <input type="file" id="col-extra-input" accept=".pdf,.docx,.txt,.md,.rtf" class="visually-hidden-file">
           <span id="col-extra-status" class="mini-status"></span>
         </div>
         <div class="form-mode-toggle" style="margin-top:8px;">
@@ -630,10 +648,10 @@
       <span class="num">1</span>
       <span class="title">תצלום <small>Photograph — בודד, batch או תיקייה שלמה (עד 40 בו-זמנית)</small></span>
       <div style="margin-inline-start:auto; display:flex; gap:6px;">
-        <button type="button" id="batch-add-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📤 העלה batch</button>
-        <button type="button" id="batch-folder-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📁 העלה תיקייה</button>
-        <input type="file" id="batch-file-input" accept="image/*" multiple hidden>
-        <input type="file" id="batch-folder-input" accept="image/*" webkitdirectory multiple hidden>
+        <label id="batch-add-btn" class="upload-btn" for="batch-file-input" style="padding:5px 10px; font-size:12px;">📤 העלה batch</label>
+        <label id="batch-folder-btn" class="upload-btn" for="batch-folder-input" style="padding:5px 10px; font-size:12px;">📁 העלה תיקייה</label>
+        <input type="file" id="batch-file-input" accept="image/*" multiple class="visually-hidden-file">
+        <input type="file" id="batch-folder-input" accept="image/*" webkitdirectory multiple class="visually-hidden-file">
       </div>
     </div>
     <div class="body">
@@ -645,7 +663,7 @@
             🗂 תור תצלומים <span id="queue-summary" style="font-weight:400; font-size:12px; color:#8a7140; margin-inline-start:6px;"></span>
           </div>
           <div style="display:flex; gap:6px;">
-            <button type="button" id="queue-add-more-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; border-color:#c19b2e; color:#6b4f0f;">+ הוסף עוד</button>
+            <label id="queue-add-more-btn" class="upload-btn" for="batch-file-input" style="padding:3px 9px; font-size:11.5px; border-color:#c19b2e; color:#6b4f0f;">+ הוסף עוד</label>
             <button type="button" id="queue-retry-btn" class="ghost" style="display:none; padding:3px 9px; font-size:11.5px; border-color:#1d6f42; color:#1d6f42;" title="הרץ זיהוי מחדש לכל הפריטים שנכשלו">🔄 נסה כושלים מחדש</button>
             <button type="button" id="queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:#b22222; border-color:#b22222;" title="נקה את כל התור">🗑 נקה תור</button>
           </div>
@@ -667,29 +685,29 @@
         <div class="photo-slot" id="slot-front">
           <span class="label-tag">חזית / Front</span>
           <button type="button" class="delete-btn" data-side="front" title="הסר תצלום">✕</button>
-          <div class="drop" tabindex="0" data-side="front">
+          <label class="drop" data-side="front" for="front-input">
             <img class="preview-mini" alt="">
             <span class="placeholder">
               גרור חזית התצלום, או לחץ
               <span class="hint">JPG / PNG / TIFF / HEIC</span>
             </span>
             <span class="filename" style="display:none"></span>
-          </div>
-          <input type="file" class="file-input" data-side="front" accept="image/*" multiple hidden>
+          </label>
+          <input type="file" id="front-input" class="file-input visually-hidden-file" data-side="front" accept="image/*" multiple>
         </div>
 
         <div class="photo-slot" id="slot-back">
           <span class="label-tag">גב / Back</span>
           <button type="button" class="delete-btn" data-side="back" title="הסר גב">✕</button>
-          <div class="drop" tabindex="0" data-side="back">
+          <label class="drop" data-side="back" for="back-input">
             <img class="preview-mini" alt="">
             <span class="placeholder">
               גרור גב התצלום (אופציונלי)
               <span class="hint">בגב לעיתים יש כיתוב, חותמת סטודיו, ותאריך</span>
             </span>
             <span class="filename" style="display:none"></span>
-          </div>
-          <input type="file" class="file-input" data-side="back" accept="image/*" hidden>
+          </label>
+          <input type="file" id="back-input" class="file-input visually-hidden-file" data-side="back" accept="image/*">
         </div>
       </div>
     </div>
@@ -703,8 +721,8 @@
     <div class="body">
       <textarea id="context-input" placeholder="מה ידוע על התצלום: מקור, תאריך משוער, מקום, אישים, אירוע, וכל מידע אחר רלוונטי…"></textarea>
       <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap: wrap;">
-        <button type="button" class="ghost" id="ctx-file-btn">📎 העלה מקובץ <small>PDF / Word / Excel / CSV / TXT</small></button>
-        <input type="file" id="ctx-file-input" accept=".pdf,.docx,.csv,.tsv,.xlsx,.xlsm,.txt,.md,.markdown,.rtf,.log,.json" hidden>
+        <label class="upload-btn" id="ctx-file-btn" for="ctx-file-input">📎 העלה מקובץ <small>PDF / Word / Excel / CSV / TXT</small></label>
+        <input type="file" id="ctx-file-input" accept=".pdf,.docx,.csv,.tsv,.xlsx,.xlsm,.txt,.md,.markdown,.rtf,.log,.json" class="visually-hidden-file">
         <span id="ctx-file-status" class="mini-status"></span>
       </div>
       <div style="margin-top:8px; font-size:11.5px; color:var(--muted)">
@@ -967,11 +985,9 @@ const state = {
 // =====================================================================
 document.querySelectorAll('.drop').forEach(drop => {
   const side = drop.dataset.side;
-  const fileInput = drop.parentElement.querySelector('.file-input');
-  drop.addEventListener('click', () => fileInput.click());
-  drop.addEventListener('keypress', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
-  });
+  // Click / keyboard activation is native now: each .drop is a <label for> its
+  // file input, so the browser opens the picker. A programmatic .click() froze the
+  // file dialog on Chrome/macOS. Only drag-and-drop needs wiring here.
   ['dragenter', 'dragover'].forEach(evt =>
     drop.addEventListener(evt, e => { e.preventDefault(); drop.classList.add('dragover'); }));
   ['dragleave', 'drop'].forEach(evt =>
@@ -987,6 +1003,7 @@ document.querySelectorAll('.drop').forEach(drop => {
 document.querySelectorAll('.file-input').forEach(input => {
   input.addEventListener('change', () => {
     const files = [...(input.files || [])];
+    input.value = ''; // allow re-selecting the same file later
     if (!files.length) return;
     if (input.dataset.side === 'front' && files.length > 1) { loadFrontBackPair(files); return; }
     loadPhoto(input.dataset.side, files[0]);
@@ -1121,11 +1138,9 @@ async function fileToDataUrl(file) {
   });
 }
 
-// Initialize: hook up batch upload button
-document.getElementById('batch-add-btn').addEventListener('click', () =>
-  document.getElementById('batch-file-input').click());
-document.getElementById('queue-add-more-btn').addEventListener('click', () =>
-  document.getElementById('batch-file-input').click());
+// Batch + "add more" are native <label for="batch-file-input"> — no JS click()
+// (programmatic activation froze the file dialog on Chrome/macOS). Only the
+// change handler stays.
 document.getElementById('batch-file-input').addEventListener('change', e => {
   const files = [...e.target.files];
   e.target.value = ''; // allow re-selecting same files later
@@ -1133,8 +1148,6 @@ document.getElementById('batch-file-input').addEventListener('change', e => {
 });
 // Folder picker — same queue, filtered to image files (a folder may contain
 // thumbs.db, .txt sidecars, etc.). webkitdirectory yields the whole subtree.
-document.getElementById('batch-folder-btn').addEventListener('click', () =>
-  document.getElementById('batch-folder-input').click());
 document.getElementById('batch-folder-input').addEventListener('change', e => {
   const files = [...e.target.files].filter(f => /\.(jpe?g|png|webp|gif|tif?f|bmp)$/i.test(f.name));
   e.target.value = '';
@@ -1937,13 +1950,12 @@ document.getElementById('queue-clear-btn').addEventListener('click', () => {
 //  CONTEXT: text + file extraction (PDF / DOCX / XLSX / CSV / TXT)
 // =====================================================================
 const contextEl = document.getElementById('context-input');
-const ctxBtn = document.getElementById('ctx-file-btn');
 const ctxInput = document.getElementById('ctx-file-input');
 const ctxStatus = document.getElementById('ctx-file-status');
 
-ctxBtn.addEventListener('click', () => ctxInput.click());
 ctxInput.addEventListener('change', () => {
   const f = ctxInput.files?.[0];
+  ctxInput.value = ''; // allow re-selecting the same file
   if (f) extractContext(f);
 });
 contextEl.addEventListener('dragover', e => { e.preventDefault(); contextEl.style.borderColor = 'var(--accent)'; });
@@ -2035,11 +2047,15 @@ providerSel.value = state.provider;
 // CLI-Hybrid: local server URL
 state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
 state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
-// Auto-config: when served from the local machine, talk to this same origin.
-// No tunnel, no manual URL — localhost never changes. Only triggers on localhost.
-if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+// Auto-config: the dashboard is normally served BY the API server (localhost in
+// dev, films.mf-sr.com via the tunnel) — same origin keeps the Cloudflare Access
+// cookie attached and lets the server proxy Gemini. Adopt the origin unless we're
+// on a static GitHub Pages host (*.pages.dev / *.github.io). Drop stale trycloudflare.
+if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(location.hostname)) {
   state.localServerUrl = location.origin;
   state.proxyGemini = true;
+} else if (/trycloudflare\.com/.test(state.localServerUrl)) {
+  state.localServerUrl = '';
 }
 const localServerUrlInput = document.getElementById('local-server-url');
 if (localServerUrlInput) {
@@ -3666,7 +3682,6 @@ function showStatus(msg, kind) {
 //  COLLECTION — state, persistence, UI
 // =====================================================================
 const colIdEl = document.getElementById('col-id');
-const colFormBtn = document.getElementById('col-form-btn');
 const colFormInput = document.getElementById('col-form-input');
 const colFormStatus = document.getElementById('col-form-status');
 const colFormText = document.getElementById('col-form-text');
@@ -3683,28 +3698,27 @@ const collectionBar = document.getElementById('collection-bar');
 // (1) טופס איסוף — Intake form from the donor (biographical / story / fates)
 // (2) טופס רישום אוסף בספיר — Sapir registration printout (technical metadata)
 // (3) מידע נוסף — Additional auxiliary info (typed: research notes, genealogy)
-const colSapirBtn = document.getElementById('col-sapir-btn');
 const colSapirInput = document.getElementById('col-sapir-input');
 const colSapirStatus = document.getElementById('col-sapir-status');
 const colSapirText = document.getElementById('col-sapir-text');
-const colExtraBtn = document.getElementById('col-extra-btn');
 const colExtraInput = document.getElementById('col-extra-input');
 const colExtraStatus = document.getElementById('col-extra-status');
 const colExtraText = document.getElementById('col-extra-text');
 
-colFormBtn.addEventListener('click', () => colFormInput.click());
+// col-form/sapir/extra are native <label for> now — no JS click().
 colFormInput.addEventListener('change', () => {
   const f = colFormInput.files?.[0];
+  colFormInput.value = ''; // allow re-selecting the same file
   if (f) extractFormFile(f, 'intake');
 });
-colSapirBtn.addEventListener('click', () => colSapirInput.click());
 colSapirInput.addEventListener('change', () => {
   const f = colSapirInput.files?.[0];
+  colSapirInput.value = '';
   if (f) extractFormFile(f, 'sapir');
 });
-colExtraBtn.addEventListener('click', () => colExtraInput.click());
 colExtraInput.addEventListener('change', () => {
   const f = colExtraInput.files?.[0];
+  colExtraInput.value = '';
   if (f) extractFormFile(f, 'extra');
 });
 colSapirText.addEventListener('input', refreshCollectionButtons);

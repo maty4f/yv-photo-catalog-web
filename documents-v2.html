@@ -94,6 +94,22 @@
 
   .links { font-size: 12px; color: var(--muted); margin-top: 18px; text-align: center; }
   .links a { color: var(--accent); margin: 0 8px; }
+
+  /* Native-label upload buttons — open the picker via the browser's own
+     <label for> -> input activation. A programmatic input.click() intermittently
+     freezes the file dialog on Chrome/macOS; a real label does not. */
+  label.upload-btn {
+    display: inline-block; box-sizing: border-box; vertical-align: middle;
+    background: transparent; color: var(--accent); border: 1px dashed var(--accent);
+    border-radius: 6px; padding: 8px 14px; font-family: inherit; font-size: 14.5px;
+    font-weight: 600; cursor: pointer; transition: background .15s;
+    -webkit-user-select: none; user-select: none;
+  }
+  label.upload-btn:hover { background: rgba(107,91,62,.08); }
+  .visually-hidden-file {
+    position: absolute; width: 1px; height: 1px; opacity: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -169,7 +185,7 @@
       Gemini מבין PDF במלואו — גם סרוקים, גם כתב יד, גם 100+ עמודים.
       קבצים עד 18MB נשלחים inline; גדולים יותר עוברים דרך Files API (עד 2GB).
     </div>
-    <div id="drop" class="drop" tabindex="0">
+    <label id="drop" class="drop" for="file-input">
       <div class="placeholder">
         <div class="icon">📑</div>
         <div>גרור PDF לכאן או לחץ לבחירה</div>
@@ -179,11 +195,11 @@
         <div class="filename" id="filename"></div>
         <div class="meta" id="filemeta"></div>
       </div>
-    </div>
-    <input type="file" id="file-input" accept="application/pdf" hidden>
-    <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
+    </label>
+    <input type="file" id="file-input" accept="application/pdf" class="visually-hidden-file">
+    <input type="file" id="folder-input" webkitdirectory directory multiple class="visually-hidden-file">
     <div style="margin-top:10px;">
-      <button type="button" id="pick-folder-btn" class="secondary">📁 או העלה תיקיית תמונות — ייאוחדו ל-PDF אחד</button>
+      <label id="pick-folder-btn" class="upload-btn" for="folder-input">📁 או העלה תיקיית תמונות — ייאוחדו ל-PDF אחד</label>
       <div class="small" style="margin-top:4px; color:#666;">JPG/PNG/TIFF — כל התמונות יאוחדו לקובץ PDF אחד (יורד אוטומטית) וישמש לרישום.</div>
     </div>
   </div>
@@ -307,10 +323,15 @@ const state = {
   result: null,
 };
 
-// Auto-config: when served from the local machine, talk to this same origin.
-// localhost never changes, so no tunnel URL is needed for the Claude CLI mode.
-if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+// Auto-config: the dashboard is normally served BY the API server (localhost in
+// dev, films.mf-sr.com via the tunnel) — using this same origin keeps the
+// Cloudflare Access cookie attached. Adopt the origin unless we're on a static
+// GitHub Pages host (*.pages.dev / *.github.io), where the API lives elsewhere.
+// Also drop a stale saved trycloudflare URL — those rotate every run.
+if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(location.hostname)) {
   state.localServerUrl = location.origin;
+} else if (/trycloudflare\.com/.test(state.localServerUrl)) {
+  state.localServerUrl = '';
 }
 
 // =====================================================================
@@ -465,7 +486,6 @@ async function loadImagesAsMergedPdf(fileList) {
 // =====================================================================
 //  File upload
 // =====================================================================
-drop.addEventListener('click', () => fileInput.click());
 ['dragenter', 'dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('dragover'); }));
 ['dragleave', 'drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('dragover'); }));
 drop.addEventListener('drop', ev => {
@@ -477,8 +497,7 @@ drop.addEventListener('drop', ev => {
   if (imgs.length && !files.some(isPdf)) loadImagesAsMergedPdf(files);
   else loadPdf(files[0]);
 });
-fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) loadPdf(f); });
-$('pick-folder-btn').addEventListener('click', () => $('folder-input').click());
+fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; fileInput.value = ''; if (f) loadPdf(f); });
 $('folder-input').addEventListener('change', e => {
   const files = [...e.target.files];
   e.target.value = '';

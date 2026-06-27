@@ -88,6 +88,22 @@
   .chat-bar{display:flex;gap:8px;align-items:flex-end}
   .chat-bar textarea{min-height:46px}
   @media(max-width:640px){.row2{grid-template-columns:1fr}}
+
+  /* Native-label upload buttons — open the picker via the browser's own
+     <label for> -> input activation. A programmatic input.click() intermittently
+     freezes the file dialog on Chrome/macOS; a real label does not. */
+  label.upload-btn {
+    display: inline-block; box-sizing: border-box; vertical-align: middle;
+    background: transparent; color: var(--accent); border: 1px dashed var(--accent);
+    border-radius: 6px; padding: 8px 14px; font-family: inherit; font-size: 14.5px;
+    font-weight: 600; cursor: pointer; transition: background .15s;
+    -webkit-user-select: none; user-select: none;
+  }
+  label.upload-btn:hover { background: rgba(107,91,62,.08); }
+  .visually-hidden-file {
+    position: absolute; width: 1px; height: 1px; opacity: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -168,18 +184,18 @@
   <!-- UPLOAD -->
   <div class="card">
     <h2>התיק</h2>
-    <div class="drop" id="drop">גרור לכאן את התיק — PDF אחד או כמה סריקות (JPG/PNG/TIFF)<br><small>או לחץ לבחירה</small></div>
-    <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" style="display:none">
-    <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none">
+    <label class="drop" id="drop" for="file-input">גרור לכאן את התיק — PDF אחד או כמה סריקות (JPG/PNG/TIFF)<br><small>או לחץ לבחירה</small></label>
+    <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" class="visually-hidden-file">
+    <input type="file" id="folder-input" webkitdirectory directory multiple class="visually-hidden-file">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
-      <button type="button" id="pick-folder" class="copy-btn" style="background:#2c5d8a">📁 העלה תיקייה שלמה</button>
+      <label id="pick-folder" class="upload-btn" for="folder-input" style="background:transparent;color:#2c5d8a;border-color:#2c5d8a">📁 העלה תיקייה שלמה</label>
       <button type="button" id="clear-files" class="copy-btn" style="background:#8a3a2c">נקה</button>
     </div>
     <div class="hint">תיקייה = תיק אחד. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
     <div class="filelist" id="filelist"></div>
     <label>טופס איסוף / דף מלווה (אופציונלי — סריקה או PDF)</label>
-    <div class="drop" id="intake-drop" style="padding:16px">גרור לכאן טופס איסוף / דף מלווה — סריקה או PDF<br><small>או לחץ לבחירה · Claude יקרא אותו וישלב את המידע ברשומת התיק</small></div>
-    <input type="file" id="intake-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" style="display:none">
+    <label class="drop" id="intake-drop" for="intake-input" style="padding:16px">גרור לכאן טופס איסוף / דף מלווה — סריקה או PDF<br><small>או לחץ לבחירה · Claude יקרא אותו וישלב את המידע ברשומת התיק</small></label>
+    <input type="file" id="intake-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" class="visually-hidden-file">
     <div class="filelist" id="intake-filelist"></div>
     <div class="hint">מידע מהמוסר/הארכיון על התיק (לא חלק מהתיק עצמו). Claude יקרא אותו לפני הקטלוג וישלב אותו כ"מידע מוקדם" — לא יוצג כעובדה מהתיק.</div>
     <label>מידע מוקדם (טקסט חופשי, אופציונלי)</label>
@@ -1073,8 +1089,13 @@ async function fastDescribe(){
     if(!post.ok){const e=await post.json().catch(()=>({}));throw new Error(e.error||('שרת HTTP '+post.status));}
     const {jobId}=await post.json();
     if(!jobId)throw new Error('השרת לא החזיר jobId (ודא שגרסת השרת החדשה רצה).');
-    // Poll up to ~12 min. Each poll is quick → the Cloudflare ~100s limit never bites.
-    const started=Date.now(),maxMs=12*60*1000;
+    // Poll until the SERVER resolves the job (done/error). The server self-resolves
+    // via its own watchdogs (Gemini ≤10 min + retries, synthesis ≤40 min/attempt),
+    // so we must keep waiting — a dense tik legitimately runs ~15-25 min and a 12-min
+    // client cap was reporting a FALSE "failed" while the server finished correctly.
+    // The 90-min figure is only a backstop against a dead connection. Each poll is a
+    // quick GET, so the Cloudflare ~100s limit never bites.
+    const started=Date.now(),maxMs=90*60*1000;
     while(Date.now()-started<maxMs){
       await new Promise(r=>setTimeout(r,3000));
       let pr;try{pr=await fetch(serverBase()+'/api/tik-describe/'+jobId);}catch(e){continue;}
@@ -1093,7 +1114,7 @@ async function fastDescribe(){
         throw new Error(j.error||'תיאור נכשל');
       }
     }
-    throw new Error('התיאור נמשך מעל 12 דקות ולא הסתיים.');
+    throw new Error('הדפדפן המתין 90 דקות והתיאור עדיין לא הסתיים — ייתכן שהשרת עדיין עובד או נתקע. בדוק מול המקטלג לפני ניסיון חוזר.');
   }catch(err){console.error(err);showStatus('שגיאה בתיאור מהיר: '+err.message,'err');}
   finally{$('run').disabled=false;$('describe-fast').disabled=false;}
 }
@@ -1116,10 +1137,14 @@ function loadSettings(){
   let s={};
   try{s=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
     PERSIST.forEach(id=>{if(s[id]!=null&&$(id)&&$(id).value!==s[id])$(id).value=s[id];});}catch(e){}
-  // Auto-config: when served from the local machine, use this same origin —
-  // localhost never changes, so no tunnel URL is needed.
-  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)&&$('server-url')&&!$('server-url').value.trim()){
-    $('server-url').value=location.origin;
+  // Auto-config the server URL: the dashboard is always served BY the server it
+  // must call (localhost during dev, films.mf-sr.com via the tunnel), so the page
+  // origin IS the correct server URL — and same-origin keeps the Cloudflare Access
+  // cookie attached. Fill it when empty, or repair a stale saved value (old
+  // trycloudflare URLs change every run and break "from any computer").
+  if(/^https?:$/.test(location.protocol)&&!/\.(pages\.dev|github\.io)$/.test(location.hostname)&&$('server-url')){
+    const cur=$('server-url').value.trim();
+    if(!cur||/trycloudflare\.com/.test(cur))$('server-url').value=location.origin;
   }
   syncEngineUI();
   setSaveState('🔒 הגדרות נטענו מהמכשיר','#2e7d32');
@@ -1154,9 +1179,7 @@ function addFiles(list){
   state.files=[...state.files,...files];renderFiles();
 }
 const drop=$('drop');
-drop.addEventListener('click',()=>$('file-input').click());
 $('file-input').addEventListener('change',e=>{addFiles(e.target.files);e.target.value='';});
-$('pick-folder').addEventListener('click',()=>$('folder-input').click());
 $('folder-input').addEventListener('change',e=>{
   if(!e.target.files.length){alert('לא נבחרו קבצים.');return;}
   addFiles(e.target.files);e.target.value='';
@@ -1182,7 +1205,6 @@ function addIntake(list){
   state.intakeFiles=[...state.intakeFiles,...files];renderIntake();
 }
 const idrop=$('intake-drop');
-idrop.addEventListener('click',()=>$('intake-input').click());
 $('intake-input').addEventListener('change',e=>{addIntake(e.target.files);e.target.value='';});
 idrop.addEventListener('dragover',e=>{e.preventDefault();idrop.classList.add('over');});
 idrop.addEventListener('dragleave',()=>idrop.classList.remove('over'));

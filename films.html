@@ -241,6 +241,21 @@
   .footer-hint { margin-top: 24px; padding: 12px 14px; background: #fef9e7; border: 1px solid #e6d28a; border-inline-start: 5px solid #c19b2e; border-radius: 8px; font-size: 12.5px; color: #6b4f0f; }
   footer.bottom { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
   footer.bottom a { color: var(--accent); }
+  /* Native-label upload buttons — open the picker via the browser's own
+     <label for> -> input activation. A programmatic input.click() intermittently
+     freezes the file dialog on Chrome/macOS; a real label does not. */
+  label.upload-btn {
+    display: inline-block; box-sizing: border-box; vertical-align: middle;
+    background: transparent; color: var(--accent); border: 1px dashed var(--accent);
+    border-radius: 6px; padding: 8px 14px; font-family: inherit; font-size: 14.5px;
+    font-weight: 600; cursor: pointer; transition: background .15s;
+    -webkit-user-select: none; user-select: none;
+  }
+  label.upload-btn:hover { background: rgba(107,91,62,.08); }
+  .visually-hidden-file {
+    position: absolute; width: 1px; height: 1px; opacity: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -349,8 +364,8 @@
       <span class="num">1</span>
       <span class="title">סרט <small>Film file — אחד או batch (עד 5)</small></span>
       <div style="margin-inline-start:auto; display:flex; gap:6px;">
-        <button type="button" id="film-batch-add-btn" class="ghost" style="padding:5px 10px; font-size:12px;">📤 העלה batch (עד 5)</button>
-        <input type="file" id="film-batch-input" accept="video/*" multiple hidden>
+        <label id="film-batch-add-btn" class="upload-btn" for="film-batch-input" style="padding:5px 10px; font-size:12px;">📤 העלה batch (עד 5)</label>
+        <input type="file" id="film-batch-input" accept="video/*" multiple class="visually-hidden-file">
       </div>
     </div>
     <div class="body">
@@ -362,7 +377,7 @@
             🎞 תור סרטים <span id="film-queue-summary" style="font-weight:400; font-size:12px; color:#5a7390; margin-inline-start:6px;"></span>
           </div>
           <div style="display:flex; gap:6px;">
-            <button type="button" id="film-queue-add-more-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; border-color:var(--accent); color:var(--accent);">+ הוסף עוד</button>
+            <label id="film-queue-add-more-btn" class="upload-btn" for="film-batch-input" style="padding:3px 9px; font-size:11.5px; border-color:var(--accent); color:var(--accent);">+ הוסף עוד</label>
             <button type="button" id="film-queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:#b22222; border-color:#b22222;">🗑 נקה תור</button>
           </div>
         </div>
@@ -370,7 +385,7 @@
         <div id="film-queue-rate-warn" style="display:none; margin-top:6px; padding:6px 10px; background:#fff3cd; border:1px solid #ffe69c; border-radius:4px; font-size:11.5px; color:#856404;"></div>
       </div>
 
-      <div id="film-drop" class="film-drop" tabindex="0">
+      <label id="film-drop" class="film-drop" for="film-file-input" tabindex="0">
         <button type="button" class="delete-film-btn" id="delete-film-btn" title="הסר סרט">✕</button>
         <video id="film-preview" controls></video>
         <span class="placeholder">
@@ -378,8 +393,8 @@
           <span class="hint">MP4 / MOV / WebM / AVI · Gemini תומך עד 2GB · Claude מחלץ פריימים מכל גודל</span>
         </span>
         <span id="film-filename" class="filename" style="display:none"></span>
-      </div>
-      <input type="file" id="film-file-input" accept="video/*" hidden>
+      </label>
+      <input type="file" id="film-file-input" accept="video/*" class="visually-hidden-file">
       <div id="film-meta" class="film-meta-grid" style="display:none"></div>
       <div class="split-btn-wrap">
         <button type="button" class="split-btn" id="open-split-btn">✂️ חתוך לחלקים <small style="opacity:.85; font-weight:400">— לסרטים גדולים, או לקטלוג קטעים נפרדים</small></button>
@@ -446,8 +461,8 @@
     <div class="body">
       <textarea id="context-input" placeholder="מה ידוע על הסרט: מקור, מוסר, תאריך, שפה, סוג סליל, אירועים…"></textarea>
       <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap: wrap;">
-        <button type="button" class="ghost" id="ctx-file-btn">📎 העלה מקובץ <small>PDF / Word / TXT</small></button>
-        <input type="file" id="ctx-file-input" accept=".pdf,.docx,.txt,.md,.rtf" hidden>
+        <label class="upload-btn" id="ctx-file-btn" for="ctx-file-input">📎 העלה מקובץ <small>PDF / Word / TXT</small></label>
+        <input type="file" id="ctx-file-input" accept=".pdf,.docx,.txt,.md,.rtf" class="visually-hidden-file">
         <span id="ctx-file-status" class="mini-status"></span>
       </div>
     </div>
@@ -700,11 +715,15 @@ providerSel.value = state.provider;
 // CLI-Hybrid: local server URL
 state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
 state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
-// Auto-config: when served from the local machine, talk to this same origin.
-// No tunnel, no manual URL — localhost never changes. Only triggers on localhost.
-if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+// Auto-config: the dashboard is normally served BY the API server (localhost in
+// dev, films.mf-sr.com via the tunnel) — same origin keeps the Cloudflare Access
+// cookie attached and lets the server proxy Gemini. Adopt the origin unless we're
+// on a static GitHub Pages host (*.pages.dev / *.github.io). Drop stale trycloudflare.
+if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(location.hostname)) {
   state.localServerUrl = location.origin;
   state.proxyGemini = true;
+} else if (/trycloudflare\.com/.test(state.localServerUrl)) {
+  state.localServerUrl = '';
 }
 const localServerUrlInput = document.getElementById('local-server-url');
 if (localServerUrlInput) {
@@ -788,11 +807,10 @@ const filmFilename = document.getElementById('film-filename');
 const filmMetaBox = document.getElementById('film-meta');
 const delFilmBtn = document.getElementById('delete-film-btn');
 
-filmDrop.addEventListener('click', () => fileInput.click());
 ['dragenter', 'dragover'].forEach(evt => filmDrop.addEventListener(evt, e => { e.preventDefault(); filmDrop.classList.add('dragover'); }));
 ['dragleave', 'drop'].forEach(evt => filmDrop.addEventListener(evt, e => { e.preventDefault(); filmDrop.classList.remove('dragover'); }));
 filmDrop.addEventListener('drop', e => { const f = e.dataTransfer.files?.[0]; if (f && f.type.startsWith('video/')) { state.currentPartIdx = -1; loadFilm(f); } });
-fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) { state.currentPartIdx = -1; loadFilm(f); } });
+fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) { state.currentPartIdx = -1; loadFilm(f); } fileInput.value = ''; });
 delFilmBtn.addEventListener('click', e => { e.stopPropagation(); clearFilm(); });
 
 function loadFilm(file) {
@@ -898,10 +916,6 @@ const FILM_QUEUE_STATUSES = {
   error:     { icon: '❌', label: 'שגיאה',  color: '#b22222' },
 };
 
-document.getElementById('film-batch-add-btn').addEventListener('click', () =>
-  document.getElementById('film-batch-input').click());
-document.getElementById('film-queue-add-more-btn').addEventListener('click', () =>
-  document.getElementById('film-batch-input').click());
 document.getElementById('film-batch-input').addEventListener('change', e => {
   const files = [...e.target.files].filter(f => f.type.startsWith('video/'));
   e.target.value = '';
@@ -1075,11 +1089,9 @@ document.getElementById('film-queue-clear-btn').addEventListener('click', () => 
 
 // Context
 const contextEl = document.getElementById('context-input');
-const ctxBtn = document.getElementById('ctx-file-btn');
 const ctxInput = document.getElementById('ctx-file-input');
 const ctxStatus = document.getElementById('ctx-file-status');
-ctxBtn.addEventListener('click', () => ctxInput.click());
-ctxInput.addEventListener('change', () => { const f = ctxInput.files?.[0]; if (f) extractContext(f); });
+ctxInput.addEventListener('change', () => { const f = ctxInput.files?.[0]; ctxInput.value = ''; if (f) extractContext(f); });
 
 async function extractContext(file) {
   const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
