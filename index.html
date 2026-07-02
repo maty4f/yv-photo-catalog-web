@@ -118,6 +118,10 @@
 
   <div style="text-align:center; margin:2px 0 16px;">
     <a href="status.html" style="display:inline-block; font-size:13px; color:var(--accent); text-decoration:none; border:1px solid var(--accent); padding:5px 16px; border-radius:18px;">🖥️ מצב המערכת · System Status</a>
+    <!-- logs.html is an admin-only server route (not mirrored to the public Pages
+         repo) — hidden until we confirm a real server is answering, so the public
+         marketing/demo deploy of this page never shows a dead (or exposed) link. -->
+    <a href="logs.html" id="nav-logs" style="display:none; font-size:13px; color:var(--accent); text-decoration:none; border:1px solid var(--accent); padding:5px 16px; border-radius:18px; margin-inline-start:8px;">📜 לוגים · Logs</a>
   </div>
 
   <p style="text-align:center; font-size:15px; color:var(--ink); margin-bottom:0;">
@@ -227,6 +231,11 @@
   var base = '';
   try { if (typeof serverBase === 'function') base = serverBase(); } catch (e) {}
   fetch(base + '/api/config').then(function (r) { return r.json(); }).then(function (c) {
+    // A real server answered — reveal the admin logs link (hidden by default;
+    // on the public Pages/demo deploy there is no server, so this never fires).
+    var showLogs = function () { var lk = document.getElementById('nav-logs'); if (lk) lk.style.display = 'inline-block'; };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showLogs);
+    else showLogs();
     var n = c && c.archiveName; if (!n) return;
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { apply(n); });
     else apply(n);
