@@ -2446,6 +2446,7 @@ async function loadUnifiedResults(base, outputName) {
     const result = mapUnifiedPhotoFields(fields);
     state.identification = result;
     fillResultsForm(result);
+    renderVersoBox(fields, base);
     document.getElementById('results').classList.add('show');
     document.getElementById('no-results').style.display = 'none';
     document.getElementById('download-bar').style.display = 'flex';
@@ -2537,6 +2538,43 @@ function mapUnifiedPhotoFields(f) {
     })),
     subjects_he: chips(f.SUBJECTS_HE_CHIPS),
     subjects_en: chips(f.SUBJECTS_EN_CHIPS),
+  };
+}
+
+// --- Verso transcript correction box (איסוף ground truth לכתב יד) ----------
+// מוצג רק כשהקטלוג כולל VERSO_TRANSCRIPT; כל שמירה מצטרפת ל-verso-gt.jsonl בשרת.
+function renderVersoBox(fields, base) {
+  const old = document.getElementById('verso-box');
+  if (old) old.remove();
+  const original = String((fields && fields.VERSO_TRANSCRIPT) || '').trim();
+  if (!original) return;
+  const box = document.createElement('div');
+  box.id = 'verso-box';
+  box.style.cssText = 'direction:rtl;text-align:right;background:#fffbe8;border:1px solid #e5d9a8;border-radius:10px;padding:14px 16px;margin:14px 0;';
+  box.innerHTML =
+    '<div style="font-weight:700;margin-bottom:6px">📝 תעתיק גב התצלום (ניתן לתיקון)</div>' +
+    '<div style="font-size:12.5px;color:#8a6d00;margin-bottom:8px">תקנו שגיאות בתעתיק ולחצו שמירה — כל תיקון נאסף כ-ground truth לשיפור קריאת כתב היד.</div>' +
+    '<textarea id="verso-text" style="width:100%;min-height:150px;direction:rtl;text-align:right;font:inherit;padding:8px;border:1px solid #ddd;border-radius:8px;unicode-bidi:plaintext"></textarea>' +
+    '<div style="margin-top:8px;display:flex;gap:10px;align-items:center">' +
+    '<button id="verso-save" class="secondary" type="button">💾 שמור תיקון תעתיק</button>' +
+    '<span id="verso-status" style="font-size:13px;color:#666"></span></div>';
+  const results = document.getElementById('results');
+  results.parentNode.insertBefore(box, results);
+  box.querySelector('#verso-text').value = original;
+  box.querySelector('#verso-save').onclick = async () => {
+    const status = box.querySelector('#verso-status');
+    const corrected = box.querySelector('#verso-text').value.trim();
+    if (!corrected) { status.textContent = 'התעתיק ריק'; return; }
+    status.textContent = 'שומר…';
+    try {
+      const r = await fetch(base + '/api/verso-correction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoId: (fields && fields.PHOTO_ID) || '', original, corrected }),
+      });
+      const j = await r.json().catch(() => ({}));
+      status.textContent = j.ok ? '✓ נשמר — התיקון נוסף למאגר האימון' : 'שגיאה בשמירה';
+    } catch { status.textContent = 'שגיאה בשמירה (אין חיבור לשרת?)'; }
   };
 }
 
@@ -3290,10 +3328,36 @@ downloadBtn.addEventListener('click', () => {
 });
 
 // Save & next photo (works with or without active collection)
+// FEEDBACK LOOP — a saved (=approved) record becomes a training pair on the
+// server: exemplar + SigLIP + faces + RAG entry + people names (see
+// /api/training/approve). Fire-and-forget: never blocks or fails the save flow.
+// Skipped when there's no image or the title is empty (nothing to learn from).
+function submitTrainingPair(entry) {
+  try {
+    const title = String((entry && entry.title_he) || '').trim();
+    if (!state.photos.front || title.length < 8) return;
+    const fd = new FormData();
+    fd.append('file', state.photos.front);
+    fd.append('key', entry.photo_id || (state.photos.front.name || 'photo').replace(/\.[^.]*$/, ''));
+    fd.append('record', title);
+    const names = (entry.id_table || []).map(r => (r && r.name || '').trim()).filter(Boolean);
+    fd.append('names', JSON.stringify(names));
+    fetch((state.localServerUrl || '') + '/api/training/approve', { method: 'POST', body: fd })
+      .then(r => r.json()).then(j => console.log('[training] נקלט לאימון:', j.stem || j.error))
+      .catch(() => { /* server offline — the save itself is unaffected */ });
+  } catch (e) { /* never break the save flow */ }
+}
+
 const saveNextBtn = document.getElementById('save-next-btn');
 saveNextBtn.addEventListener('click', () => {
   // In single-photo mode (no collection), just download + reset
   if (!state.collection) {
+    const _g = id => (document.getElementById(id) || {}).value || '';
+    const _rows = [...document.querySelectorAll('#r-id-tbody tr')].map(tr => {
+      const c = [...tr.querySelectorAll('input')];
+      return c.length >= 2 ? { name: c[1].value } : null;
+    }).filter(r => r && r.name);
+    submitTrainingPair({ title_he: _g('r-title-he'), id_table: _rows });
     downloadCurrentPhotoHTML();
     resetPhotoForm();
     document.getElementById('photo-workflow').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3332,6 +3396,9 @@ saveNextBtn.addEventListener('click', () => {
     id_table: idRows,
     subjects: activeSubjects,
   };
+
+  // Feedback loop: the approved record feeds the training corpus (fire-and-forget).
+  submitTrainingPair(photoEntry);
 
   // Auto-download the photo HTML
   const fname = downloadCurrentPhotoHTML();
@@ -4927,5 +4994,6 @@ refreshButtons();
 })();
 </script>
 <script src="yv-client-log.js"></script>
+<script src="yv-autosave.js"></script>
 </body>
 </html>
