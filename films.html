@@ -395,7 +395,11 @@
         <span id="film-filename" class="filename" style="display:none"></span>
       </label>
       <input type="file" id="film-file-input" accept="video/*" class="visually-hidden-file">
+      <div style="direction:rtl; text-align:center; margin-top:6px; font-size:12px; color:#856404;">
+        🖥️ סרט ארוך (מעל ~10 דק׳) שנמצא על מחשב השרת? <a href="server-films.html" id="server-films-link" style="color:#b45309; font-weight:700;">קטלוג על השרת — בלי העלאה, בכל אורך</a>
+      </div>
       <div id="film-meta" class="film-meta-grid" style="display:none"></div>
+      <div id="film-server-hint" style="display:none; direction:rtl; text-align:right; margin-top:8px; padding:8px 12px; background:#fff3cd; border:1px solid #ffe69c; border-radius:6px; font-size:12.5px; color:#856404; line-height:1.6;"></div>
       <div class="split-btn-wrap">
         <button type="button" class="split-btn" id="open-split-btn">✂️ חתוך לחלקים <small style="opacity:.85; font-weight:400">— לסרטים גדולים, או לקטלוג קטעים נפרדים</small></button>
       </div>
@@ -846,7 +850,31 @@ function renderFilmMeta() {
   }
   filmMetaBox.innerHTML = `<div class="item"><b>משך:</b> <code>${dur}</code></div><div class="item"><b>⏱ עיבוד צפוי:</b> <code>~${estStr}</code></div><div class="item"><b>רזולוציה:</b> <code>${m.width}×${m.height}</code></div><div class="item"><b>גודל:</b> <code>${sizeMBStr} MB</code>${badge}</div><div class="item"><b>פורמט:</b> <code>${m.mime}</code></div>`;
   filmMetaBox.style.display = 'grid';
+  renderServerPathHint(m);
   if (!document.getElementById('r-duration').value) document.getElementById('r-duration').value = dur;
+}
+// Long films are better served by the server-side path (ffmpeg extraction, windowed
+// Stage-1, no upload). Same ~10-min guidance as server-films.html itself; a browser
+// that can't read the duration of a big file (Infinity) gets the strong wording too.
+const SERVER_PATH_MIN_SEC = 600, SERVER_PATH_STRONG_SEC = 1800, SERVER_PATH_MIN_MB = 500;
+function renderServerPathHint(m) {
+  const hint = document.getElementById('film-server-hint');
+  if (!hint) return;
+  const durOk = Number.isFinite(m.duration) && m.duration > 0;
+  const sizeMB = (m.size_bytes || 0) / 1024 / 1024;
+  const long = (durOk && m.duration >= SERVER_PATH_MIN_SEC) || (!durOk && sizeMB >= SERVER_PATH_MIN_MB);
+  if (!long) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+  const strong = (durOk && m.duration >= SERVER_PATH_STRONG_SEC) || !durOk;
+  const why = durOk
+    ? `הסרט באורך <code>${formatDuration(m.duration)}</code>`
+    : `הדפדפן לא הצליח לקרוא את משך הסרט (קובץ גדול, <span style="unicode-bidi:isolate">${sizeMB.toFixed(0)} MB</span>)`;
+  const linkEl = document.getElementById('server-films-link');
+  const href = (linkEl && linkEl.getAttribute('href')) || 'server-films.html';
+  hint.innerHTML = `🖥️ ${why} — ${strong ? '<b>מומלץ מאוד</b>' : 'מומלץ'} לקטלג במסלול השרת: `
+    + `<a href="${href}" style="color:#7a5b00; font-weight:700;">קטלוג על השרת</a> `
+    + `(בלי העלאה, ניתוח בחלונות בכל אורך — הנח את הקובץ בתיקיית <code style="unicode-bidi:isolate">media/films/</code> על המחשב של השרת). `
+    + `אפשר גם להמשיך כאן${strong ? ', אך כיסוי הפריימים יהיה דליל והעיבוד בדפדפן איטי' : ''}.`;
+  hint.style.display = 'block';
 }
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
@@ -860,6 +888,8 @@ function clearFilm() {
   filmDrop.classList.remove('has-file');
   filmFilename.style.display = 'none';
   filmMetaBox.style.display = 'none';
+  const _sh = document.getElementById('film-server-hint');
+  if (_sh) { _sh.style.display = 'none'; _sh.innerHTML = ''; }
   fileInput.value = '';
   refreshButtons();
 }
@@ -1191,6 +1221,7 @@ async function postFramesCatalog(base, frames, durationSec, name, context, onSta
   const j = await res.json().catch(() => ({}));
   if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items-frames');
+  state.lastFramesStem = j.framesStem || null;   // → "זיהוי דמויות בסרט" (/api/film-faces)
   if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… כמה דקות');
   const out = await pollUnifiedJob(base, j.jobId, onStatus);
   if (out.status === 'done') return out.outputName;
@@ -1337,6 +1368,14 @@ async function resolveUnifiedBase() {
   return state.localServerUrl || null;
 }
 
+// server-films.html lives only on the local server (not on the static mirror) —
+// point the long-film link at the resolved server base so it works from anywhere.
+resolveUnifiedBase().then(base => {
+  if (!base) return;                       // same origin ('') or unknown (null) → keep relative
+  const a = document.getElementById('server-films-link');
+  if (a) a.href = base.replace(/\/+$/, '') + '/server-films.html';
+}).catch(() => {});
+
 // Cloudflare (Free/Pro) rejects any request body over 100MB with a 413 at the
 // edge — BEFORE it ever reaches the local server (which itself allows 4GB). Most
 // films exceed this, so the whole-video upload to /api/items would 413. For a
@@ -1376,7 +1415,48 @@ async function runUnifiedServer() {
   identifyStatus.innerHTML = (split ? '✓ כל החלקים קוטלגו כסרט אחד (רשומה מאוחדת) — ' : '✓ הקטלוג מוכן — ')
     + '<a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
   identifyStatus.className = 'status-msg show ok';
+  addFilmFacesButton(base);
   await loadUnifiedResults(base, outputName); // fills the editable results; fail-soft
+}
+
+// "Who appears in this film" — cluster the characters from the film's keyframes
+// (local InsightFace on the server; no Gemini/Claude). Appears after a successful
+// unified-server catalog, since the frames dir persists on the server.
+function addFilmFacesButton(base) {
+  if (!state.lastFramesStem || document.getElementById('film-faces-btn')) return;
+  const catalogLinksHtml = identifyStatus.innerHTML;   // restored next to the faces link on success
+  identifyStatus.innerHTML += ' · <button type="button" id="film-faces-btn" style="padding:3px 10px; font-size:12px; cursor:pointer; border:1px solid var(--accent); border-radius:5px; background:#fff; color:var(--accent); font-family:inherit;">🧑‍🤝‍🧑 זיהוי דמויות בסרט</button>';
+  document.getElementById('film-faces-btn').addEventListener('click',
+    () => runFilmFaces(base, state.lastFramesStem, catalogLinksHtml));
+}
+
+async function runFilmFaces(base, stem, catalogLinksHtml) {
+  const btn = document.getElementById('film-faces-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '🧑‍🤝‍🧑 מזהה דמויות…'; }
+  const onStatus = makeActionClock(msg => showStatus(msg, 'info'));
+  try {
+    let res;
+    try {
+      res = await fetch(base + '/api/film-faces', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stem }),
+      });
+    } catch (e) { throw new Error('הבקשה לשרת נכשלה: ' + e.message); }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
+    onStatus('מאתר ומקבץ פנים בפריימים של הסרט (מקומי, דקות אחדות)…');
+    const out = await pollUnifiedJob(base, j.jobId, onStatus);
+    if (out.status !== 'done' || !out.outputName) throw new Error(out.errorText || 'זיהוי הדמויות נכשל');
+    const fUrl = base + '/api/output/' + encodeURIComponent(out.outputName);
+    identifyStatus.innerHTML = catalogLinksHtml
+      + ' · 🧑‍🤝‍🧑 <a href="' + fUrl + '" target="_blank" rel="noopener">↗ דוח הדמויות בסרט</a>'
+      + ' <span style="color:var(--soft); font-size:11px;">(עזר לשיפוט — אינו קביעת זהות)</span>';
+    identifyStatus.className = 'status-msg show ok';
+  } catch (err) {
+    console.error(err);
+    showStatus('שגיאה בזיהוי דמויות: ' + err.message, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = '🧑‍🤝‍🧑 זיהוי דמויות בסרט'; }
+  }
 }
 
 // A truncated/corrupt upload — the Cloudflare tunnel intermittently cuts a large
@@ -2929,5 +3009,6 @@ refreshButtons();
 })();
 </script>
 <script src="yv-client-log.js"></script>
+<script src="yv-autosave.js"></script>
 </body>
 </html>
