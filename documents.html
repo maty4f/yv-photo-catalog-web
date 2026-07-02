@@ -3573,6 +3573,27 @@ refreshButtons();
   var base = '';
   try { if (typeof serverBase === 'function') base = serverBase(); } catch (e) {}
   fetch(base + '/api/config').then(function (r) { return r.json(); }).then(function (c) {
+    // Section-2 security: when the server manages the Gemini key (injected by
+    // the proxy), the browser must not hold one. Purge any stored key, hide the
+    // field, and use an in-memory sentinel so existing key-gates still pass —
+    // the server overrides x-goog-api-key, so this value never reaches Google
+    // and nothing is persisted client-side. No-op if the server has no key.
+    if (c && c.geminiKeyManaged) {
+      try { localStorage.removeItem('yv_api_key_gemini'); } catch (e) {}
+      try {
+        if (typeof state === 'object' && state) {
+          if (state.apiKeys) state.apiKeys.gemini = 'server-managed';
+          if ('keyGemini' in state) state.keyGemini = 'server-managed';
+        }
+      } catch (e) {}
+      var _gk = document.getElementById('api-key-gemini') || document.getElementById('key-gemini');
+      if (_gk) {
+        _gk.value = '';
+        var _row = _gk.closest('.row, .field, label') || _gk.parentElement;
+        if (_row) _row.style.display = 'none';
+      }
+      try { if (typeof refreshButtons === 'function') refreshButtons(); } catch (e) {}
+    }
     var n = c && c.archiveName; if (!n) return;
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { apply(n); });
     else apply(n);
