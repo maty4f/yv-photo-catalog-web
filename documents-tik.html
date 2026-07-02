@@ -114,6 +114,13 @@
   <h1>קטלוג תיק — מקורות פרטיים (ספיר)</h1>
   <div class="sub">רשומה אחת לכל תיק · Claude קורא את כל דפי התיק (במנות) ואז מסנתז רשומת-תיק אחת · סימוני ודאות ונקודות לבדיקת אנוש</div>
 
+  <!-- שתי רמות קטלוג מסמכים: קטלוג ברמת תיק (המסך הזה) ↔ תיאור מסמך מלא (documents.html) -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#ebf3ed;border:1px solid var(--line);border-radius:10px;padding:9px 14px;margin-bottom:16px;font-size:13.5px" role="navigation" aria-label="רמת קטלוג">
+    <b style="color:var(--accent-2)">רמת הקטלוג:</b>
+    <span style="background:var(--accent-2);color:#fff;border-radius:7px;padding:4px 12px;font-weight:600">🗂 קטלוג ברמת תיק <small style="font-weight:400;opacity:.85">— תיאור כללי אחד לכל התיק (המסך הזה)</small></span>
+    <a href="documents.html" style="text-decoration:none;color:var(--accent-2);border:1px solid var(--accent);border-radius:7px;padding:4px 12px;background:#fff">📄 תיאור מסמך מלא <small style="color:var(--muted)">— תעתיק, תרגום וניתוח מלא לכל מסמך</small></a>
+  </div>
+
   <!-- CONFIG -->
   <div class="card">
     <h2>הגדרות <span id="save-state" class="hint" style="font-weight:400;margin-right:8px"></span></h2>
@@ -645,7 +652,7 @@ function fieldBlock(label,id,html){
 }
 function conf(rec,key){const c=rec.field_confidence?.[key];return c?(' '+cmark(c)):'';}
 
-function renderRecord(rec){
+function renderRecord(rec,restored){
   state.lastRecord=rec;
   const fc=rec.field_confidence||{};
   // review flags — points Claude marked as needing human verification before Sapir
@@ -767,6 +774,20 @@ function renderRecord(rec){
   state.chatHistory=[];
   $('chat-log').innerHTML='';
   $('chat-panel').classList.add('show');
+  // refresh-survival: a synthesized record is 15-40 min of model work, and the
+  // record div has no [id] form fields, so yv-autosave never captures it —
+  // persist it (with the chunk notes when they fit) so a refresh can restore.
+  if(!restored){
+    try{
+      const payload={rec,savedAt:Date.now()};
+      const notes=JSON.stringify(state.chunkNotes||[]);
+      if(notes.length<1500000)payload.notes=state.chunkNotes||[];
+      localStorage.setItem('yv_tik_last_record',JSON.stringify(payload));
+      localStorage.removeItem('yv_tik_chat');
+    }catch(e){
+      try{localStorage.setItem('yv_tik_last_record',JSON.stringify({rec,savedAt:Date.now()}));}catch(e2){}
+    }
+  }
 }
 
 /* ---------- NotebookLM export — names · dates · context of this תיק record ---------- */
@@ -854,12 +875,41 @@ ${q}
     const ans=await runClaudeJob({prompt,images:[]});
     thinking.textContent=ans||'(אין תשובה)';
     state.chatHistory.push({role:'user',text:q},{role:'bot',text:ans});
+    try{localStorage.setItem('yv_tik_chat',JSON.stringify(state.chatHistory));}catch(e){}
   }catch(err){
     thinking.textContent='⚠ שגיאה: '+err.message;
   }finally{$('chat-send').disabled=false; input.focus();}
 }
 $('chat-send').addEventListener('click',sendChat);
 $('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendChat();}});
+
+/* ---------- refresh-survival: restore the last synthesized תיק record ---------- */
+(function(){
+  let saved=null;
+  try{saved=JSON.parse(localStorage.getItem('yv_tik_last_record')||'null');}catch(e){}
+  if(!saved||!saved.rec)return;
+  const bar=document.createElement('div');
+  bar.style.cssText='background:#fdf3e3;border:1px solid #ecd9b0;border-radius:8px;padding:9px 14px;margin-bottom:14px;font-size:13.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+  const when=new Date(saved.savedAt||Date.now()).toLocaleString('he-IL');
+  const sp=document.createElement('span');
+  sp.innerHTML='💾 נמצאה רשומת-תיק מריצה קודמת <b>('+esc(when)+')</b> — הרשומה אינה נשמרת בשרת; שחזר כדי להמשיך לעבוד עליה.';
+  bar.appendChild(sp);
+  const mk=(t,primary)=>{const b=document.createElement('button');b.type='button';b.textContent=t;
+    b.style.cssText='border-radius:6px;padding:4px 12px;cursor:pointer;font-family:inherit;font-size:13px;border:1px solid '+(primary?'#2e7d4e;background:#2e7d4e;color:#fff':'#d8d4cc;background:#fff;color:#5a5a5a');return b;};
+  const rb=mk('שחזר את הרשומה',true), xb=mk('מחק',false);
+  rb.addEventListener('click',()=>{
+    if(Array.isArray(saved.notes))state.chunkNotes=saved.notes; // re-grounds the chat
+    renderRecord(saved.rec,true);
+    let chat=null;try{chat=JSON.parse(localStorage.getItem('yv_tik_chat')||'null');}catch(e){}
+    if(Array.isArray(chat)&&chat.length){state.chatHistory=chat;chat.forEach(m=>appendMsg(m.role==='user'?'user':'bot',m.text));}
+    bar.remove();
+    $('results').scrollIntoView({behavior:'smooth'});
+  });
+  xb.addEventListener('click',()=>{try{localStorage.removeItem('yv_tik_last_record');localStorage.removeItem('yv_tik_chat');}catch(e){}bar.remove();});
+  bar.appendChild(rb);bar.appendChild(xb);
+  const anchor=$('results');
+  anchor.parentNode.insertBefore(bar,anchor);
+})();
 
 /* ---------- combined PDF of all uploaded image pages (self-contained, no libs) ---------- */
 // Decode one image file, downscale to a sane edge, and return baseline JPEG bytes
@@ -1083,6 +1133,9 @@ async function fastDescribe(){
     // prompt is Claude's synthesis brief; the server appends Gemini's extracted facts.
     const prompt=`${TIK_SCHEMA_RULES}\n\n⚠ Gemini כבר קרא את **כל דפי התיק** וחילץ עובדות גולמיות (יצורפו בהמשך ההודעה). תפקידך כהיסטוריון ארכיוני: לסנתז מהן **רשומת-תיק אחת ברמת תיאור** — מפת המסמכים, היקף, מקומות ותקופה, אנשים מרכזיים, ויהלומים — עם **הקשר היסטורי מעמיק ומדויק**. עגן כל קביעה בעובדות בלבד (אל תמציא), והבחן בבירור בין מה שמתועד בתיק לבין ידע היסטורי כללי. החזר field_confidence (✓/~/?) לכל שדה, ו-review_flags לכל הסקה/אי-ודאות/פער שדורש אימות ארכיונאי. **לא** תמלול דף-דף ולא רשימת כל שם בכל דף.${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
     const fd=new FormData();fd.append('file',blob,name);fd.append('prompt',prompt);
+    // provided context for the unified engine path (written server-side as the
+    // standard <pdf>.context.txt sidecar); older servers simply ignore the field
+    fd.append('context',[$('context').value.trim(),(state.intakeText||'').trim()].filter(Boolean).join('\n\n'));
     const t=Date.now();
     showStatus(`<span class="spinner"></span>תיאור מהיר · מעלה את התיק לשרת (${mb}MB)…`,'info');
     let post;try{post=await fetch(serverBase()+'/api/tik-describe',{method:'POST',body:fd});}catch(e){throw new Error('העלאה נכשלה: '+e.message);}
@@ -1253,5 +1306,6 @@ idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('ove
 })();
 </script>
 <script src="yv-client-log.js"></script>
+<script src="yv-autosave.js"></script>
 </body>
 </html>

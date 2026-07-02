@@ -238,6 +238,13 @@
     </div>
   </header>
 
+  <!-- שתי רמות קטלוג מסמכים: תיאור מסמך מלא (המסך הזה) ↔ קטלוג ברמת תיק (documents-tik.html) -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--tint);border:1px solid var(--line);border-radius:10px;padding:9px 14px;margin-bottom:16px;font-size:13.5px" role="navigation" aria-label="רמת קטלוג">
+    <b style="color:var(--accent-2)">רמת הקטלוג:</b>
+    <span style="background:var(--accent-2);color:#fff;border-radius:7px;padding:4px 12px;font-weight:600">📄 תיאור מסמך מלא <small style="font-weight:400;opacity:.85">— תעתיק, תרגום וניתוח מלא לכל מסמך (המסך הזה)</small></span>
+    <a href="documents-tik.html" style="text-decoration:none;color:var(--accent-2);border:1px solid var(--accent);border-radius:7px;padding:4px 12px;background:#fff">🗂 קטלוג ברמת תיק <small style="color:var(--muted)">— תיאור כללי אחד לכל התיק</small></a>
+  </div>
+
   <!-- Confidence legend -->
   <details class="conf-legend">
     <summary>📊 מקרא סימוני ודאות / Confidence markers</summary>
@@ -1203,6 +1210,7 @@ function renderDocQueuePanel() {
   const summary = document.getElementById('doc-queue-summary');
   if (!state.doc_queue.length) {
     document.getElementById('doc-queue-panel').style.display = 'none';
+    persistDocQueue();
     return;
   }
   const counts = { pending: 0, analyzing: 0, ready: 0, reviewing: 0, done: 0, error: 0 };
@@ -1229,6 +1237,7 @@ function renderDocQueuePanel() {
   }).join('');
   list.querySelectorAll('.doc-queue-item').forEach(el =>
     el.addEventListener('click', () => jumpToDocQueueItem(parseInt(el.dataset.idx))));
+  persistDocQueue();
 }
 
 function jumpToDocQueueItem(idx) {
@@ -1244,6 +1253,23 @@ function jumpToDocQueueItem(idx) {
 }
 
 function loadDocQueueItemIntoUI(item) {
+  if (item.restored) {
+    // Restored after a refresh: the original File bytes are gone — show the
+    // saved results (per-field copy + download still work off the form),
+    // without a document preview.
+    clearDoc();
+    if (item.identification) {
+      if (item.status === 'ready') item.status = 'reviewing';
+      fillResults(item.identification);
+      document.getElementById('results').classList.add('show');
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('download-bar').style.display = 'flex';
+      showStatus('שוחזר מאצווה קודמת — הקובץ המקורי לא נטען מחדש; התוצאות זמינות להעתקה ולהורדה.', 'info');
+    } else if (item.status === 'error') {
+      showStatus('המסמך נכשל: ' + (item.error || 'שגיאה'), 'err');
+    }
+    return;
+  }
   clearDoc();
   loadDoc(item.file);
   if (item.status === 'ready' || item.status === 'reviewing') {
@@ -1312,6 +1338,54 @@ document.getElementById('doc-queue-clear-btn').addEventListener('click', () => {
   state.current_doc_queue_index = -1;
   renderDocQueuePanel();
 });
+
+// ---------------------------------------------------------------------
+// Refresh-survival for the batch queue: the File blobs can't be persisted,
+// but COMPLETED results are ~2.5-4.5 min of model work each — persist
+// name+status+identification so a refresh mid-batch doesn't discard finished
+// items. Restored items show their results without a document preview.
+// ---------------------------------------------------------------------
+function persistDocQueue() {
+  try {
+    const items = state.doc_queue
+      .filter(it => it.identification || it.error)
+      .map(it => ({ name: it.file.name, type: it.file.type || '', size: it.file.size || 0,
+                    status: it.status === 'reviewing' ? 'ready' : it.status,
+                    identification: it.identification, error: it.error }));
+    if (items.length) localStorage.setItem('yv_doc_queue_results', JSON.stringify({ savedAt: Date.now(), items }));
+    else localStorage.removeItem('yv_doc_queue_results');
+  } catch (e) { /* localStorage quota — non-fatal, the live queue keeps working */ }
+}
+
+(function restoreDocQueue() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('yv_doc_queue_results') || 'null'); } catch (e) {}
+  const items = ((saved && saved.items) || []).filter(x => x.identification || x.error);
+  if (!items.length || state.doc_queue.length) return;
+  const panel = document.getElementById('doc-queue-panel');
+  const bar = document.createElement('div');
+  bar.style.cssText = 'background:#fdf3e3;border:1px solid #ecd9b0;border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+  const when = new Date(saved.savedAt || Date.now()).toLocaleString('he-IL');
+  const done = items.filter(x => x.identification).length;
+  const sp = document.createElement('span');
+  sp.innerHTML = '💾 נמצאו תוצאות של <b>' + done + '</b> מסמכים מאצווה קודמת (' + esc(when) + '). הקבצים עצמם אינם נשמרים בדפדפן — התוצאות זמינות לצפייה, להעתקה ולהורדה.';
+  bar.appendChild(sp);
+  const mkBtn = (t, primary) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+    b.style.cssText = 'border-radius:6px;padding:4px 12px;cursor:pointer;font-family:inherit;font-size:12.5px;border:1px solid ' + (primary ? '#2e7d4e;background:#2e7d4e;color:#fff' : '#d8d4cc;background:#fff;color:#5a5a5a'); return b; };
+  const rb = mkBtn('שחזר תוצאות', true), xb = mkBtn('מחק', false);
+  rb.addEventListener('click', () => {
+    state.doc_queue = items.map((x, i) => ({ id: 'dqr' + Date.now() + '_' + i, restored: true,
+      file: { name: x.name, type: x.type, size: x.size }, status: x.status,
+      identification: x.identification, error: x.error, thumb: null }));
+    state.current_doc_queue_index = -1;
+    document.getElementById('doc-queue-panel').style.display = 'block';
+    renderDocQueuePanel();
+    bar.remove();
+  });
+  xb.addEventListener('click', () => { try { localStorage.removeItem('yv_doc_queue_results'); } catch (e) {} bar.remove(); });
+  bar.appendChild(rb); bar.appendChild(xb);
+  panel.parentNode.insertBefore(bar, panel);
+})();
 
 // =====================================================================
 //  JPG → PDF MERGER (in-browser, via jsPDF)
@@ -2984,7 +3058,37 @@ wrapFieldsWithCopyButtons();
 function buildDocHTML() {
   const get = id => document.getElementById(id).value;
   const chipsHTML = activeSubjects.map(s => `<span style="display:inline-block; background:#c8e0d0; color:#1f5c38; padding:3px 10px; margin:2px; border-radius:12px; font-size:12.5px; border:1px solid #98be9f;">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}</span>`).join('');
-  return DOC_TEMPLATE
+  // Institutional mode: the private-source section (and its placeholders) is
+  // dropped entirely; in private mode every filled field reaches the artifact —
+  // the form must never hold data the downloaded HTML silently omits.
+  let tpl = DOC_TEMPLATE;
+  if (state.doc_mode !== 'private') {
+    tpl = tpl.replace(/<!--PRIVATE_ONLY_START-->[\s\S]*?<!--PRIVATE_ONLY_END-->/, '');
+  }
+  return tpl
+    .replace(/\{\{DIVISION_NAME\}\}/g, esc(get('r-division-name')))
+    .replace(/\{\{ITEM_TYPE\}\}/g, esc(get('r-item-type')))
+    .replace(/\{\{PREV_DIVISION\}\}/g, esc(get('r-prev-division')))
+    .replace(/\{\{PREV_FILE\}\}/g, esc(get('r-prev-file')))
+    .replace(/\{\{CREATOR_PERSON\}\}/g, esc(get('r-creator-person')))
+    .replace(/\{\{CREATOR_ORG\}\}/g, esc(get('r-creator-org')))
+    .replace(/\{\{DATE_START_AUTH\}\}/g, esc(get('r-date-start-auth')))
+    .replace(/\{\{DATE_START_RECON\}\}/g, esc(get('r-date-start-recon')))
+    .replace(/\{\{DATE_END_AUTH\}\}/g, esc(get('r-date-end-auth')))
+    .replace(/\{\{DATE_END_RECON\}\}/g, esc(get('r-date-end-recon')))
+    .replace(/\{\{ORIGINALITY\}\}/g, esc(get('r-originality')))
+    .replace(/\{\{INFO_MAIN\}\}/g, esc(get('r-info-main')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INFO_ALSO\}\}/g, esc(get('r-info-also')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INFO_DONOR\}\}/g, esc(get('r-info-donor')).replace(/\n/g, '<br>'))
+    .replace(/\{\{CONTENT_NOTE\}\}/g, esc(get('r-content-note')).replace(/\n/g, '<br>'))
+    .replace(/\{\{ADMIN_NOTE\}\}/g, esc(get('r-admin-note')).replace(/\n/g, '<br>'))
+    .replace(/\{\{NAMES_TYPING\}\}/g, esc(get('r-names-typing')))
+    .replace(/\{\{RELATED_ITEMS\}\}/g, esc(get('r-related-items')).replace(/\n/g, '<br>'))
+    .replace(/\{\{CLASSIFICATION\}\}/g, esc(get('r-classification')))
+    .replace(/\{\{CLASSIFICATION_REASON\}\}/g, esc(get('r-classification-reason')))
+    .replace(/\{\{SHOW_INTRANET\}\}/g, esc(get('r-show-intranet')))
+    .replace(/\{\{CATALOGER\}\}/g, esc(get('r-cataloger')))
+    .replace(/\{\{REGISTER_DATE\}\}/g, esc(get('r-register-date')))
     .replace(/\{\{TITLE_HE\}\}/g, esc(get('r-title-he')))
     .replace(/\{\{TITLE_EN\}\}/g, esc(get('r-title-en')))
     .replace(/\{\{DOC_TYPE\}\}/g, esc(get('r-doc-type')))
@@ -3541,6 +3645,38 @@ const DOC_TEMPLATE = `<!DOCTYPE html>
 <div class="section-bar">נושאים</div>
 <div class="field"><div class="head"><span class="label">נושאים מתזאורוס</span></div><div style="padding:10px 14px; background:#fbf9f3; direction:rtl; text-align:right; unicode-bidi:isolate;">{{SUBJECTS}}</div></div>
 
+<!--PRIVATE_ONLY_START-->
+<div class="section-bar">מקור פרטי — חטיבה ארכיונית</div>
+<div class="field"><div class="head"><span class="label">שם / סימול חטיבה</span><button class="copy-btn" data-copy="pv-div">העתק</button></div><div id="pv-div" class="compact">{{DIVISION_NAME}}</div></div>
+<div class="field"><div class="head"><span class="label">סוג פריט</span><button class="copy-btn" data-copy="pv-itype">העתק</button></div><div id="pv-itype" class="compact">{{ITEM_TYPE}}</div></div>
+<div class="field"><div class="head"><span class="label">סימול חטיבה קודם</span><button class="copy-btn" data-copy="pv-pdiv">העתק</button></div><div id="pv-pdiv" class="compact">{{PREV_DIVISION}}</div></div>
+<div class="field"><div class="head"><span class="label">סימול תיק קודם</span><button class="copy-btn" data-copy="pv-pfile">העתק</button></div><div id="pv-pfile" class="compact">{{PREV_FILE}}</div></div>
+
+<div class="section-bar">מקור פרטי — יוצרים, תאריכים ומקוריות</div>
+<div class="field"><div class="head"><span class="label">שם יוצר החומר (אדם)</span><button class="copy-btn" data-copy="pv-cp">העתק</button></div><div id="pv-cp" class="compact">{{CREATOR_PERSON}}</div></div>
+<div class="field"><div class="head"><span class="label">יוצר החומר (ארגון)</span><button class="copy-btn" data-copy="pv-co">העתק</button></div><div id="pv-co" class="compact">{{CREATOR_ORG}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך תחילה (אותנטי)</span><button class="copy-btn" data-copy="pv-dsa">העתק</button></div><div id="pv-dsa" class="compact">{{DATE_START_AUTH}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך תחילה (משוחזר)</span><button class="copy-btn" data-copy="pv-dsr">העתק</button></div><div id="pv-dsr" class="compact">{{DATE_START_RECON}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך סיום (אותנטי)</span><button class="copy-btn" data-copy="pv-dea">העתק</button></div><div id="pv-dea" class="compact">{{DATE_END_AUTH}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך סיום (משוחזר)</span><button class="copy-btn" data-copy="pv-der">העתק</button></div><div id="pv-der" class="compact">{{DATE_END_RECON}}</div></div>
+<div class="field"><div class="head"><span class="label">מקוריות החומר</span><button class="copy-btn" data-copy="pv-orig">העתק</button></div><div id="pv-orig" class="compact">{{ORIGINALITY}}</div></div>
+
+<div class="section-bar">מקור פרטי — מבנה "מידע נוסף" (לפי הנוהל)</div>
+<div class="field"><div class="head"><span class="label">תוכן עיקרי</span><button class="copy-btn" data-copy="pv-im">העתק</button></div><div id="pv-im" class="single he">{{INFO_MAIN}}</div></div>
+<div class="field"><div class="head"><span class="label">בתיק גם</span><button class="copy-btn" data-copy="pv-ia">העתק</button></div><div id="pv-ia" class="single he">{{INFO_ALSO}}</div></div>
+<div class="field"><div class="head"><span class="label">הערות מוסר החומר</span><button class="copy-btn" data-copy="pv-id">העתק</button></div><div id="pv-id" class="single he">{{INFO_DONOR}}</div></div>
+<div class="field"><div class="head"><span class="label">הערת תוכן</span><button class="copy-btn" data-copy="pv-cn">העתק</button></div><div id="pv-cn" class="single he">{{CONTENT_NOTE}}</div></div>
+<div class="field"><div class="head"><span class="label">הערת אדמיניסטרציה <small>(פנימי — לא לפרסום)</small></span><button class="copy-btn" data-copy="pv-an">העתק</button></div><div id="pv-an" class="single he">{{ADMIN_NOTE}}</div></div>
+
+<div class="section-bar">מקור פרטי — הפניות, סיווג ורישום</div>
+<div class="field"><div class="head"><span class="label">מיועד להקלדת שמות?</span><button class="copy-btn" data-copy="pv-nt">העתק</button></div><div id="pv-nt" class="compact">{{NAMES_TYPING}}</div></div>
+<div class="field"><div class="head"><span class="label">פריטים נלווים</span><button class="copy-btn" data-copy="pv-ri">העתק</button></div><div id="pv-ri" class="single he">{{RELATED_ITEMS}}</div></div>
+<div class="field"><div class="head"><span class="label">סיווג</span><button class="copy-btn" data-copy="pv-cls">העתק</button></div><div id="pv-cls" class="compact">{{CLASSIFICATION}}</div></div>
+<div class="field"><div class="head"><span class="label">הסבר לסיווג</span><button class="copy-btn" data-copy="pv-clsr">העתק</button></div><div id="pv-clsr" class="compact">{{CLASSIFICATION_REASON}}</div></div>
+<div class="field"><div class="head"><span class="label">הצגה באינטרה-נט</span><button class="copy-btn" data-copy="pv-si">העתק</button></div><div id="pv-si" class="compact">{{SHOW_INTRANET}}</div></div>
+<div class="field"><div class="head"><span class="label">שם הרושם · תאריך רישום</span><button class="copy-btn" data-copy="pv-cat">העתק</button></div><div id="pv-cat" class="compact">{{CATALOGER}} · {{REGISTER_DATE}}</div></div>
+<!--PRIVATE_ONLY_END-->
+
 </div>
 <div id="toast" class="toast">הועתק / Copied</div>
 <script>
@@ -3601,5 +3737,6 @@ refreshButtons();
 })();
 </script>
 <script src="yv-client-log.js"></script>
+<script src="yv-autosave.js"></script>
 </body>
 </html>
