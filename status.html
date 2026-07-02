@@ -106,7 +106,7 @@ async function load(){
     <div class="tile"><div class="tn">${sm.successRatePct==null?'—':sm.successRatePct+'%'}</div><div class="tl">שיעור הצלחה</div></div>
     <div class="tile"><div class="tn">${fmtDur(sm.avgDurationSec)}</div><div class="tl">משך ממוצע</div></div>
     <div class="tile"><div class="tn">${sm.active??0} / ${sm.queued??0}</div><div class="tl">פעיל / בתור</div></div>
-    <div class="tile"><div class="tn">~$${s.estSpendUsd??0}</div><div class="tl">עלות מוערכת</div></div>`;
+    <div class="tile"><div class="tn">$${(s.spend?.todayUsd ?? s.estSpendUsd ?? 0)}</div><div class="tl">${s.spend ? 'עלות Gemini היום (אמיתית)' : 'עלות מוערכת'}</div></div>`;
   const errs=(j.recentErrors||[]).map(e=>`<div>✗ ${esc(e.id)} ${esc(e.name||'')} — ${esc(e.err||'')}</div>`).join('') || '<div class="muted">אין שגיאות אחרונות</div>';
   document.getElementById('grid').innerHTML = `
    <div class="card"><h3>שרת קטלוג</h3><div class="big">${dot(s.server?.up)} פעיל</div><div class="row"><span>זמן ריצה</span><b>${up(s.server?.uptimeSec)}</b></div></div>
