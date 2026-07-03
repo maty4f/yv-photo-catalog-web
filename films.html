@@ -9,28 +9,19 @@
 
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 
+<link rel="stylesheet" href="yv-theme.css">
 <style>
-  :root {
-    --bg: #f7f5f0; --card: #fff; --ink: #1a1a1a; --muted: #5a5a5a;
-    --line: #d8d4cc; --accent: #2c5d8a; --accent-2: #1d4666;
-    --good: #2e7d32; --warn: #b07000; --soft: #b22222;
-    --tint: #f3f6fb; --drop: #e8eef5; --drop-active: #c5d4e7;
-    --he-tint: #fbf9f3; --en-tint: #f3f6fb;
-  }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0;
-    font-family: "SBL Hebrew","Frank Ruhl Libre","David","Helvetica Neue",sans-serif;
-    background: var(--bg); color: var(--ink); line-height: 1.55;
-    direction: rtl; text-align: right;
-  }
+  :root { --accent: var(--films); --accent-2: #7cb0ff; }
   .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
 
-  header.doc { border-bottom: 2px solid var(--accent); padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
-  header.doc h1 { font-size: 22px; margin: 0 0 4px 0; color: var(--accent); }
-  header.doc .sub { font-size: 13px; color: var(--muted); }
+  header.doc { border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; position: relative; }
+  header.doc::before { content: ""; position: absolute; inset: -20px -6% auto -6%; height: 120px; z-index: 0; background: radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%); pointer-events: none; }
+  header.doc h1 { position: relative; font-size: 20px; margin: 0 0 4px 0; color: var(--ink); font-weight: 800; }
+  header.doc .sub { position: relative; font-size: 13px; color: var(--muted); }
+  header.doc .actions-top { position: relative; display: flex; gap: 8px; align-items: center; }
+
   /* Confidence legend */
-  .conf-legend { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+  .conf-legend { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 13px; }
   .conf-legend > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; color: var(--accent); list-style: none; user-select: none; }
   .conf-legend > summary::-webkit-details-marker { display: none; }
   .conf-legend > summary::before { content: "\25B8"; margin-inline-end: 6px; font-size: 11px; }
@@ -41,137 +32,74 @@
   .cl-head { font-weight: 600; color: var(--ink); font-size: 12px; border-bottom: 1px solid var(--line); padding-bottom: 3px; margin-bottom: 6px; }
   .cl-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; line-height: 1.4; }
   .cl-row small { color: var(--muted); font-weight: 400; }
-  .cl-mark { display: inline-block; font-weight: 700; font-size: 0.85em; padding: 1px 5px; border-radius: 3px; background: rgba(107,91,62,0.06); unicode-bidi: isolate; margin: 0 1px; }
-  .cl-high { color: var(--good); }
-  .cl-mid  { color: var(--warn); }
-  .cl-low  { color: var(--soft); }
+  .cl-mark { display: inline-block; font-weight: 700; font-size: 0.85em; padding: 1px 5px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 10%, transparent); unicode-bidi: isolate; margin: 0 1px; }
+  .cl-high { color: var(--good); } .cl-mid { color: var(--warn); } .cl-low { color: var(--error); }
   .cl-note { margin: 10px 0 0; line-height: 1.7; font-size: 12px; }
-  header.doc .actions-top { display: flex; gap: 8px; align-items: center; }
 
   /* ── Film-parts rail (sticky left sidebar) ─────────────────────── */
   #parts-rail { position: fixed; top: 12px; left: 12px; width: 210px; max-height: calc(100vh - 24px);
-    overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    box-shadow: 0 4px 18px rgba(0,0,0,.10); z-index: 60; direction: rtl; text-align: right;
+    overflow-y: auto; background: var(--card); border: 1px solid var(--line-strong); border-radius: 10px;
+    box-shadow: 0 14px 34px -14px rgba(0,0,0,.7); z-index: 60; direction: rtl; text-align: right;
     font-size: 12.5px; display: none; }
   #parts-rail.show { display: block; }
   #parts-rail .pr-head { padding: 9px 12px; border-bottom: 1px solid var(--line);
-    background: linear-gradient(180deg,#fbfaf6,#f3efe6); border-radius: 10px 10px 0 0;
+    background: var(--card-hover); border-radius: 10px 10px 0 0;
     font-weight: 700; color: var(--ink); display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   #parts-rail .pr-head small { font-weight: 400; color: var(--muted); font-size: 10.5px; }
   #parts-rail .pr-list { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .pr-item { border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; cursor: pointer;
     background: var(--bg); transition: border-color .12s, background .12s; }
   .pr-item:hover { border-color: var(--accent); }
-  .pr-item.current { border-color: var(--accent); background: #eef4fa; box-shadow: inset 0 0 0 1px var(--accent); }
+  .pr-item.current { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); box-shadow: inset 0 0 0 1px var(--accent); }
   .pr-item .pr-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .pr-item .pr-name { font-weight: 600; color: var(--ink); }
   .pr-item .pr-tc { color: var(--muted); font-size: 10.5px; font-family: monospace; direction: ltr;
     unicode-bidi: isolate; margin-top: 2px; }
   .pr-badge { font-size: 10.5px; padding: 1px 7px; border-radius: 10px; font-weight: 600; white-space: nowrap; }
-  .pr-badge.pending { color: var(--muted); background: #ededea; border: 1px solid var(--line); }
-  .pr-badge.identified { color: #155724; background: #e6f4ea; border: 1px solid #b7dfc2; }
-  .pr-badge.analyzing { color: #0d47a1; background: #e3f0fb; border: 1px solid #b3d4f0; }
-  .pr-badge.error { color: var(--soft); background: #fbe9e9; border: 1px solid #e6bcbc; }
+  .pr-badge.pending { color: var(--muted); background: var(--card-hover); border: 1px solid var(--line); }
+  .pr-badge.identified { color: var(--good); background: color-mix(in srgb, var(--good) 16%, transparent); border: 1px solid color-mix(in srgb, var(--good) 40%, transparent); }
+  .pr-badge.analyzing { color: var(--brand); background: color-mix(in srgb, var(--brand) 16%, transparent); border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent); }
+  .pr-badge.error { color: var(--error); background: color-mix(in srgb, var(--error) 16%, transparent); border: 1px solid color-mix(in srgb, var(--error) 40%, transparent); }
   #parts-rail .pr-foot { padding: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
   #parts-rail .pr-foot button { width: 100%; padding: 8px; font-size: 12.5px; }
   #parts-rail .pr-foot button:disabled { opacity: .5; cursor: default; }
-  #pr-cancel-btn { background: var(--soft); }
+  #pr-cancel-btn { background: var(--error); color: #fff; }
   #parts-rail .pr-progress { padding: 0 12px 8px; color: var(--muted); font-size: 11px; }
   @media (max-width: 1400px) { #parts-rail { position: static; width: auto; max-height: none; margin: 0 0 16px;
     box-shadow: none; } }
 
-  section.step { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
-  section.step > .head { padding: 11px 16px; background: linear-gradient(180deg,#fbfaf6,#f3efe6); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
-  section.step > .head .num { background: var(--accent); color: white; border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
-  section.step > .head .title { font-weight: 700; color: var(--accent); font-size: 15px; }
+  section.step { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; box-shadow: 0 10px 28px -18px rgba(0,0,0,.7); }
+  section.step > .head { padding: 11px 16px; background: var(--card-hover); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  section.step > .head .num { background: var(--accent); color: #04121f; border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent); }
+  section.step > .head .title { font-weight: 700; color: var(--ink); font-size: 15px; }
   section.step > .head .title small { color: var(--muted); font-weight: 400; margin-inline-start: 8px; font-size: 12px; }
   section.step > .body { padding: 16px; }
 
-  .film-drop {
-    border: 2px dashed var(--accent); background: var(--drop);
-    border-radius: 8px; padding: 36px 22px; text-align: center;
-    cursor: pointer; transition: background .15s, border-color .15s;
-    user-select: none; color: var(--accent);
-    font-size: 15px; font-weight: 600;
-    min-height: 140px;
-    display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px;
-    position: relative;
-  }
-  .film-drop:hover, .film-drop.dragover { background: var(--drop-active); border-color: var(--accent-2); }
-  .film-drop.has-file { background: white; border-style: solid; padding: 14px; }
-  .film-drop .hint { font-size: 12.5px; color: var(--muted); font-weight: normal; }
-  .film-drop video { max-width: 100%; max-height: 260px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.1); display: none; }
+  .film-drop { position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; min-height: 140px; padding: 36px 22px; }
+  .film-drop.has-file { background: var(--card); border-style: solid; padding: 14px; }
+  .film-drop video { max-width: 100%; max-height: 260px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.4); display: none; }
   .film-drop.has-file video { display: block; }
   .film-drop.has-file .placeholder { display: none; }
-  .filename { font-size: 13px; color: var(--ink); font-weight: 500; direction: ltr; unicode-bidi: isolate; word-break: break-all; margin-top: 6px; }
   .film-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; font-size: 12px; }
   .film-meta-grid .item { background: var(--tint); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; direction: rtl; text-align: right; unicode-bidi: isolate; }
   .film-meta-grid .item b { color: var(--accent); font-weight: 600; }
   .film-meta-grid .item code { font-family: "SF Mono", Menlo, monospace; font-size: 11px; color: var(--ink); direction: ltr; unicode-bidi: isolate; }
-  .delete-film-btn { position: absolute; top: 8px; left: 8px; background: rgba(178,34,34,.92); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; display: none; z-index: 2; }
+  .delete-film-btn { position: absolute; top: 8px; left: 8px; background: color-mix(in srgb, var(--error) 85%, black); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; display: none; z-index: 2; }
   .film-drop.has-file .delete-film-btn { display: block; }
-  .delete-film-btn:hover { background: var(--soft); }
+  .delete-film-btn:hover { background: var(--error); }
 
-  textarea, input[type="text"], input[type="password"], select {
-    width: 100%; padding: 9px 12px; font-family: inherit; font-size: 14px;
-    border: 1px solid var(--line); border-radius: 6px; background: var(--tint);
-    color: var(--ink); resize: vertical;
-    direction: rtl; text-align: right; line-height: 1.55; unicode-bidi: isolate;
-  }
-  input[type="password"] { direction: ltr; text-align: left; font-family: "SF Mono", monospace; unicode-bidi: isolate; }
   #r-title-en, #r-summary-en, #r-original-title, #r-duration, #r-creation-date,
   #r-receive-date, #r-register-date, #r-source-en, #r-donor-en,
   #r-original-id, #r-intake-num, #r-archive-id, #r-persons-en, #r-inscriptions-en {
-    direction: ltr !important; text-align: right !important; font-family: Georgia, serif;
+    direction: ltr !important; text-align: right !important; font-family: 'Heebo', sans-serif;
   }
-  textarea { min-height: 110px; }
-  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); background: white; }
 
-  .label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
-  .label small { color: var(--muted); font-weight: 400; margin-inline-start: 6px; }
-
-  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
-  button { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-family: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; transition: background .15s; }
-  button:hover:not(:disabled) { background: var(--accent-2); }
-  button:disabled { background: #b8b3a8; cursor: not-allowed; opacity: .7; }
-  button.big { padding: 14px 28px; font-size: 16px; }
-  button.primary { background: #1565c0; }
-  button.primary:hover:not(:disabled) { background: #0d47a1; }
-  button.ghost { background: transparent; color: var(--accent); padding: 8px 14px; border: 1px dashed var(--accent); }
-  button.ghost:hover { background: rgba(44,93,138,.08); }
-  button.gear { background: transparent; color: var(--muted); padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
-  button.gear:hover { background: var(--tint); border-color: var(--accent); color: var(--accent); }
-
-  .settings-panel { display: none; background: #fffbeb; border: 1px solid #f1d96e; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .settings-panel { display: none; background: color-mix(in srgb, var(--accent) 8%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: var(--radius); padding: 14px; margin-bottom: 14px; }
   .settings-panel.open { display: block; }
   .settings-panel .row { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
-  .settings-panel .row label { font-size: 13px; font-weight: 600; color: #6b4f0f; }
-  .settings-panel .hint { font-size: 11.5px; color: #8a7140; margin-top: 6px; }
-  .settings-panel .hint a { color: #6b4f0f; }
-
-  .status-msg { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; }
-  .status-msg.show { display: block; }
-  .status-msg.ok { background: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
-  .status-msg.err { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; }
-  .status-msg.info{ background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
-  .status-msg.warn{ background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
-
-  .mini-status { font-size: 12px; color: var(--muted); }
-  .mini-status.working { color: var(--accent); }
-  .mini-status.ok { color: var(--good); }
-  .mini-status.err { color: var(--soft); }
-  .mini-status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-inline-end: 5px; background: currentColor; vertical-align: middle; }
-  .mini-status .meta { display: inline-block; background: var(--tint); border: 1px solid var(--line); border-radius: 4px; padding: 1px 7px; font-size: 11px; color: var(--muted); margin-inline-start: 6px; font-family: monospace; direction: ltr; unicode-bidi: isolate; }
-
-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-inline-end: 6px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* Per-field copy buttons — ALWAYS on the LEFT (Hebrew RTL convention) */
-  .input-wrap { position: relative; display: block; }
-  .input-wrap input, .input-wrap textarea { padding-left: 50px !important; padding-right: 12px !important; }
-  .copy-corner { position: absolute; top: 5px; left: 5px; background: white; border: 1px solid var(--line); color: var(--muted); border-radius: 3px; padding: 2px 7px; font-size: 11px; cursor: pointer; z-index: 3; font-family: inherit; font-weight: 600; opacity: 0.85; line-height: 1.3; box-shadow: 0 1px 3px rgba(0,0,0,.12); min-width: 30px; text-align: center; }
-  .copy-corner:hover { opacity: 1; background: var(--accent); color: white; border-color: var(--accent); }
-  .copy-corner.copied { background: var(--good) !important; color: white !important; border-color: var(--good) !important; }
+  .settings-panel .row label { font-size: 13px; font-weight: 600; color: var(--accent); }
+  .settings-panel .hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  .settings-panel .hint a { color: var(--accent); }
 
   .results { display: none; }
   .results.show { display: block; }
@@ -185,45 +113,35 @@
   .results .compact-row label { font-size: 12.5px; color: var(--muted); }
   .results .compact-row input, .results .compact-row select { font-size: 13px; padding: 6px 10px; }
   .results .subject-chips { padding: 8px; background: var(--tint); border: 1px solid var(--line); border-radius: 4px; min-height: 38px; }
-  .results .chip { display: inline-block; background: #cee0f3; color: #1d4666; padding: 3px 9px; margin: 2px; border-radius: 12px; font-size: 12px; border: 1px solid #a1bbd9; }
-  .results .chip .x { cursor: pointer; margin-inline-start: 5px; color: #1d4666; font-weight: bold; }
-  .results .chip .x:hover { color: var(--soft); }
+  .results .chip { display: inline-block; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); padding: 3px 9px; margin: 2px; border-radius: 12px; font-size: 12px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+  .results .chip .x { cursor: pointer; margin-inline-start: 5px; color: var(--accent); font-weight: bold; }
+  .results .chip .x:hover { color: var(--error); }
 
   .timeline-editor { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; table-layout: fixed; }
-  .timeline-editor th, .timeline-editor td { border: 1px solid var(--line); padding: 5px 8px; vertical-align: top; }
-  .timeline-editor th { background: var(--tint); font-weight: 700; color: var(--accent); }
-  .timeline-editor input, .timeline-editor textarea { width: 100%; border: none; background: transparent; padding: 4px 6px; font-size: 12.5px; resize: vertical; box-sizing: border-box; }
+  .timeline-editor th, .timeline-editor td { border: 1px solid var(--line); padding: 5px 8px; vertical-align: top; color: var(--ink); }
+  .timeline-editor th { background: var(--card-hover); font-weight: 700; color: var(--accent); }
+  .timeline-editor input, .timeline-editor textarea { width: 100%; border: none; background: transparent; padding: 4px 6px; font-size: 12.5px; resize: vertical; box-sizing: border-box; color: var(--ink); }
   .timeline-editor textarea { min-height: 50px; word-wrap: break-word; }
   .timeline-editor .tc-cell { width: 100px; padding: 5px 6px; }
   .timeline-editor .tc-cell input { text-align: center; direction: ltr; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; padding: 4px 2px; white-space: nowrap; }
   .timeline-editor .del-cell { width: 38px; text-align: center; padding: 5px 4px; }
   .timeline-editor .conf-cell { width: 86px; padding: 5px 5px; text-align: center; }
-  .conf-sel { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: var(--card);
+  .conf-sel { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--ink);
     font-size: 11.5px; padding: 3px 2px; font-weight: 700; cursor: pointer; }
-  .conf-sel.conf-high { color: var(--good); border-color: #b7dfc2; }
-  .conf-sel.conf-medium { color: var(--warn); border-color: #ecd9a8; }
-  .conf-sel.conf-low { color: var(--soft); border-color: #e6bcbc; }
+  .conf-sel.conf-high { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+  .conf-sel.conf-medium { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+  .conf-sel.conf-low { color: var(--error); border-color: color-mix(in srgb, var(--error) 40%, transparent); }
 
   /* Split button on film drop */
   .split-btn-wrap { display: none; margin-top: 10px; text-align: center; }
   .film-drop.has-file ~ .split-btn-wrap { display: block; }
-  .split-btn { background: #d97706; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; }
-  .split-btn:hover { background: #b45309; }
-
-  /* Split modal */
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
-  .modal-overlay.show { display: flex; }
-  .modal { background: white; border-radius: 8px; max-width: 620px; width: 100%; max-height: 90vh; overflow: auto; }
-  .modal .head { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
-  .modal .head h3 { margin: 0; font-size: 15px; color: var(--accent); }
-  .modal .body { padding: 16px; }
-  .modal .body label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 3px; color: var(--ink); }
-  .modal .foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; }
+  .split-btn { background: var(--tik); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; }
+  .split-btn:hover { background: color-mix(in srgb, var(--tik) 80%, black); }
 
   .split-progress { padding: 24px; text-align: center; }
-  .split-progress .big-spinner { border: 3px solid rgba(0,0,0,.1); border-top-color: var(--accent); width: 36px; height: 36px; border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 14px; }
+  .split-progress .big-spinner { border: 3px solid var(--line); border-top-color: var(--accent); width: 36px; height: 36px; border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 14px; }
   .split-progress .status-text { font-size: 14px; margin-bottom: 12px; color: var(--ink); }
-  .progress-bar-bg { background: #e0e0e0; border-radius: 4px; overflow: hidden; height: 8px; margin: 8px 0; }
+  .progress-bar-bg { background: var(--tint); border-radius: 4px; overflow: hidden; height: 8px; margin: 8px 0; }
   .progress-bar-fill { background: var(--accent); height: 100%; width: 0%; transition: width .3s; }
 
   .parts-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
@@ -232,30 +150,15 @@
   .parts-list .part-item .part-info b { color: var(--accent); }
   .parts-list .part-item .part-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: "SF Mono", monospace; direction: ltr; unicode-bidi: isolate; }
   .parts-list .part-item button { padding: 4px 10px; font-size: 11px; }
-  .parts-list .part-item .use-btn { background: #1565c0; }
-  .parts-list .part-item .use-btn:hover { background: #0d47a1; }
+  .parts-list .part-item .use-btn { background: var(--brand); color: #04222a; }
+  .parts-list .part-item .use-btn:hover { background: #5fe3f5; }
 
-  .download-bar { position: sticky; bottom: 0; background: var(--card); border-top: 2px solid var(--accent); padding: 10px 16px; margin: 0 -20px -20px; display: flex; gap: 10px; align-items: center; justify-content: space-between; z-index: 50; }
+  .download-bar { position: sticky; bottom: 0; background: var(--card); border-top: 1px solid var(--line-strong); padding: 10px 16px; margin: 0 -20px -20px; display: flex; gap: 10px; align-items: center; justify-content: space-between; z-index: 50; }
   @media (max-width: 720px) { .download-bar { padding: 8px 10px; flex-wrap: wrap; } }
 
-  .footer-hint { margin-top: 24px; padding: 12px 14px; background: #fef9e7; border: 1px solid #e6d28a; border-inline-start: 5px solid #c19b2e; border-radius: 8px; font-size: 12.5px; color: #6b4f0f; }
+  .footer-hint { margin-top: 24px; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-inline-start: 3px solid var(--brand); border-radius: var(--radius-sm); font-size: 12.5px; color: var(--ink); }
   footer.bottom { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
-  footer.bottom a { color: var(--accent); }
-  /* Native-label upload buttons — open the picker via the browser's own
-     <label for> -> input activation. A programmatic input.click() intermittently
-     freezes the file dialog on Chrome/macOS; a real label does not. */
-  label.upload-btn {
-    display: inline-block; box-sizing: border-box; vertical-align: middle;
-    background: transparent; color: var(--accent); border: 1px dashed var(--accent);
-    border-radius: 6px; padding: 8px 14px; font-family: inherit; font-size: 14.5px;
-    font-weight: 600; cursor: pointer; transition: background .15s;
-    -webkit-user-select: none; user-select: none;
-  }
-  label.upload-btn:hover { background: rgba(107,91,62,.08); }
-  .visually-hidden-file {
-    position: absolute; width: 1px; height: 1px; opacity: 0;
-    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-  }
+  footer.bottom a { color: var(--brand); }
 </style>
 </head>
 <body>
@@ -303,15 +206,15 @@
     </div>
     <div class="row provider-row" data-provider="unified-server" style="display:none;">
       <label>שרת CLI מקומי (URL)</label>
-      <div>
+      <div style="min-width:0;">
         <input type="text" id="local-server-url" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="direction:ltr; text-align:left; width:100%;">
-        <div style="margin-top:6px; padding:6px 10px; background:#f8f6f0; border:1px solid #d8d4cc; border-radius:6px; font-size:12px; display:flex; align-items:center; gap:8px;">
-          <span style="color:#5a5a5a; font-weight:600;">📋 שרת פעיל:</span>
-          <code id="active-tunnel-url" style="flex:1; direction:ltr; unicode-bidi:isolate; background:#fff; padding:3px 8px; border-radius:4px; font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">https://bryant-widespread-building-fingers.trycloudflare.com</code>
-          <button type="button" id="copy-tunnel-btn" style="padding:3px 10px; font-size:11px; background:#6b5b3e; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">📋 העתק</button>
-          <button type="button" id="fill-tunnel-btn" style="padding:3px 10px; font-size:11px; background:#8a7758; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">⬇ הזן</button>
+        <div style="margin-top:6px; padding:6px 10px; background:var(--tint); border:1px solid var(--line); border-radius:6px; font-size:12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="color:var(--muted); font-weight:600;">📋 שרת פעיל:</span>
+          <code id="active-tunnel-url" style="flex:1; min-width:0; direction:ltr; unicode-bidi:isolate; background:var(--card-hover); color:var(--ink); padding:3px 8px; border-radius:4px; font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">https://bryant-widespread-building-fingers.trycloudflare.com</code>
+          <button type="button" id="copy-tunnel-btn" style="padding:3px 10px; font-size:11px; background:var(--accent); color:#04121f; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">📋 העתק</button>
+          <button type="button" id="fill-tunnel-btn" style="padding:3px 10px; font-size:11px; background:var(--accent-2); color:#04121f; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">⬇ הזן</button>
         </div>
-        <div style="margin-top:4px; font-size:11px; color:#888;">⚠ URL זמני — משתנה בכל הפעלה מחדש של ה-tunnel. למשהו קבוע: <code>local-server/SETUP_CLOUDFLARE.md</code></div>
+        <div style="margin-top:4px; font-size:11px; color:var(--muted);">⚠ URL זמני — משתנה בכל הפעלה מחדש של ה-tunnel. למשהו קבוע: <code>local-server/SETUP_CLOUDFLARE.md</code></div>
       </div>
     </div>
     <div class="row">
@@ -321,7 +224,7 @@
           <input type="checkbox" id="proxy-gemini-checkbox" style="margin:0;">
           <span>השתמש בשרת המקומי כ-proxy ל-Gemini (לשימוש ממחשב עבודה שחוסם Google)</span>
         </label>
-        <div style="margin-top:4px; color:#888; font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן.</div>
+        <div style="margin-top:4px; color:var(--muted); font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן.</div>
       </div>
     </div>
     <div class="row provider-row" data-provider="anthropic">
@@ -371,18 +274,18 @@
     <div class="body">
 
       <!-- Queue panel for films -->
-      <div id="film-queue-panel" style="display:none; margin-bottom:14px; padding:10px 12px; background:#eef4fb; border:1px solid #c5d4e7; border-radius:8px;">
+      <div id="film-queue-panel" style="display:none; margin-bottom:14px; padding:10px 12px; background:color-mix(in srgb, var(--accent) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius:8px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-          <div style="font-weight:700; color:#1d4666; font-size:13.5px;">
-            🎞 תור סרטים <span id="film-queue-summary" style="font-weight:400; font-size:12px; color:#5a7390; margin-inline-start:6px;"></span>
+          <div style="font-weight:700; color:var(--accent); font-size:13.5px;">
+            🎞 תור סרטים <span id="film-queue-summary" style="font-weight:400; font-size:12px; color:var(--muted); margin-inline-start:6px;"></span>
           </div>
           <div style="display:flex; gap:6px;">
             <label id="film-queue-add-more-btn" class="upload-btn" for="film-batch-input" style="padding:3px 9px; font-size:11.5px; border-color:var(--accent); color:var(--accent);">+ הוסף עוד</label>
-            <button type="button" id="film-queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:#b22222; border-color:#b22222;">🗑 נקה תור</button>
+            <button type="button" id="film-queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:var(--error); border-color:var(--error);">🗑 נקה תור</button>
           </div>
         </div>
         <div id="film-queue-list" style="display:flex; gap:8px; overflow-x:auto; padding:4px; align-items:stretch;"></div>
-        <div id="film-queue-rate-warn" style="display:none; margin-top:6px; padding:6px 10px; background:#fff3cd; border:1px solid #ffe69c; border-radius:4px; font-size:11.5px; color:#856404;"></div>
+        <div id="film-queue-rate-warn" style="display:none; margin-top:6px; padding:6px 10px; background:color-mix(in srgb, var(--warn) 14%, var(--card)); border:1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius:4px; font-size:11.5px; color:var(--warn);"></div>
       </div>
 
       <label id="film-drop" class="film-drop" for="film-file-input" tabindex="0">
@@ -396,15 +299,15 @@
       </label>
       <input type="file" id="film-file-input" accept="video/*" class="visually-hidden-file">
       <div class="yv-flow-mount" style="text-align:center; margin-top:8px"></div>
-      <label style="display:block; direction:rtl; text-align:center; margin-top:6px; font-size:12.5px; color:#33475b; cursor:pointer;">
+      <label style="display:block; direction:rtl; text-align:center; margin-top:6px; font-size:12.5px; color:var(--muted); cursor:pointer;">
         <input type="checkbox" id="film-direct-upload" style="vertical-align:middle; margin-inline-end:4px;">
         ⬆️ העלאה מלאה לשרת — הווידאו כולו מועלה (בנתחים מעל 60MB, גם מעל 100MB) והשרת מחלץ פריימים צפופים ב-ffmpeg
       </label>
-      <div style="direction:rtl; text-align:center; margin-top:6px; font-size:12px; color:#856404;">
-        🖥️ סרט ארוך (מעל ~10 דק׳) שנמצא על מחשב השרת? <a href="server-films.html" id="server-films-link" style="color:#b45309; font-weight:700;">קטלוג על השרת — בלי העלאה, בכל אורך</a>
+      <div style="direction:rtl; text-align:center; margin-top:6px; font-size:12px; color:var(--warn);">
+        🖥️ סרט ארוך (מעל ~10 דק׳) שנמצא על מחשב השרת? <a href="server-films.html" id="server-films-link" style="color:var(--warn); font-weight:700;">קטלוג על השרת — בלי העלאה, בכל אורך</a>
       </div>
       <div id="film-meta" class="film-meta-grid" style="display:none"></div>
-      <div id="film-server-hint" style="display:none; direction:rtl; text-align:right; margin-top:8px; padding:8px 12px; background:#fff3cd; border:1px solid #ffe69c; border-radius:6px; font-size:12.5px; color:#856404; line-height:1.6;"></div>
+      <div id="film-server-hint" style="display:none; direction:rtl; text-align:right; margin-top:8px; padding:8px 12px; background:color-mix(in srgb, var(--warn) 14%, var(--card)); border:1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius:6px; font-size:12.5px; color:var(--warn); line-height:1.6;"></div>
       <div class="split-btn-wrap">
         <button type="button" class="split-btn" id="open-split-btn">✂️ חתוך לחלקים <small style="opacity:.85; font-weight:400">— לסרטים גדולים, או לקטלוג קטעים נפרדים</small></button>
       </div>
@@ -433,10 +336,10 @@
           </div>
           <div style="display:grid; grid-template-columns:180px 1fr; gap:10px; align-items:center; margin-bottom:8px">
             <label>מספר חלקים צפוי</label>
-            <input type="text" id="split-part-count" readonly style="background:#f0f0f0">
+            <input type="text" id="split-part-count" readonly style="background:var(--card-hover)">
           </div>
 
-          <div style="margin-top:14px; padding:10px 14px; background:#fff3cd; border:1px solid #ffe69c; border-radius:6px; font-size:12px; color:#856404">
+          <div style="margin-top:14px; padding:10px 14px; background:color-mix(in srgb, var(--warn) 14%, var(--card)); border:1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius:6px; font-size:12px; color:var(--warn)">
             💡 <b>פעם ראשונה:</b> ייטען ffmpeg.wasm (~25MB) מ-CDN. לאחר מכן זה מהיר.
             <br>💡 <b>חיתוך ללא איבוד איכות</b> (<code style="font-family:monospace; direction:ltr">-c copy</code>) — רק remuxing, ללא re-encode.
             <br>💡 <b>הזמן הצפוי:</b> ~30 שניות לטעינה ראשונית + ~5–15 שניות לכל חלק.
@@ -877,7 +780,7 @@ function renderServerPathHint(m) {
   const linkEl = document.getElementById('server-films-link');
   const href = (linkEl && linkEl.getAttribute('href')) || 'server-films.html';
   hint.innerHTML = `🖥️ ${why} — ${strong ? '<b>מומלץ מאוד</b>' : 'מומלץ'} לקטלג במסלול השרת: `
-    + `<a href="${href}" style="color:#7a5b00; font-weight:700;">קטלוג על השרת</a> `
+    + `<a href="${href}" style="color:var(--warn); font-weight:700;">קטלוג על השרת</a> `
     + `(בלי העלאה, ניתוח בחלונות בכל אורך — הנח את הקובץ בתיקיית <code style="unicode-bidi:isolate">media/films/</code> על המחשב של השרת). `
     + `אפשר גם להמשיך כאן${strong ? ', אך כיסוי הפריימים יהיה דליל והעיבוד בדפדפן איטי' : ''}.`;
   hint.style.display = 'block';
@@ -946,12 +849,12 @@ state.film_queue_processor_running = false;
 
 const FILM_BATCH_MAX = 5;
 const FILM_QUEUE_STATUSES = {
-  pending:   { icon: '⏳', label: 'ממתין',  color: '#5a7390' },
-  analyzing: { icon: '🔄', label: 'מנתח',   color: '#0d47a1' },
-  ready:     { icon: '✓',  label: 'מוכן',   color: '#2e7d32' },
-  reviewing: { icon: '▶',  label: 'בסקירה', color: '#2c5d8a' },
-  done:      { icon: '💾', label: 'נשמר',   color: '#155724' },
-  error:     { icon: '❌', label: 'שגיאה',  color: '#b22222' },
+  pending:   { icon: '⏳', label: 'ממתין',  color: 'var(--muted)' },
+  analyzing: { icon: '🔄', label: 'מנתח',   color: 'var(--brand)' },
+  ready:     { icon: '✓',  label: 'מוכן',   color: 'var(--good)' },
+  reviewing: { icon: '▶',  label: 'בסקירה', color: 'var(--accent)' },
+  done:      { icon: '💾', label: 'נשמר',   color: 'var(--good)' },
+  error:     { icon: '❌', label: 'שגיאה',  color: 'var(--error)' },
 };
 
 document.getElementById('film-batch-input').addEventListener('change', e => {
@@ -1003,7 +906,7 @@ function renderFilmQueuePanel() {
     const sizeMB = (it.file.size / 1024 / 1024).toFixed(0);
     const errTooltip = it.error ? ` title="${esc(it.error)}"` : '';
     return `<div class="film-queue-item" data-idx="${idx}"${errTooltip}
-      style="flex:0 0 auto; width:140px; cursor:pointer; padding:8px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? '#fff' : 'transparent'};">
+      style="flex:0 0 auto; width:140px; cursor:pointer; padding:8px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'};">
       <div style="font-size:11.5px; color:var(--ink); font-weight:600; direction:ltr; unicode-bidi:isolate; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(it.file.name)}</div>
       <div style="font-size:10.5px; color:var(--muted); text-align:center; margin-top:2px;">${sizeMB} MB</div>
       <div style="text-align:center; margin-top:6px; font-size:11.5px; color:${s.color}; font-weight:600;">
@@ -1438,7 +1341,7 @@ async function runUnifiedServer() {
 function addFilmFacesButton(base) {
   if (!state.lastFramesStem || document.getElementById('film-faces-btn')) return;
   const catalogLinksHtml = identifyStatus.innerHTML;   // restored next to the faces link on success
-  identifyStatus.innerHTML += ' · <button type="button" id="film-faces-btn" style="padding:3px 10px; font-size:12px; cursor:pointer; border:1px solid var(--accent); border-radius:5px; background:#fff; color:var(--accent); font-family:inherit;">🧑‍🤝‍🧑 זיהוי דמויות בסרט</button>';
+  identifyStatus.innerHTML += ' · <button type="button" id="film-faces-btn" style="padding:3px 10px; font-size:12px; cursor:pointer; border:1px solid var(--accent); border-radius:5px; background:var(--card); color:var(--accent); font-family:inherit;">🧑‍🤝‍🧑 זיהוי דמויות בסרט</button>';
   document.getElementById('film-faces-btn').addEventListener('click',
     () => runFilmFaces(base, state.lastFramesStem, catalogLinksHtml));
 }

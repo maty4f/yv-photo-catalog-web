@@ -4,77 +4,75 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>קטלוג תיק (Claude קורא ומסנתז)</title>
+<link rel="stylesheet" href="yv-theme.css">
 <style>
-  :root{
-    --bg:#f7f5f0; --card:#fff; --ink:#1a1a1a; --muted:#5a5a5a; --line:#d8d4cc;
-    --accent:#2e7d4e; --accent-2:#1f5c38; --he-tint:#fbf9f3; --en-tint:#f3f6fb;
-    --high:#2e7d32; --mid:#b07000; --low:#b22222; --diamond:#6b3f9b;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",Arial,sans-serif;
-       direction:rtl;text-align:right;line-height:1.6;font-size:15px}
+  :root{ --accent:var(--tik); --accent-2:#c9a6ff; --diamond:var(--brand); --high:var(--good); --mid:var(--warn); --low:var(--error); }
+  body{ font-size:15px; line-height:1.6; }
   .wrap{max-width:1080px;margin:0 auto;padding:20px 16px 80px}
-  h1{font-size:22px;margin:0 0 4px}
+  h1{font-size:20px;margin:0 0 4px;font-weight:800}
   .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
-  .card h2{font-size:15px;margin:0 0 12px;color:var(--accent-2)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px;box-shadow:0 10px 28px -18px rgba(0,0,0,.7)}
+  .card h2{font-size:15px;margin:0 0 12px;color:var(--accent)}
   label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
-  input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;
-       font-family:inherit;font-size:14px;background:#fff}
+  input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);
+       font-family:inherit;font-size:14px;background:var(--tint);color:var(--ink)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);background:var(--card);box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent)}
   input[type=password],input.ltr{direction:ltr;text-align:left}
   textarea{min-height:70px;resize:vertical}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .hint{font-size:11.5px;color:#888;margin-top:3px}
-  .drop{border:2px dashed var(--line);border-radius:8px;padding:22px;text-align:center;color:var(--muted);
-        background:#fcfbf8;cursor:pointer}
-  .drop.over{background:#e9f2ec;border-color:var(--accent)}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .drop{border:1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent);border-radius:var(--radius);padding:22px;text-align:center;color:var(--accent);
+        background:var(--tint);cursor:pointer;transition:background .15s,border-color .15s}
+  .drop.over{background:color-mix(in srgb, var(--accent) 14%, var(--card));border-color:var(--accent)}
   .filelist{margin-top:10px;font-size:13px}
-  .filelist .f{display:flex;justify-content:space-between;padding:4px 8px;background:#f5f3ee;border-radius:5px;margin:3px 0}
-  button.go{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:11px 20px;font-size:15px;
-       font-weight:600;cursor:pointer;font-family:inherit}
-  button.go:disabled{background:#aebcae;cursor:not-allowed}
-  .status{margin-top:12px;font-size:13.5px;padding:8px 12px;border-radius:6px;display:none}
+  .filelist .f{display:flex;justify-content:space-between;padding:4px 8px;background:var(--card-hover);border-radius:5px;margin:3px 0}
+  button.go{background:var(--accent);color:#150a22;border:none;border-radius:var(--radius-sm);padding:11px 20px;font-size:15px;
+       font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 0 14px color-mix(in srgb, var(--accent) 35%, transparent)}
+  button.go:hover:not(:disabled){background:var(--accent-2)}
+  button.go:disabled{background:#3a4152;color:#7d8598;cursor:not-allowed;box-shadow:none}
+  .status{margin-top:12px;font-size:13.5px;padding:8px 12px;border-radius:var(--radius-sm);display:none}
   .status.show{display:block}
-  .status.info{background:#eef4f7;color:#234}
-  .status.ok{background:#e8f5e9;color:#1b5e20}
-  .status.err{background:#fdecea;color:#8a1c12;white-space:pre-wrap}
-  .spinner{display:inline-block;width:13px;height:13px;border:2px solid #fff;border-top-color:transparent;
+  .status.info{background:color-mix(in srgb, var(--brand) 14%, var(--card));color:var(--brand)}
+  .status.ok{background:color-mix(in srgb, var(--good) 14%, var(--card));color:var(--good)}
+  .status.err{background:color-mix(in srgb, var(--error) 14%, var(--card));color:var(--error);white-space:pre-wrap}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:#150a22;
        border-radius:50%;animation:sp .7s linear infinite;margin-left:7px;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
 
   /* results */
   #results{display:none}
   #results.show{display:block}
-  .field{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;overflow:hidden;background:#fff}
-  .field .head{display:flex;justify-content:space-between;align-items:center;background:#f3f1ec;
+  .field{border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden;background:var(--card)}
+  .field .head{display:flex;justify-content:space-between;align-items:center;background:var(--card-hover);
        padding:6px 12px;border-bottom:1px solid var(--line)}
   .field .label{font-weight:600;font-size:13px}
   .field .body{padding:10px 14px;direction:rtl;text-align:right;unicode-bidi:isolate;white-space:pre-wrap}
-  .copy-btn{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:12px;
-       cursor:pointer;font-family:inherit}
+  .copy-btn{background:var(--accent);color:#150a22;border:none;border-radius:var(--radius-sm);padding:4px 12px;font-size:12px;
+       cursor:pointer;font-family:inherit;font-weight:700}
   .copy-btn:hover{background:var(--accent-2)}
-  .copy-btn.copied{background:#2e7d32}
-  .section-bar{background:var(--accent-2);color:#fff;padding:6px 14px;border-radius:6px;font-weight:600;
-       font-size:13px;margin:18px 0 10px}
+  .copy-btn.copied{background:var(--good);color:#06210f}
+  .section-bar{padding:0 0 9px;position:relative;color:var(--accent);font-weight:700;
+       font-size:14px;margin:18px 0 10px}
+  .section-bar::after{content:"";position:absolute;right:0;bottom:0;width:64px;height:2px;background:linear-gradient(90deg,var(--accent),transparent)}
   .cmark{font-weight:700;font-size:12px;padding:0 3px;border-radius:3px}
   .cmark.high{color:var(--high)} .cmark.mid{color:var(--mid)} .cmark.low{color:var(--low)}
-  .diamond{border-right:4px solid var(--diamond);background:#f7f2fb;padding:8px 12px;margin:6px 0;border-radius:4px}
+  .diamond{border-right:4px solid var(--diamond);background:color-mix(in srgb, var(--diamond) 10%, var(--card));padding:8px 12px;margin:6px 0;border-radius:4px}
   .diamond b{color:var(--diamond)}
-  .disagree{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 14px;margin-bottom:14px}
-  .disagree h3{margin:0 0 8px;color:#8a6d00;font-size:14px}
-  .disagree .d{padding:6px 0;border-bottom:1px dashed #ffe082;font-size:13px}
+  .disagree{background:color-mix(in srgb, var(--warn) 12%, var(--card));border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px}
+  .disagree h3{margin:0 0 8px;color:var(--warn);font-size:14px}
+  .disagree .d{padding:6px 0;border-bottom:1px dashed color-mix(in srgb, var(--warn) 40%, transparent);font-size:13px}
   .disagree .d:last-child{border:none}
-  .disagree .src{display:inline-block;min-width:62px;font-weight:600;color:#5a5a5a}
-  .none{color:#999;font-style:italic}
+  .disagree .src{display:inline-block;min-width:62px;font-weight:600;color:var(--muted)}
+  .none{color:var(--muted);font-style:italic}
   .tbl{width:100%;border-collapse:collapse;font-size:13px;direction:rtl;text-align:right}
-  .tbl th,.tbl td{border:1px solid var(--line);padding:5px 8px;text-align:right;vertical-align:top;unicode-bidi:isolate}
-  .tbl th{background:#f3f1ec;font-weight:600;color:var(--accent-2);white-space:nowrap}
-  .tbl tr:nth-child(even) td{background:#faf9f5}
-  .chip{display:inline-block;background:#eef4f0;border:1px solid #cfe3d6;color:#1f5c38;border-radius:14px;
+  .tbl th,.tbl td{border:1px solid var(--line);padding:5px 8px;text-align:right;vertical-align:top;unicode-bidi:isolate;color:var(--ink)}
+  .tbl th{background:var(--card-hover);font-weight:600;color:var(--accent);white-space:nowrap}
+  .tbl tr:nth-child(even) td{background:var(--tint)}
+  .chip{display:inline-block;background:color-mix(in srgb, var(--accent) 14%, transparent);border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);color:var(--accent);border-radius:14px;
        padding:3px 11px;margin:3px 4px 3px 0;font-size:12.5px;unicode-bidi:isolate}
-  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--line-strong);color:var(--ink);
        padding:8px 18px;border-radius:20px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
-  .toast.show{opacity:.95}
+  .toast.show{opacity:.97}
 
   /* chat about the תיק */
   #chat-panel{display:none}
@@ -83,42 +81,26 @@
        padding:6px 2px;margin-bottom:10px}
   .msg{max-width:85%;padding:9px 13px;border-radius:12px;font-size:14px;line-height:1.55;
        white-space:pre-wrap;direction:rtl;text-align:right;unicode-bidi:isolate}
-  .msg.user{align-self:flex-start;background:#e9f2ec;border:1px solid #cfe3d6;border-bottom-right-radius:4px}
-  .msg.bot{align-self:flex-end;background:#f3f1ec;border:1px solid var(--line);border-bottom-left-radius:4px}
+  .msg.user{align-self:flex-start;background:color-mix(in srgb, var(--accent) 12%, var(--card));border:1px solid color-mix(in srgb, var(--accent) 35%, transparent);border-bottom-right-radius:4px}
+  .msg.bot{align-self:flex-end;background:var(--card-hover);border:1px solid var(--line);border-bottom-left-radius:4px}
   .chat-bar{display:flex;gap:8px;align-items:flex-end}
   .chat-bar textarea{min-height:46px}
   @media(max-width:640px){.row2{grid-template-columns:1fr}}
-
-  /* Native-label upload buttons — open the picker via the browser's own
-     <label for> -> input activation. A programmatic input.click() intermittently
-     freezes the file dialog on Chrome/macOS; a real label does not. */
-  label.upload-btn {
-    display: inline-block; box-sizing: border-box; vertical-align: middle;
-    background: transparent; color: var(--accent); border: 1px dashed var(--accent);
-    border-radius: 6px; padding: 8px 14px; font-family: inherit; font-size: 14.5px;
-    font-weight: 600; cursor: pointer; transition: background .15s;
-    -webkit-user-select: none; user-select: none;
-  }
-  label.upload-btn:hover { background: rgba(107,91,62,.08); }
-  .visually-hidden-file {
-    position: absolute; width: 1px; height: 1px; opacity: 0;
-    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <a href="index.html" style="text-decoration:none;display:inline-block;margin-bottom:10px">
-    <button type="button" style="background:#f5f3ee;color:#234;border:1px solid var(--line);border-radius:7px;padding:8px 16px;font-size:14px;cursor:pointer;font-family:inherit">← דף הבית</button>
+    <button type="button" class="gear" style="border-radius:7px;padding:8px 16px;font-size:14px;">← דף הבית</button>
   </a>
   <h1>קטלוג תיק — מקורות פרטיים (ספיר)</h1>
   <div class="sub">רשומה אחת לכל תיק · Claude קורא את כל דפי התיק (במנות) ואז מסנתז רשומת-תיק אחת · סימוני ודאות ונקודות לבדיקת אנוש</div>
 
   <!-- שתי רמות קטלוג מסמכים: קטלוג ברמת תיק (המסך הזה) ↔ תיאור מסמך מלא (documents.html) -->
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#ebf3ed;border:1px solid var(--line);border-radius:10px;padding:9px 14px;margin-bottom:16px;font-size:13.5px" role="navigation" aria-label="רמת קטלוג">
-    <b style="color:var(--accent-2)">רמת הקטלוג:</b>
-    <span style="background:var(--accent-2);color:#fff;border-radius:7px;padding:4px 12px;font-weight:600">🗂 קטלוג ברמת תיק <small style="font-weight:400;opacity:.85">— תיאור כללי אחד לכל התיק (המסך הזה)</small></span>
-    <a href="documents.html" style="text-decoration:none;color:var(--accent-2);border:1px solid var(--accent);border-radius:7px;padding:4px 12px;background:#fff">📄 תיאור מסמך מלא <small style="color:var(--muted)">— תעתיק, תרגום וניתוח מלא לכל מסמך</small></a>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--tint);border:1px solid var(--line);border-radius:10px;padding:9px 14px;margin-bottom:16px;font-size:13.5px" role="navigation" aria-label="רמת קטלוג">
+    <b style="color:var(--accent)">רמת הקטלוג:</b>
+    <span style="background:var(--accent);color:#150a22;border-radius:7px;padding:4px 12px;font-weight:600">🗂 קטלוג ברמת תיק <small style="font-weight:400;opacity:.85">— תיאור כללי אחד לכל התיק (המסך הזה)</small></span>
+    <a href="documents.html" style="text-decoration:none;color:var(--accent);border:1px solid var(--accent);border-radius:7px;padding:4px 12px;background:var(--card)">📄 תיאור מסמך מלא <small style="color:var(--muted)">— תעתיק, תרגום וניתוח מלא לכל מסמך</small></a>
   </div>
 
   <!-- CONFIG -->
@@ -195,8 +177,8 @@
     <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" class="visually-hidden-file">
     <input type="file" id="folder-input" webkitdirectory directory multiple class="visually-hidden-file">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
-      <label id="pick-folder" class="upload-btn" for="folder-input" style="background:transparent;color:#2c5d8a;border-color:#2c5d8a">📁 העלה תיקייה שלמה</label>
-      <button type="button" id="clear-files" class="copy-btn" style="background:#8a3a2c">נקה</button>
+      <label id="pick-folder" class="upload-btn" for="folder-input" style="color:var(--films);border-color:var(--films)">📁 העלה תיקייה שלמה</label>
+      <button type="button" id="clear-files" class="copy-btn" style="background:var(--error);color:#fff">נקה</button>
     </div>
     <div class="hint">תיקייה = תיק אחד. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
     <div class="filelist" id="filelist"></div>
@@ -212,16 +194,16 @@
 
   <div class="yv-flow-mount" style="margin:8px 0"></div>
   <button class="go" id="run" disabled>קטלג תיק</button>
-  <button class="go" id="describe-fast" disabled style="background:#2c5d8a;margin-inline-start:8px">⚡ תיאור מהיר (Gemini→Claude)</button>
+  <button class="go" id="describe-fast" disabled style="background:var(--films);color:#04121f;margin-inline-start:8px">⚡ תיאור מהיר (Gemini→Claude)</button>
   <div class="status" id="status"></div>
-  <div id="pdf-bar" style="display:none;margin-top:10px;font-size:13.5px;padding:8px 12px;border-radius:6px;background:#eef4f7;color:#234"></div>
+  <div id="pdf-bar" style="display:none;margin-top:10px;font-size:13.5px;padding:8px 12px;border-radius:6px;background:color-mix(in srgb, var(--brand) 14%, var(--card));color:var(--brand)"></div>
 
   <div class="yv-progress-mount"></div>
 
   <!-- RESULTS -->
   <div id="results">
     <div id="tik-export-bar" style="display:none; margin-bottom:12px;">
-      <button type="button" id="notebooklm-btn" class="copy-btn" style="background:#6b3f9b" title="ייצוא שמות · תאריכים · הקשר של התיק — קובץ Markdown להעלאה כמקור ב-NotebookLM">🧠 ייצוא ל-NotebookLM</button>
+      <button type="button" id="notebooklm-btn" class="copy-btn" title="ייצוא שמות · תאריכים · הקשר של התיק — קובץ Markdown להעלאה כמקור ב-NotebookLM">🧠 ייצוא ל-NotebookLM</button>
     </div>
     <div id="disagree-box"></div>
     <div id="record"></div>
@@ -696,7 +678,7 @@ function renderRecord(rec,restored){
   const nm=(rec.names_index||[]).filter(p=>p&&(p.name||p.name_original));
   const nmHtml=nm.length
     ? `<table class="tbl"><thead><tr><th>שם</th><th>תפקיד/קרבה</th><th>לידה</th><th>פטירה</th><th>מקום</th><th>גורל</th><th>דפים</th></tr></thead><tbody>`+
-        nm.map(p=>{const name=esc(p.name||'')+(p.name_original?` <span style="color:#5a5a5a">(${esc(p.name_original)})</span>`:'');
+        nm.map(p=>{const name=esc(p.name||'')+(p.name_original?` <span style="color:var(--muted)">(${esc(p.name_original)})</span>`:'');
           return `<tr><td>${name||'—'}</td><td>${esc(p.role||'—')}</td><td>${esc(p.birth||'—')}</td><td>${esc(p.death||'—')}</td><td>${esc(p.place||'—')}</td><td>${esc(p.fate||'—')}</td><td>${esc(p.source_pages||'—')}</td></tr>`;}).join('')+
       `</tbody></table>`
     : '<span class="none">— לא זוהו שמות —</span>';
@@ -765,7 +747,8 @@ function renderRecord(rec,restored){
   document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
     b.addEventListener('click',async()=>{
       const el=$(b.getAttribute('data-copy')); if(!el)return;
-      try{await navigator.clipboard.writeText(el.innerText.trim());}catch(e){}
+      try{await navigator.clipboard.writeText(el.innerText.trim());}
+      catch(e){const t=document.createElement('textarea');t.value=el.innerText.trim();document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
       const o=b.textContent;b.classList.add('copied');b.textContent='✓';
       $('toast').classList.add('show');
       setTimeout(()=>{b.classList.remove('copied');b.textContent=o;$('toast').classList.remove('show');},1100);
@@ -892,13 +875,13 @@ $('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e
   try{saved=JSON.parse(localStorage.getItem('yv_tik_last_record')||'null');}catch(e){}
   if(!saved||!saved.rec)return;
   const bar=document.createElement('div');
-  bar.style.cssText='background:#fdf3e3;border:1px solid #ecd9b0;border-radius:8px;padding:9px 14px;margin-bottom:14px;font-size:13.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+  bar.style.cssText='background:color-mix(in srgb, var(--warn) 12%, var(--card));border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);border-radius:8px;padding:9px 14px;margin-bottom:14px;font-size:13.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--ink)';
   const when=new Date(saved.savedAt||Date.now()).toLocaleString('he-IL');
   const sp=document.createElement('span');
   sp.innerHTML='💾 נמצאה רשומת-תיק מריצה קודמת <b>('+esc(when)+')</b> — הרשומה אינה נשמרת בשרת; שחזר כדי להמשיך לעבוד עליה.';
   bar.appendChild(sp);
   const mk=(t,primary)=>{const b=document.createElement('button');b.type='button';b.textContent=t;
-    b.style.cssText='border-radius:6px;padding:4px 12px;cursor:pointer;font-family:inherit;font-size:13px;border:1px solid '+(primary?'#2e7d4e;background:#2e7d4e;color:#fff':'#d8d4cc;background:#fff;color:#5a5a5a');return b;};
+    b.style.cssText='border-radius:6px;padding:4px 12px;cursor:pointer;font-family:inherit;font-size:13px;border:1px solid '+(primary?'var(--accent);background:var(--accent);color:#150a22':'var(--line-strong);background:var(--card);color:var(--muted)');return b;};
   const rb=mk('שחזר את הרשומה',true), xb=mk('מחק',false);
   rb.addEventListener('click',()=>{
     if(Array.isArray(saved.notes))state.chunkNotes=saved.notes; // re-grounds the chat
@@ -993,7 +976,7 @@ async function maybeBuildCombinedPdf(){
     state.pdfName=fname;
     triggerDownload(state.pdfBlob,fname);
     bar.innerHTML='✓ PDF מאוחד מוכן ('+imgs.length+' עמ׳) — '+esc(fname)+' ';
-    const b=document.createElement('button');b.className='copy-btn';b.style.background='#2c5d8a';b.textContent='⬇ הורד שוב';
+    const b=document.createElement('button');b.className='copy-btn';b.style.background='var(--films)';b.style.color='#fff';b.textContent='⬇ הורד שוב';
     b.addEventListener('click',()=>triggerDownload(state.pdfBlob,state.pdfName));
     bar.appendChild(b);
   }catch(e){bar.innerHTML='⚠ בניית ה-PDF המאוחד נכשלה: '+esc(e.message);}
@@ -1002,7 +985,7 @@ async function maybeBuildCombinedPdf(){
 /* ---------- run (chunked: Claude reads every page, then synthesizes one record) ---------- */
 $('run').addEventListener('click',async()=>{
   if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return;}
-  try{serverBase();}catch(e){showStatus(e.message,'err');return;}
+  try{serverBase();}catch(e){showStatus(esc(e.message),'err');return;}
   const engine=$('engine-mode').value;  // 'claude' | 'dual'
   if(engine==='dual'){
     state.keyGemini=$('key-gemini').value.trim();
@@ -1023,7 +1006,7 @@ $('run').addEventListener('click',async()=>{
     if(state.intakeFiles.length){
       showStatus('<span class="spinner"></span>קורא את טופס האיסוף / הדף המלווה…','info');
       try{state.intakeText=await claudeReadChunk(state.intakeFiles,INTAKE_EXTRACT_RULES);}
-      catch(e){showStatus('⚠ קריאת טופס האיסוף נכשלה ('+e.message+') — ממשיך בלי המידע מהטופס.','info');}
+      catch(e){showStatus('⚠ קריאת טופס האיסוף נכשלה ('+esc(e.message)+') — ממשיך בלי המידע מהטופס.','info');}
     }
     // Stage 1 — the chosen reader reads every chunk (full coverage) → free-text notes.
     // Precompute each chunk's page-range label up front so chunks can be read in
@@ -1102,14 +1085,14 @@ $('run').addEventListener('click',async()=>{
     $('results').scrollIntoView({behavior:'smooth'});
   }catch(err){
     console.error(err);
-    showStatus('שגיאה: '+err.message+(err.rawText?'\n\n=== תגובה גולמית ===\n'+err.rawText.slice(0,1200):''),'err');
+    showStatus('שגיאה: '+esc(err.message)+(err.rawText?'\n\n=== תגובה גולמית ===\n'+esc(err.rawText.slice(0,1200)):''),'err');
   }finally{$('run').disabled=false;}
 });
 
 /* ---------- ⚡ fast description: ONE whole-PDF Gemini call (no page-by-page) ---------- */
 async function fastDescribe(){
   if(!state.files.length){showStatus('העלה תיק (PDF או סריקות) קודם.','err');return;}
-  try{serverBase();}catch(e){showStatus(e.message,'err');return;}
+  try{serverBase();}catch(e){showStatus(esc(e.message),'err');return;}
   $('run').disabled=true;$('describe-fast').disabled=true;
   try{
     // One PDF for the whole tik. For image scans, build a DOWNSIZED PDF (~1100px):
@@ -1222,7 +1205,7 @@ async function fastDescribe(){
       }
     }
     throw new Error('הדפדפן המתין 90 דקות והתיאור עדיין לא הסתיים — ייתכן שהשרת עדיין עובד או נתקע. בדוק מול המקטלג לפני ניסיון חוזר.');
-  }catch(err){console.error(err);showStatus('שגיאה בתיאור מהיר: '+err.message,'err');}
+  }catch(err){console.error(err);showStatus('שגיאה בתיאור מהיר: '+esc(err.message),'err');}
   finally{$('run').disabled=false;$('describe-fast').disabled=false;}
 }
 $('describe-fast').addEventListener('click',fastDescribe);
@@ -1239,7 +1222,7 @@ syncEngineUI();
 /* ---------- persist settings locally ---------- */
 const PERSIST=['engine-mode','key-gemini','model-gemini','model-claude','server-url','chunk-size','img-edge','tiling'];
 const STORE_KEY='yv-tik-settings';
-function setSaveState(msg,color){const el=$('save-state');if(el){el.textContent=msg;el.style.color=color||'#2e7d32';}}
+function setSaveState(msg,color){const el=$('save-state');if(el){el.textContent=msg;el.style.color=color||'var(--good)';}}
 function loadSettings(){
   let s={};
   try{s=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
@@ -1254,12 +1237,12 @@ function loadSettings(){
     if(!cur||/trycloudflare\.com/.test(cur))$('server-url').value=location.origin;
   }
   syncEngineUI();
-  setSaveState('🔒 הגדרות נטענו מהמכשיר','#2e7d32');
+  setSaveState('🔒 הגדרות נטענו מהמכשיר','var(--good)');
 }
 function saveSettings(){
   try{const s={};PERSIST.forEach(id=>{if($(id))s[id]=$(id).value;});
     localStorage.setItem(STORE_KEY,JSON.stringify(s));
-    setSaveState('🔒 נשמר במכשיר זה','#2e7d32');}catch(e){setSaveState('⚠ לא ניתן לשמור (אחסון חסום בדפדפן)','#b22222');}
+    setSaveState('🔒 נשמר במכשיר זה','var(--good)');}catch(e){setSaveState('⚠ לא ניתן לשמור (אחסון חסום בדפדפן)','var(--error)');}
 }
 PERSIST.forEach(id=>{const el=$(id);if(el){el.addEventListener('change',saveSettings);el.addEventListener('input',saveSettings);el.addEventListener('blur',saveSettings);}});
 loadSettings();
@@ -1303,7 +1286,7 @@ function renderIntake(){
   const n=state.intakeFiles.length;
   $('intake-filelist').innerHTML = n
     ? state.intakeFiles.map(f=>`<div class="f"><span>📄 ${esc(f.name)}</span><span>${(f.size/1024/1024).toFixed(1)}MB</span></div>`).join('')
-      +`<div class="f" id="intake-clear" style="cursor:pointer;color:#8a3a2c;font-weight:600">נקה טופס איסוף ✕</div>`
+      +`<div class="f" id="intake-clear" style="cursor:pointer;color:var(--error);font-weight:600">נקה טופס איסוף ✕</div>`
     : '';
   const c=$('intake-clear');if(c)c.addEventListener('click',()=>{state.intakeFiles=[];renderIntake();});
 }

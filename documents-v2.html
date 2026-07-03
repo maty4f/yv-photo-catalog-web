@@ -6,73 +6,65 @@
 <title>קטלוג מסמכים — v2 (זרימה מפושטת)</title>
 <!-- pdf.js for sampling pages from oversized PDFs -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs" type="module"></script>
+<link rel="stylesheet" href="yv-theme.css">
 <style>
-  :root {
-    --bg: #f7f5f0; --card: #fff; --ink: #1a1a1a; --muted: #5a5a5a;
-    --line: #d8d4cc; --accent: #2e7d4e; --accent-2: #1f5c38;
-    --tint: #ebf3ed; --err: #c53030; --ok: #2f855a; --warn: #c05621;
-  }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0;
-    font-family: "SBL Hebrew", "Frank Ruhl Libre", "Helvetica Neue", sans-serif;
-    background: var(--bg); color: var(--ink); line-height: 1.55;
-    direction: rtl; text-align: right;
-  }
+  :root { --accent: var(--docs); --accent-2: #5ee0a3; --err: var(--error); --ok: var(--good); }
   .wrap { max-width: 1080px; margin: 0 auto; padding: 30px 24px; }
-  header { border-bottom: 2px solid var(--accent); padding-bottom: 16px; margin-bottom: 28px; }
-  header h1 { margin: 0; font-size: 24px; color: var(--accent); }
-  header .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
-  header .v2-badge { display: inline-block; background: var(--accent); color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; margin-inline-start: 8px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 28px; position: relative; }
+  header::before { content: ""; position: absolute; inset: -20px -6% auto -6%; height: 120px; z-index: 0; background: radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%); pointer-events: none; }
+  header h1 { position: relative; margin: 0; font-size: 22px; color: var(--ink); font-weight: 800; }
+  header .sub { position: relative; font-size: 13px; color: var(--muted); margin-top: 4px; }
+  header .v2-badge { display: inline-block; background: var(--accent); color: #04160c; padding: 2px 10px; border-radius: 12px; font-size: 11px; margin-inline-start: 8px; }
 
-  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 22px; margin-bottom: 18px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; margin-bottom: 18px; box-shadow: 0 10px 28px -18px rgba(0,0,0,.7); }
   .panel h2 { margin: 0 0 14px 0; font-size: 17px; color: var(--accent); padding-bottom: 6px; border-bottom: 1px solid var(--line); }
   .panel .help { font-size: 12px; color: var(--muted); margin-bottom: 12px; line-height: 1.6; }
 
   .row { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: start; margin-bottom: 10px; }
   .row label { font-weight: 600; color: var(--muted); font-size: 13px; padding-top: 6px; }
   .row input, .row textarea, .row select {
-    width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 5px;
+    width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm);
     font-family: inherit; font-size: 13px; line-height: 1.5;
-    direction: rtl; text-align: right; background: #fff;
+    direction: rtl; text-align: right; background: var(--tint); color: var(--ink);
   }
+  .row input:focus, .row textarea:focus, .row select:focus { outline: none; border-color: var(--accent); background: var(--card); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
   .row input.ltr { direction: ltr; text-align: left; }
   .row textarea { min-height: 64px; resize: vertical; }
   .row .small { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
   .drop {
-    border: 2px dashed var(--line); border-radius: 10px; padding: 26px;
-    text-align: center; cursor: pointer; background: #fafaf6; transition: all .15s;
+    border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: var(--radius); padding: 26px;
+    text-align: center; cursor: pointer; background: var(--tint); color: var(--accent); transition: all .15s;
   }
-  .drop:hover, .drop.dragover { background: var(--tint); border-color: var(--accent); }
-  .drop.has-file { background: #fff; border-style: solid; padding: 16px; text-align: right; }
+  .drop:hover, .drop.dragover { background: color-mix(in srgb, var(--accent) 14%, var(--card)); border-color: var(--accent); }
+  .drop.has-file { background: var(--card); border-style: solid; padding: 16px; text-align: right; }
   .drop .placeholder { color: var(--muted); }
   .drop .icon { font-size: 32px; margin-bottom: 6px; }
   .drop .filename { font-weight: 600; color: var(--accent); }
   .drop .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
   button.primary {
-    background: var(--accent); color: #fff; border: none; padding: 11px 22px;
-    font-size: 14px; font-weight: 600; border-radius: 6px; cursor: pointer;
-    font-family: inherit;
+    background: var(--accent); color: #04160c; border: none; padding: 11px 22px;
+    font-size: 14px; font-weight: 700; border-radius: var(--radius-sm); cursor: pointer;
+    font-family: inherit; box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent);
   }
   button.primary:hover { background: var(--accent-2); }
-  button.primary:disabled { background: #c8c8c8; cursor: not-allowed; }
+  button.primary:disabled { background: #3a4152; color: #7d8598; cursor: not-allowed; box-shadow: none; }
   button.secondary {
     background: transparent; color: var(--accent); border: 1px solid var(--accent);
-    padding: 8px 16px; font-size: 13px; border-radius: 6px; cursor: pointer;
+    padding: 8px 16px; font-size: 13px; border-radius: var(--radius-sm); cursor: pointer;
     font-family: inherit;
   }
 
   .status {
-    margin-top: 12px; padding: 12px 16px; border-radius: 6px; font-size: 13px;
+    margin-top: 12px; padding: 12px 16px; border-radius: var(--radius-sm); font-size: 13px;
     line-height: 1.6; display: none;
   }
-  .status.info { background: #ebf8ff; border: 1px solid #90cdf4; color: #2c5282; display: block; }
-  .status.ok   { background: #f0fff4; border: 1px solid #9ae6b4; color: var(--ok); display: block; }
-  .status.err  { background: #fff5f5; border: 1px solid #fc8181; color: var(--err); display: block; white-space: pre-wrap; }
+  .status.info { background: color-mix(in srgb, var(--brand) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent); color: var(--brand); display: block; }
+  .status.ok   { background: color-mix(in srgb, var(--good) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--good) 40%, transparent); color: var(--good); display: block; }
+  .status.err  { background: color-mix(in srgb, var(--error) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--error) 40%, transparent); color: var(--error); display: block; white-space: pre-wrap; }
   .spinner {
-    display: inline-block; width: 14px; height: 14px; border: 2px solid #ddd;
+    display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line);
     border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;
     margin-inline-end: 8px; vertical-align: -2px;
   }
@@ -81,7 +73,7 @@
   .results { display: none; }
   .results.show { display: block; }
   .bilingual { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .bilingual .col { background: #fafaf6; padding: 12px; border-radius: 6px; border: 1px solid var(--line); }
+  .bilingual .col { background: var(--tint); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--line); }
   .bilingual .col h4 { margin: 0 0 8px 0; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
   .bilingual .col.en { direction: ltr; text-align: left; }
   .bilingual .col.en h4 { text-align: left; }
@@ -90,26 +82,10 @@
 
   details { margin-top: 10px; }
   details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
-  details pre { background: #1a1a1a; color: #e2e8f0; padding: 10px; border-radius: 4px; font-size: 11px; overflow: auto; max-height: 300px; direction: ltr; text-align: left; }
+  details pre { background: var(--bg); border: 1px solid var(--line); color: var(--ink); padding: 10px; border-radius: 4px; font-size: 11px; overflow: auto; max-height: 300px; direction: ltr; text-align: left; }
 
   .links { font-size: 12px; color: var(--muted); margin-top: 18px; text-align: center; }
-  .links a { color: var(--accent); margin: 0 8px; }
-
-  /* Native-label upload buttons — open the picker via the browser's own
-     <label for> -> input activation. A programmatic input.click() intermittently
-     freezes the file dialog on Chrome/macOS; a real label does not. */
-  label.upload-btn {
-    display: inline-block; box-sizing: border-box; vertical-align: middle;
-    background: transparent; color: var(--accent); border: 1px dashed var(--accent);
-    border-radius: 6px; padding: 8px 14px; font-family: inherit; font-size: 14.5px;
-    font-weight: 600; cursor: pointer; transition: background .15s;
-    -webkit-user-select: none; user-select: none;
-  }
-  label.upload-btn:hover { background: rgba(107,91,62,.08); }
-  .visually-hidden-file {
-    position: absolute; width: 1px; height: 1px; opacity: 0;
-    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-  }
+  .links a { color: var(--brand); margin: 0 8px; }
 </style>
 </head>
 <body>
@@ -200,7 +176,7 @@
     <input type="file" id="folder-input" webkitdirectory directory multiple class="visually-hidden-file">
     <div style="margin-top:10px;">
       <label id="pick-folder-btn" class="upload-btn" for="folder-input">📁 או העלה תיקיית תמונות — ייאוחדו ל-PDF אחד</label>
-      <div class="small" style="margin-top:4px; color:#666;">JPG/PNG/TIFF — כל התמונות יאוחדו לקובץ PDF אחד (יורד אוטומטית) וישמש לרישום.</div>
+      <div class="small" style="margin-top:4px; color:var(--muted);">JPG/PNG/TIFF — כל התמונות יאוחדו לקובץ PDF אחד (יורד אוטומטית) וישמש לרישום.</div>
     </div>
   </div>
 
@@ -1120,6 +1096,13 @@ async function runUnifiedServer() {
   await new Promise((resolve, reject) => {
     const es = new EventSource(base + '/api/jobs/' + j.jobId + '/events');
     let serverErr = '';
+    // Bound a silent hang: a server restart mid-job reconnects the SSE but never
+    // emits 'end', so cap the wait and reject instead of hanging forever.
+    const esGuard = setTimeout(() => {
+      es.close();
+      if (window.yvProgress) yvProgress.end(false, 'אין תגובה מהשרת');
+      reject(new Error('אין תגובה מהשרת (ייתכן שאותחל). רענן את הדף ובדוק בלוגים.'));
+    }, 40 * 60 * 1000);
     es.onmessage = e => {
       try {
         const ev = JSON.parse(e.data);
@@ -1132,7 +1115,7 @@ async function runUnifiedServer() {
       } catch (ignore) {}
     };
     es.addEventListener('end', async e => {
-      es.close();
+      clearTimeout(esGuard); es.close();
       let fin = {};
       try { fin = JSON.parse(e.data); } catch (ignore) {}
       if (fin.status === 'done' && fin.outputName) {
@@ -1173,7 +1156,7 @@ async function loadUnifiedResults(base, outputName) {
     resultsEl.scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
     console.warn('unified-server: fields JSON unavailable —', err);
-    statusEl.innerHTML += ' · <span style="color:#888">(שדות לעריכה אינם זמינים לפלט זה)</span>';
+    statusEl.innerHTML += ' · <span style="color:var(--muted)">(שדות לעריכה אינם זמינים לפלט זה)</span>';
   }
 }
 
@@ -1212,7 +1195,10 @@ function mapUnifiedDocFields(f) {
 // 'span class="cv c-high">V✓</span>' with a dropped leading '<'), plus bare
 // V✓/H~/V? tokens. Confidence belongs in the data, never in the copy-paste text.
 function stripConfidenceMarkup(v) {
-  if (typeof v !== 'string') return v || '';
+  // The model sometimes returns a prose field as an array of lines; coerce so
+  // the strip runs on a string instead of passing the raw array (with markup) through.
+  if (Array.isArray(v)) v = v.filter(x => x != null).join('\n');
+  if (typeof v !== 'string') return v == null ? '' : String(v);
   return v
     .replace(/(?:<|&lt;)?\s*\/?\s*span(?:\s[^<>]*)?(?:>|&gt;)/gi, '')
     .replace(/[VH]\s*[✓~?]/g, '')

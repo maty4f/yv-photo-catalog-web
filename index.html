@@ -6,95 +6,30 @@
 <!-- Cross-origin isolation for ffmpeg.wasm (required by SharedArrayBuffer). Must load before any other script. -->
 <script src="coi-serviceworker.min.js"></script>
 <title>קטלוג ארכיוני — תצלומים וסרטים</title>
+<link rel="stylesheet" href="yv-theme.css">
 <style>
-  :root {
-    --bg: #f7f5f0; --card: #ffffff; --ink: #1a1a1a; --muted: #5a5a5a;
-    --line: #d8d4cc; --accent: #6b5b3e; --accent-2: #8a7758;
-    --photos-tint: #fbf3e3; --photos-border: #c19b2e;
-    --films-tint: #e8eef5;  --films-border: #2c5d8a;
-    --docs-tint: #ebf3ed;   --docs-border: #2e7d4e;
-    --tik-tint: #f3eef7;    --tik-border: #6b3e8a;
-  }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0;
-    font-family: "SBL Hebrew", "Frank Ruhl Libre", "David", "Helvetica Neue", sans-serif;
-    background: var(--bg); color: var(--ink); line-height: 1.55;
-    direction: rtl; text-align: right;
-    min-height: 100vh;
-  }
   .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px; }
+  header.doc { padding: 30px 0 26px; margin-bottom: 8px; text-align: center; }
+  .statusrow { text-align: center; margin: 0 0 28px; }
+  .lead-p { text-align: center; font-size: 15px; color: var(--muted); margin: 0; }
 
-  header.doc {
-    border-bottom: 2px solid var(--accent);
-    padding-bottom: 18px;
-    margin-bottom: 36px;
-    text-align: center;
+  .card .tagcode {
+    position: absolute; top: 16px; left: 18px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px; letter-spacing: .05em; color: var(--muted); direction: ltr; unicode-bidi: isolate;
   }
-  header.doc h1 { font-size: 28px; margin: 0 0 6px 0; color: var(--accent); }
-  header.doc .sub { font-size: 14px; color: var(--muted); }
-
-  .cards {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 18px;
-    margin-top: 30px;
-  }
-  @media (max-width: 980px) { .cards { grid-template-columns: 1fr 1fr; } }
-  @media (max-width: 600px) { .cards { grid-template-columns: 1fr; } }
-
-  .card {
-    background: var(--card);
-    border: 2px solid var(--line);
-    border-radius: 12px;
-    padding: 36px 28px;
-    text-align: center;
-    cursor: pointer;
-    transition: all .2s;
-    text-decoration: none;
-    color: inherit;
-    display: block;
-  }
-  .card:hover { transform: translateY(-3px); box-shadow: 0 6px 22px rgba(0,0,0,.12); }
-  .card.photos { border-color: var(--photos-border); background: linear-gradient(180deg, var(--card), var(--photos-tint)); }
-  .card.photos:hover { border-color: #a8801c; }
-  .card.films  { border-color: var(--films-border);  background: linear-gradient(180deg, var(--card), var(--films-tint)); }
-  .card.films:hover  { border-color: #1d4666; }
-  .card.docs   { border-color: var(--docs-border);   background: linear-gradient(180deg, var(--card), var(--docs-tint)); }
-  .card.docs:hover   { border-color: #1f5c38; }
-  .card.tik    { border-color: var(--tik-border);    background: linear-gradient(180deg, var(--card), var(--tik-tint)); }
-  .card.tik:hover    { border-color: #532e6e; }
-  .card .icon { font-size: 52px; margin-bottom: 12px; }
-  .card h2 { margin: 0 0 8px 0; font-size: 22px; color: var(--accent); }
-  .card.films h2 { color: var(--films-border); }
-  .card.photos h2 { color: #6b4f0f; }
-  .card.docs h2 { color: var(--docs-border); }
-  .card.tik h2 { color: var(--tik-border); }
-  .card .desc { font-size: 14px; color: var(--muted); line-height: 1.6; min-height: 60px; }
-  .card .features {
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px dashed var(--line);
-    font-size: 12.5px;
-    color: var(--muted);
-    text-align: right;
-  }
-  .card .features ul { margin: 0; padding: 0; list-style: none; }
-  .card .features li { padding: 3px 0; }
-  .card .features li::before { content: "✓ "; color: var(--accent); font-weight: bold; }
 
   .info-block {
-    background: #fef9e7;
-    border: 1px solid #e6d28a;
-    border-inline-start: 5px solid #c19b2e;
-    border-radius: 8px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-inline-start: 3px solid var(--brand);
+    border-radius: var(--radius-sm);
     padding: 14px 18px;
     margin-top: 30px;
     font-size: 13px;
-    color: #6b4f0f;
+    color: var(--ink);
   }
-  .info-block strong { color: #4a3608; }
-  .info-block a { color: #4a3608; }
+  .info-block strong { color: var(--brand); }
+  .info-block a { color: var(--brand); }
 
   footer.bottom {
     margin-top: 50px;
@@ -104,34 +39,36 @@
     font-size: 12px;
     text-align: center;
   }
-  footer.bottom a { color: var(--accent); }
-  footer.bottom code { background: #f0eee8; padding: 2px 6px; border-radius: 3px; font-size: 11px; direction: ltr; unicode-bidi: isolate; }
+  footer.bottom a { color: var(--brand); }
+  footer.bottom code { background: var(--tint); padding: 2px 6px; border-radius: 3px; font-size: 11px; direction: ltr; unicode-bidi: isolate; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header class="doc">
-    <h1>📚 קטלוג ארכיוני</h1>
+    <h1><span class="brandword">📚 קטלוג ארכיוני</span></h1>
     <div class="sub">מערכת זיהוי וקטלוג עבור מדור התיעוד הוויזואלי · גרסת web · 100% client-side</div>
+    <div class="metaline">Engine: Gemini + Claude</div>
   </header>
 
-  <div style="text-align:center; margin:2px 0 16px;">
-    <a href="status.html" style="display:inline-block; font-size:13px; color:var(--accent); text-decoration:none; border:1px solid var(--accent); padding:5px 16px; border-radius:18px;">🖥️ מצב המערכת · System Status</a>
+  <div class="statusrow">
+    <a href="status.html" class="statuschip" style="text-decoration:none;"><span class="status-dot live"></span>מצב המערכת · System Status</a>
     <!-- logs.html is an admin-only server route (not mirrored to the public Pages
          repo) — hidden until we confirm a real server is answering, so the public
          marketing/demo deploy of this page never shows a dead (or exposed) link. -->
-    <a href="logs.html" id="nav-logs" style="display:none; font-size:13px; color:var(--accent); text-decoration:none; border:1px solid var(--accent); padding:5px 16px; border-radius:18px; margin-inline-start:8px;">📜 לוגים · Logs</a>
+    <a href="logs.html" id="nav-logs" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">📜 לוגים · Logs</a>
   </div>
 
-  <p style="text-align:center; font-size:15px; color:var(--ink); margin-bottom:0;">
+  <p class="lead-p">
     בחר את סוג החומר שברצונך לקטלג:
   </p>
 
   <div class="cards">
 
     <a href="photos.html" class="card photos">
-      <div class="icon">📷</div>
+      <span class="tagcode">PH · 01</span>
+      <div class="badge">📷</div>
       <h2>קטלוג תצלומים</h2>
       <div class="desc">
         זיהוי וקטלוג של תצלומים בודדים או אוספים שלמים, לפי הנהלים הרשמיים של מערכת ספיר.
@@ -148,7 +85,8 @@
     </a>
 
     <a href="films.html" class="card films">
-      <div class="icon">🎞</div>
+      <span class="tagcode">FM · 02</span>
+      <div class="badge">🎞</div>
       <h2>קטלוג סרטים</h2>
       <div class="desc">
         זיהוי וקטלוג של סרטי ארכיון (אילמים ומדוברים), עם פירוט טיימליין ותיאור סצנה-אחר-סצנה.
@@ -165,7 +103,8 @@
     </a>
 
     <a href="documents.html" class="card docs">
-      <div class="icon">📄</div>
+      <span class="tagcode">DC · 03</span>
+      <div class="badge">📄</div>
       <h2>קטלוג מסמכים — תיאור מלא</h2>
       <div class="desc">
         תיאור מלא של כל מסמך: פיענוח מסמכים היסטוריים — מודפסים וכתב יד — בשפות שונות, עם תעתיק ותרגום לעברית ואנגלית.
@@ -182,7 +121,8 @@
     </a>
 
     <a href="documents-tik.html" class="card tik">
-      <div class="icon">🗂</div>
+      <span class="tagcode">TK · 04</span>
+      <div class="badge">🗂</div>
       <h2>קטלוג מסמכים — רמת תיק</h2>
       <div class="desc">
         תיאור כללי של התיק: קריאת כל עמודי התיק (עשרות עד מאות) ויצירת רשומה מסכמת אחת — מה יש בו, טווח תאריכים, מעורבים — בלי תמלול של כל עמוד.

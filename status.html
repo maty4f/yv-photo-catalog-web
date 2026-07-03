@@ -4,42 +4,46 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>מצב המערכת — קטלוג</title>
+<link rel="stylesheet" href="yv-theme.css">
 <style>
-  body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; background:#f4f6f9; color:#1d2b3a; margin:0; padding:20px; direction:rtl; text-align:right; }
+  body { padding:20px; }
   .wrap { max-width: 1020px; margin:0 auto; }
-  h1 { font-size:21px; margin:0 0 2px; }
-  .sub { color:#7088a0; font-size:13px; margin-bottom:14px; }
-  .upd { float:left; font-size:12px; color:#7088a0; font-weight:400; }
+  h1 { font-size:21px; margin:0 0 2px; font-weight:800; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  .upd { float:left; font-size:12px; color:var(--muted); font-weight:400; font-family:ui-monospace,"SF Mono",Menlo,monospace; direction:ltr; unicode-bidi:isolate; }
   .bar { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
-  .tile { flex:1; min-width:120px; background:#fff; border:1px solid #dde4ec; border-radius:10px; padding:10px 14px; text-align:center; }
-  .tn { font-size:22px; font-weight:800; color:#1d3a5f; unicode-bidi:isolate; }
-  .tl { font-size:11.5px; color:#7088a0; margin-top:2px; }
+  .tile { flex:1; min-width:120px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 14px; text-align:center; }
+  .tn { font-size:22px; font-weight:800; color:var(--brand); unicode-bidi:isolate; font-variant-numeric:tabular-nums; text-shadow:0 0 12px color-mix(in srgb, var(--brand) 40%, transparent); }
+  .tl { font-size:11.5px; color:var(--muted); margin-top:2px; }
   .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(232px,1fr)); gap:12px; }
-  .card { background:#fff; border:1px solid #dde4ec; border-radius:10px; padding:14px 16px; }
-  .card.kind { border-width:2px; }
-  .card h3 { margin:0 0 8px; font-size:12.5px; color:#54657a; font-weight:700; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 16px; }
+  .card.kind { border-width:1px; border-color:var(--line-strong); box-shadow:0 8px 24px -14px rgba(0,0,0,.6); }
+  .card h3 { margin:0 0 8px; font-size:12.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
   .big { font-size:20px; font-weight:700; margin-bottom:6px; }
-  .row { display:flex; justify-content:space-between; gap:8px; font-size:13px; padding:2px 0; }
-  .row b { unicode-bidi:isolate; }
+  .row { display:flex; justify-content:space-between; gap:8px; font-size:13px; padding:2px 0; color:var(--ink); }
+  .row b { unicode-bidi:isolate; font-variant-numeric:tabular-nums; }
   .dot { display:inline-block; width:11px; height:11px; border-radius:50%; margin-left:7px; vertical-align:middle; }
-  .ok{background:#2e7d32}.bad{background:#c62828}
+  .ok{background:var(--good);box-shadow:0 0 8px var(--good)} .bad{background:var(--error);box-shadow:0 0 8px var(--error)}
   .pill { padding:2px 10px; border-radius:11px; font-size:12.5px; font-weight:700; }
-  .pill.ok{background:#e3f4e4;color:#1f6b24}.pill.warn{background:#fdf0d5;color:#8a5d00}.pill.bad{background:#fbe3e3;color:#a01c1c}.pill.unk{background:#eceff3;color:#5a6b7c}
-  .muted{color:#8a9bad;font-size:11px;margin-top:4px;unicode-bidi:isolate}
-  .errlist div { font-size:11.5px; color:#7a2222; padding:4px 0; border-top:1px dashed #ecd2d2; unicode-bidi:isolate; direction:ltr; text-align:left; }
-  .log { max-height:300px; overflow-y:auto; background:#0f1722; border-radius:7px; padding:10px 13px; margin-top:4px; }
-  .ll { font-size:12px; color:#cdd9e5; padding:2.5px 0; line-height:1.5; unicode-bidi:isolate; border-bottom:1px solid #1b2735; }
+  .pill.ok{background:color-mix(in srgb, var(--good) 18%, transparent);color:var(--good)}
+  .pill.warn{background:color-mix(in srgb, var(--warn) 18%, transparent);color:var(--warn)}
+  .pill.bad{background:color-mix(in srgb, var(--error) 18%, transparent);color:var(--error)}
+  .pill.unk{background:var(--card-hover);color:var(--muted)}
+  .muted{color:var(--muted);font-size:11px;margin-top:4px;unicode-bidi:isolate}
+  .errlist div { font-size:11.5px; color:var(--error); padding:4px 0; border-top:1px dashed var(--line); unicode-bidi:isolate; direction:ltr; text-align:left; }
+  .log { max-height:300px; overflow-y:auto; background:var(--bg); border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 13px; margin-top:4px; }
+  .ll { font-size:12px; color:var(--ink); padding:2.5px 0; line-height:1.5; unicode-bidi:isolate; border-bottom:1px solid var(--line); font-family:ui-monospace,"SF Mono",Menlo,monospace; }
   .ll:last-child{border-bottom:none}
-  .le { color:#ff9b9b; } .lw { color:#ffd28a; }
+  .le { color:var(--error); } .lw { color:var(--warn); }
   .livehead { display:flex; align-items:center; gap:8px; }
-  .blink { width:9px;height:9px;border-radius:50%;background:#2e7d32;animation:bl 1.1s infinite; }
+  .blink { width:9px;height:9px;border-radius:50%;background:var(--good);box-shadow:0 0 8px var(--good); animation:bl 1.1s infinite; }
   @keyframes bl{0%,100%{opacity:1}50%{opacity:.25}}
   .tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
-  .tbl th { text-align:right; color:#54657a; font-weight:700; font-size:11.5px; padding:5px 8px; border-bottom:2px solid #e3e9f0; }
-  .tbl td { padding:5px 8px; border-bottom:1px solid #eef2f6; unicode-bidi:isolate; }
+  .tbl th { text-align:right; color:var(--muted); font-weight:700; font-size:11.5px; padding:5px 8px; border-bottom:2px solid var(--line-strong); text-transform:uppercase; letter-spacing:.02em; }
+  .tbl td { padding:5px 8px; border-bottom:1px solid var(--line); unicode-bidi:isolate; color:var(--ink); }
   .tbl td.nm { font-weight:600; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tbl td.of { color:#7088a0; font-size:11px; direction:ltr; text-align:left; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tbl tr:hover td { background:#f7fafd; }
+  .tbl td.of { color:var(--muted); font-size:11px; direction:ltr; text-align:left; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:ui-monospace,"SF Mono",Menlo,monospace; }
+  .tbl tr:hover td { background:var(--card-hover); }
 </style>
 </head>
 <body>

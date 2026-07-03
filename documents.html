@@ -10,28 +10,18 @@
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
+<link rel="stylesheet" href="yv-theme.css">
 <style>
-  :root {
-    --bg: #f7f5f0; --card: #fff; --ink: #1a1a1a; --muted: #5a5a5a;
-    --line: #d8d4cc; --accent: #2e7d4e; --accent-2: #1f5c38;
-    --good: #2e7d32; --warn: #b07000; --soft: #b22222;
-    --tint: #ebf3ed; --drop: #d8e8dd; --drop-active: #b9d4c2;
-    --he-tint: #fbf9f3; --en-tint: #f3f6fb;
-  }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0;
-    font-family: "SBL Hebrew","Frank Ruhl Libre","David","Helvetica Neue",sans-serif;
-    background: var(--bg); color: var(--ink); line-height: 1.55;
-    direction: rtl; text-align: right;
-  }
+  :root { --accent: var(--docs); --accent-2: #5ee0a3; }
   .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
 
-  header.doc { border-bottom: 2px solid var(--accent); padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
-  header.doc h1 { font-size: 22px; margin: 0 0 4px 0; color: var(--accent); }
-  header.doc .sub { font-size: 13px; color: var(--muted); }
-  /* Confidence legend */
-  .conf-legend { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+  header.doc { border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; position: relative; }
+  header.doc::before { content: ""; position: absolute; inset: -20px -6% auto -6%; height: 120px; z-index: 0; background: radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%); pointer-events: none; }
+  header.doc h1 { position: relative; font-size: 20px; margin: 0 0 4px 0; color: var(--ink); font-weight: 800; }
+  header.doc .sub { position: relative; font-size: 13px; color: var(--muted); }
+  header.doc .actions-top { position: relative; display: flex; gap: 8px; align-items: center; }
+
+  .conf-legend { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 13px; }
   .conf-legend > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; color: var(--accent); list-style: none; user-select: none; }
   .conf-legend > summary::-webkit-details-marker { display: none; }
   .conf-legend > summary::before { content: "\25B8"; margin-inline-end: 6px; font-size: 11px; }
@@ -42,147 +32,67 @@
   .cl-head { font-weight: 600; color: var(--ink); font-size: 12px; border-bottom: 1px solid var(--line); padding-bottom: 3px; margin-bottom: 6px; }
   .cl-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; line-height: 1.4; }
   .cl-row small { color: var(--muted); font-weight: 400; }
-  .cl-mark { display: inline-block; font-weight: 700; font-size: 0.85em; padding: 1px 5px; border-radius: 3px; background: rgba(107,91,62,0.06); unicode-bidi: isolate; margin: 0 1px; }
-  .cl-high { color: var(--good); }
-  .cl-mid  { color: var(--warn); }
-  .cl-low  { color: var(--soft); }
+  .cl-mark { display: inline-block; font-weight: 700; font-size: 0.85em; padding: 1px 5px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 10%, transparent); unicode-bidi: isolate; margin: 0 1px; }
+  .cl-high { color: var(--good); } .cl-mid { color: var(--warn); } .cl-low { color: var(--error); }
   .cl-note { margin: 10px 0 0; line-height: 1.7; font-size: 12px; }
-  header.doc .actions-top { display: flex; gap: 8px; align-items: center; }
 
-  section.step { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
-  section.step > .head { padding: 11px 16px; background: linear-gradient(180deg,#fbfaf6,#f3efe6); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
-  section.step > .head .num { background: var(--accent); color: white; border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
-  section.step > .head .title { font-weight: 700; color: var(--accent); font-size: 15px; }
+  section.step { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; box-shadow: 0 10px 28px -18px rgba(0,0,0,.7); }
+  section.step > .head { padding: 11px 16px; background: var(--card-hover); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  section.step > .head .num { background: var(--accent); color: #04160c; border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent); }
+  section.step > .head .title { font-weight: 700; color: var(--ink); font-size: 15px; }
   section.step > .head .title small { color: var(--muted); font-weight: 400; margin-inline-start: 8px; font-size: 12px; }
   section.step > .body { padding: 16px; }
 
-  .doc-drop {
-    border: 2px dashed var(--accent); background: var(--drop);
-    border-radius: 8px; padding: 36px 22px; text-align: center;
-    cursor: pointer; transition: background .15s, border-color .15s;
-    user-select: none; color: var(--accent);
-    font-size: 15px; font-weight: 600;
-    min-height: 160px;
-    display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px;
-    position: relative;
-  }
-  .doc-drop:hover, .doc-drop.dragover { background: var(--drop-active); border-color: var(--accent-2); }
-  .doc-drop.has-file { background: white; border-style: solid; padding: 14px; }
-  .doc-drop .hint { font-size: 12.5px; color: var(--muted); font-weight: normal; }
-  .doc-drop img.preview-mini { max-width: 100%; max-height: 320px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.1); display: none; }
+  .doc-drop { position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; min-height: 160px; padding: 36px 22px; }
+  .doc-drop.has-file { background: var(--card); border-style: solid; padding: 14px; }
+  .doc-drop img.preview-mini { max-width: 100%; max-height: 320px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.4); display: none; }
   .doc-drop.has-file img.preview-mini { display: block; }
   .doc-drop.has-file .placeholder { display: none; }
-  .filename { font-size: 13px; color: var(--ink); font-weight: 500; direction: ltr; unicode-bidi: isolate; word-break: break-all; margin-top: 6px; }
   .doc-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; font-size: 12px; }
   .doc-meta-grid .item { background: var(--tint); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; direction: rtl; text-align: right; unicode-bidi: isolate; }
   .doc-meta-grid .item b { color: var(--accent); font-weight: 600; }
   .doc-meta-grid .item code { font-family: "SF Mono", monospace; font-size: 11px; color: var(--ink); direction: ltr; unicode-bidi: isolate; }
-  .delete-doc-btn { position: absolute; top: 8px; left: 8px; background: rgba(178,34,34,.92); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; display: none; z-index: 2; }
+  .delete-doc-btn { position: absolute; top: 8px; left: 8px; background: color-mix(in srgb, var(--error) 85%, black); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; display: none; z-index: 2; }
   .doc-drop.has-file .delete-doc-btn { display: block; }
-  .delete-doc-btn:hover { background: var(--soft); }
+  .delete-doc-btn:hover { background: var(--error); }
 
-  textarea, input[type="text"], input[type="password"], select {
-    width: 100%; padding: 9px 12px; font-family: inherit; font-size: 14px;
-    border: 1px solid var(--line); border-radius: 6px; background: var(--tint);
-    color: var(--ink); resize: vertical;
-    direction: rtl; text-align: right; line-height: 1.55; unicode-bidi: isolate;
-  }
-  input[type="password"] { direction: ltr; text-align: left; font-family: "SF Mono", monospace; unicode-bidi: isolate; }
   /* LTR fields — right-aligned (matches RTL flow of UI) */
   input.ltr, textarea.ltr,
   #r-title-en, #r-doc-date, #r-archive-id, #r-intake-num,
   #r-sender-en, #r-recipient-en, #r-place-en,
   #r-original-text, #r-transliteration, #r-translation-en {
-    direction: ltr !important; text-align: right !important; font-family: Georgia, serif;
+    direction: ltr !important; text-align: right !important; font-family: 'Heebo', sans-serif;
   }
-  textarea { min-height: 110px; }
-  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); background: white; }
 
-  .label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
-  .label small { color: var(--muted); font-weight: 400; margin-inline-start: 6px; }
-
-  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
-  button { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-family: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; transition: background .15s; }
-  button:hover:not(:disabled) { background: var(--accent-2); }
-  button:disabled { background: #b8b3a8; cursor: not-allowed; opacity: .7; }
-  button.big { padding: 14px 28px; font-size: 16px; }
-  button.primary { background: #1565c0; }
-  button.primary:hover:not(:disabled) { background: #0d47a1; }
-  button.ghost { background: transparent; color: var(--accent); padding: 8px 14px; border: 1px dashed var(--accent); }
-  button.ghost:hover { background: rgba(46,125,78,.08); }
-  button.gear { background: transparent; color: var(--muted); padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
-  button.gear:hover { background: var(--tint); border-color: var(--accent); color: var(--accent); }
-
-  .settings-panel { display: none; background: #fffbeb; border: 1px solid #f1d96e; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .settings-panel { display: none; background: color-mix(in srgb, var(--accent) 8%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: var(--radius); padding: 14px; margin-bottom: 14px; }
   .settings-panel.open { display: block; }
   .settings-panel .row { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
-  .settings-panel .row label { font-size: 13px; font-weight: 600; color: #6b4f0f; }
-  .settings-panel .hint { font-size: 11.5px; color: #8a7140; margin-top: 6px; }
-  .settings-panel .hint a { color: #6b4f0f; }
-
-  .status-msg { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; }
-  .status-msg.show { display: block; }
-  .status-msg.ok { background: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
-  .status-msg.err { background: #ffebee; color: #b71c1c; border: 1px solid #ffcdd2; }
-  .status-msg.info{ background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; }
-  .status-msg.warn{ background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
-
-  .mini-status { font-size: 12px; color: var(--muted); }
-  .mini-status.working { color: var(--accent); }
-  .mini-status.ok { color: var(--good); }
-  .mini-status.err { color: var(--soft); }
-  .mini-status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-inline-end: 5px; background: currentColor; vertical-align: middle; }
-  .mini-status .meta { display: inline-block; background: var(--tint); border: 1px solid var(--line); border-radius: 4px; padding: 1px 7px; font-size: 11px; color: var(--muted); margin-inline-start: 6px; font-family: monospace; direction: ltr; unicode-bidi: isolate; }
-
-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-inline-end: 6px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* Per-field copy buttons — ALWAYS on the LEFT */
-  .input-wrap { position: relative; display: block; }
-  .input-wrap input, .input-wrap textarea { padding-left: 50px !important; padding-right: 12px !important; }
-  .copy-corner { position: absolute; top: 5px; left: 5px; background: white; border: 1px solid var(--line); color: var(--muted); border-radius: 3px; padding: 2px 7px; font-size: 11px; cursor: pointer; z-index: 3; font-family: inherit; font-weight: 600; opacity: 0.85; line-height: 1.3; box-shadow: 0 1px 3px rgba(0,0,0,.12); min-width: 30px; text-align: center; }
-  .copy-corner:hover { opacity: 1; background: var(--accent); color: white; border-color: var(--accent); }
-  .copy-corner.copied { background: var(--good) !important; color: white !important; border-color: var(--good) !important; }
+  .settings-panel .row label { font-size: 13px; font-weight: 600; color: var(--accent); }
+  .settings-panel .hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  .settings-panel .hint a { color: var(--accent); }
 
   /* Confidence badges */
-  .conf-badge {
-    display: inline-block;
-    margin-inline-start: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 1px 8px;
-    border-radius: 10px;
-    vertical-align: middle;
-    direction: rtl;
-    unicode-bidi: isolate;
-  }
-  .conf-badge.high   { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-  .conf-badge.medium { background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
-  .conf-badge.low    { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-  .conf-badge.empty  { background: #e9ecef; color: #6c757d; border: 1px solid #ced4da; }
+  .conf-badge { display: inline-block; margin-inline-start: 6px; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 10px; vertical-align: middle; direction: rtl; unicode-bidi: isolate; }
+  .conf-badge.high   { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); border: 1px solid color-mix(in srgb, var(--good) 40%, transparent); }
+  .conf-badge.medium { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
+  .conf-badge.low    { background: color-mix(in srgb, var(--error) 16%, transparent); color: var(--error); border: 1px solid color-mix(in srgb, var(--error) 40%, transparent); }
+  .conf-badge.empty  { background: var(--card-hover); color: var(--muted); border: 1px solid var(--line-strong); }
 
   /* Field background color hints (subtle) */
-  .results .field-row textarea[data-conf="✓"] { background: #f4faf6; }
-  .results .field-row textarea[data-conf="~"] { background: #fffaeb; }
-  .results .field-row textarea[data-conf="?"] { background: #fef0f1; }
-  .results .compact-row input[data-conf="✓"]  { background: #f4faf6; }
-  .results .compact-row input[data-conf="~"]  { background: #fffaeb; }
-  .results .compact-row input[data-conf="?"]  { background: #fef0f1; }
+  .results .field-row textarea[data-conf="✓"] { background: color-mix(in srgb, var(--good) 10%, var(--tint)); }
+  .results .field-row textarea[data-conf="~"] { background: color-mix(in srgb, var(--warn) 10%, var(--tint)); }
+  .results .field-row textarea[data-conf="?"] { background: color-mix(in srgb, var(--error) 10%, var(--tint)); }
+  .results .compact-row input[data-conf="✓"]  { background: color-mix(in srgb, var(--good) 10%, var(--tint)); }
+  .results .compact-row input[data-conf="~"]  { background: color-mix(in srgb, var(--warn) 10%, var(--tint)); }
+  .results .compact-row input[data-conf="?"]  { background: color-mix(in srgb, var(--error) 10%, var(--tint)); }
 
   /* Overall readability banner shown above results */
-  #overall-readability {
-    display: none;
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin-bottom: 14px;
-    font-size: 13.5px;
-    font-weight: 600;
-  }
+  #overall-readability { display: none; padding: 12px 16px; border-radius: var(--radius-sm); margin-bottom: 14px; font-size: 13.5px; font-weight: 600; }
   #overall-readability.show { display: block; }
-  #overall-readability.r-good   { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-  #overall-readability.r-fair   { background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
-  #overall-readability.r-poor   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-  #overall-readability.r-bad    { background: #2d2d2d; color: #ffd1d1; border: 1px solid #444; }
+  #overall-readability.r-good   { background: color-mix(in srgb, var(--good) 16%, var(--card)); color: var(--good); border: 1px solid color-mix(in srgb, var(--good) 40%, transparent); }
+  #overall-readability.r-fair   { background: color-mix(in srgb, var(--warn) 16%, var(--card)); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
+  #overall-readability.r-poor   { background: color-mix(in srgb, var(--error) 16%, var(--card)); color: var(--error); border: 1px solid color-mix(in srgb, var(--error) 40%, transparent); }
+  #overall-readability.r-bad    { background: #1a0505; color: #ff9b9b; border: 1px solid color-mix(in srgb, var(--error) 55%, transparent); }
 
   .results { display: none; }
   .results.show { display: block; }
@@ -196,32 +106,16 @@
   .results .compact-row label { font-size: 12.5px; color: var(--muted); }
   .results .compact-row input, .results .compact-row select { font-size: 13px; padding: 6px 10px; }
   .results .subject-chips { padding: 8px; background: var(--tint); border: 1px solid var(--line); border-radius: 4px; min-height: 38px; }
-  .results .chip { display: inline-block; background: #c8e0d0; color: #1f5c38; padding: 3px 9px; margin: 2px; border-radius: 12px; font-size: 12px; border: 1px solid #98be9f; }
-  .results .chip .x { cursor: pointer; margin-inline-start: 5px; color: #1f5c38; font-weight: bold; }
-  .results .chip .x:hover { color: var(--soft); }
+  .results .chip { display: inline-block; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); padding: 3px 9px; margin: 2px; border-radius: 12px; font-size: 12px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+  .results .chip .x { cursor: pointer; margin-inline-start: 5px; color: var(--accent); font-weight: bold; }
+  .results .chip .x:hover { color: var(--error); }
 
-  .download-bar { position: sticky; bottom: 0; background: var(--card); border-top: 2px solid var(--accent); padding: 10px 16px; margin: 0 -20px -20px; display: flex; gap: 10px; align-items: center; justify-content: space-between; z-index: 50; }
+  .download-bar { position: sticky; bottom: 0; background: var(--card); border-top: 1px solid var(--line-strong); padding: 10px 16px; margin: 0 -20px -20px; display: flex; gap: 10px; align-items: center; justify-content: space-between; z-index: 50; }
   @media (max-width: 720px) { .download-bar { padding: 8px 10px; flex-wrap: wrap; } }
 
-  .footer-hint { margin-top: 24px; padding: 12px 14px; background: #fef9e7; border: 1px solid #e6d28a; border-inline-start: 5px solid #c19b2e; border-radius: 8px; font-size: 12.5px; color: #6b4f0f; }
+  .footer-hint { margin-top: 24px; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-inline-start: 3px solid var(--brand); border-radius: var(--radius-sm); font-size: 12.5px; color: var(--ink); }
   footer.bottom { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
-  footer.bottom a { color: var(--accent); }
-
-  /* Native-label upload buttons — open the picker via the browser's own
-     <label for> -> input activation. A programmatic input.click() intermittently
-     freezes the file dialog on Chrome/macOS; a real label does not. */
-  label.upload-btn {
-    display: inline-block; box-sizing: border-box; vertical-align: middle;
-    background: transparent; color: var(--accent); border: 1px dashed var(--accent);
-    border-radius: 6px; padding: 8px 14px; font-family: inherit; font-size: 14.5px;
-    font-weight: 600; cursor: pointer; transition: background .15s;
-    -webkit-user-select: none; user-select: none;
-  }
-  label.upload-btn:hover { background: rgba(107,91,62,.08); }
-  .visually-hidden-file {
-    position: absolute; width: 1px; height: 1px; opacity: 0;
-    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-  }
+  footer.bottom a { color: var(--brand); }
 </style>
 </head>
 <body>
@@ -241,8 +135,8 @@
   <!-- שתי רמות קטלוג מסמכים: תיאור מסמך מלא (המסך הזה) ↔ קטלוג ברמת תיק (documents-tik.html) -->
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--tint);border:1px solid var(--line);border-radius:10px;padding:9px 14px;margin-bottom:16px;font-size:13.5px" role="navigation" aria-label="רמת קטלוג">
     <b style="color:var(--accent-2)">רמת הקטלוג:</b>
-    <span style="background:var(--accent-2);color:#fff;border-radius:7px;padding:4px 12px;font-weight:600">📄 תיאור מסמך מלא <small style="font-weight:400;opacity:.85">— תעתיק, תרגום וניתוח מלא לכל מסמך (המסך הזה)</small></span>
-    <a href="documents-tik.html" style="text-decoration:none;color:var(--accent-2);border:1px solid var(--accent);border-radius:7px;padding:4px 12px;background:#fff">🗂 קטלוג ברמת תיק <small style="color:var(--muted)">— תיאור כללי אחד לכל התיק</small></a>
+    <span style="background:var(--accent-2);color:#04160c;border-radius:7px;padding:4px 12px;font-weight:600">📄 תיאור מסמך מלא <small style="font-weight:400;opacity:.85">— תעתיק, תרגום וניתוח מלא לכל מסמך (המסך הזה)</small></span>
+    <a href="documents-tik.html" style="text-decoration:none;color:var(--accent-2);border:1px solid var(--accent);border-radius:7px;padding:4px 12px;background:var(--card)">🗂 קטלוג ברמת תיק <small style="color:var(--muted)">— תיאור כללי אחד לכל התיק</small></a>
   </div>
 
   <!-- Confidence legend -->
@@ -277,20 +171,20 @@
     </div>
     <div class="row provider-row" data-provider="claude-cli">
       <label>שרת CLI מקומי (URL)</label>
-      <div>
+      <div style="min-width:0;">
         <input type="text" id="local-server-url" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="direction:ltr; text-align:left; width:100%;">
-        <div style="margin-top:6px; padding:6px 10px; background:#f8f6f0; border:1px solid #d8d4cc; border-radius:6px; font-size:12px; display:flex; align-items:center; gap:8px;">
-          <span style="color:#5a5a5a; font-weight:600;">📋 שרת פעיל:</span>
-          <code id="active-tunnel-url" style="flex:1; direction:ltr; unicode-bidi:isolate; background:#fff; padding:3px 8px; border-radius:4px; font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">https://bryant-widespread-building-fingers.trycloudflare.com</code>
-          <button type="button" id="copy-tunnel-btn" style="padding:3px 10px; font-size:11px; background:#6b5b3e; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">📋 העתק</button>
-          <button type="button" id="fill-tunnel-btn" style="padding:3px 10px; font-size:11px; background:#8a7758; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">⬇ הזן</button>
+        <div style="margin-top:6px; padding:6px 10px; background:var(--tint); border:1px solid var(--line); border-radius:6px; font-size:12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="color:var(--muted); font-weight:600;">📋 שרת פעיל:</span>
+          <code id="active-tunnel-url" style="flex:1; min-width:0; direction:ltr; unicode-bidi:isolate; background:var(--card-hover); color:var(--ink); padding:3px 8px; border-radius:4px; font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">https://bryant-widespread-building-fingers.trycloudflare.com</code>
+          <button type="button" id="copy-tunnel-btn" style="padding:3px 10px; font-size:11px; background:var(--accent); color:#04160c; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">📋 העתק</button>
+          <button type="button" id="fill-tunnel-btn" style="padding:3px 10px; font-size:11px; background:var(--accent-2); color:#04160c; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">⬇ הזן</button>
         </div>
-        <div style="margin-top:4px; font-size:11px; color:#888;">⚠ URL זמני — משתנה בכל הפעלה מחדש של ה-tunnel. למשהו קבוע: <code>local-server/SETUP_CLOUDFLARE.md</code></div>
+        <div style="margin-top:4px; font-size:11px; color:var(--muted);">⚠ URL זמני — משתנה בכל הפעלה מחדש של ה-tunnel. למשהו קבוע: <code>local-server/SETUP_CLOUDFLARE.md</code></div>
       </div>
     </div>
     <div class="row provider-row" data-provider="claude-cli">
       <label>איך זה עובד</label>
-      <div style="font-size:12.5px; color:#5a5a5a; line-height:1.7;">
+      <div style="font-size:12.5px; color:var(--muted); line-height:1.7;">
         Claude קורא את <b>המסמך עצמו</b> (PDF/סריקה) דרך <code>claude</code> CLI שרץ במחשב שלך — ומפיק את שדות ספיר בפעולה אחת. <b>בלי Gemini בכלל</b>.<br>
         <b>דורש:</b> שרת מקומי פעיל ב-URL למעלה. בהרצה מקומית מ-localhost הכתובת מוגדרת אוטומטית. ראה <code>local-server/SETUP_CLOUDFLARE.md</code> בריפו.
       </div>
@@ -302,7 +196,7 @@
           <input type="checkbox" id="proxy-gemini-checkbox" style="margin:0;">
           <span>השתמש בשרת המקומי כ-proxy ל-Gemini (לשימוש ממחשב עבודה שחוסם Google)</span>
         </label>
-        <div style="margin-top:4px; color:#888; font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן. דורש URL של שרת CLI מקומי למעלה.</div>
+        <div style="margin-top:4px; color:var(--muted); font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן. דורש URL של שרת CLI מקומי למעלה.</div>
       </div>
     </div>
     <div class="row">
@@ -312,7 +206,7 @@
           <input type="checkbox" id="use-docling-checkbox" style="margin:0;">
           <span>השתמש ב-Docling לקבצי PDF מעל 50MB (חילוץ מקומי במחשב שלך, מעקף את מגבלת Gemini)</span>
         </label>
-        <div style="margin-top:4px; color:#888; font-size:11px;">
+        <div style="margin-top:4px; color:var(--muted); font-size:11px;">
           אם מסומן: PDFים מעל 50MB יישלחו לשרת המקומי שלך → Docling יחלץ Markdown מובנה → ה-Markdown ישלח ל-Claude לקטלוג (במקום OCR של Gemini). דורש URL של שרת מקומי + Docling מותקן (<code>local-server/.docling-venv/</code>).
         </div>
       </div>
@@ -333,8 +227,8 @@
       <div>
         <input type="password" id="api-key-gemini" placeholder="AIza…" autocomplete="off" style="width:100%;">
         <div style="margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <button type="button" id="test-gemini-key-btn" style="padding:4px 12px; font-size:12px; background:#2c5d8a; color:#fff; border:none; border-radius:4px; cursor:pointer;">🔍 בדוק מפתח</button>
-          <a href="https://aistudio.google.com/app/apikey" target="_blank" style="font-size:11px; color:#5a5a5a;">השג מפתח חדש מ-aistudio.google.com →</a>
+          <button type="button" id="test-gemini-key-btn" style="padding:4px 12px; font-size:12px; background:var(--brand); color:#04222a; border:none; border-radius:4px; cursor:pointer;">🔍 בדוק מפתח</button>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" style="font-size:11px; color:var(--muted);">השג מפתח חדש מ-aistudio.google.com →</a>
         </div>
         <div id="test-gemini-key-status" style="margin-top:6px; font-size:11.5px; line-height:1.5;"></div>
       </div>
@@ -372,8 +266,8 @@
       </select>
     </div>
     <div class="row provider-row" data-provider="transkribus" id="tk-claude-key-note">
-      <label style="color:#856404;">⚠ דרוש גם:</label>
-      <div style="font-size:12px; color:#8a7140;">מפתח Anthropic — Claude יבנה את קטלוג ספיר מה-OCR. ראה למעלה.</div>
+      <label style="color:var(--warn);">⚠ דרוש גם:</label>
+      <div style="font-size:12px; color:var(--warn);">מפתח Anthropic — Claude יבנה את קטלוג ספיר מה-OCR. ראה למעלה.</div>
     </div>
     <div class="hint">
       📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: Gemini עושה זיהוי ראשוני — OCR נאמן בשפת המקור (חינמי, איכותי) → Claude עושה זיהוי משני — בונה את שדות קטלוג ספיר, מתרגם לעברית אקדמית, מאמת היסטורית (סוג מסמך, צדדים, תאריכים, מקומות). שניהם מסמנים <b>ודאות dual-axis V/H</b>: V=ויזואלי (מה קריא במסמך), H=היסטורי (מה תואם תיעוד). דורש שני מפתחות. עלות ~$0.002/דף. ראה <code>reference/confidence_dual_axis.md</code>.
@@ -386,16 +280,16 @@
   </div>
 
   <!-- Type selector: institutional vs private documents -->
-  <section class="step" style="background: linear-gradient(180deg, #fff, #f0f7f2);">
+  <section class="step" style="background: var(--card);">
     <div class="head"><span class="num">0</span><span class="title">סוג רישום <small>Document type — קובע אלו שדות וחוקים יחולו</small></span></div>
     <div class="body">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-        <label style="cursor:pointer; padding:14px; border:2px solid var(--line); border-radius:8px; transition:all .15s; background:white;" id="type-inst-card">
+        <label style="cursor:pointer; padding:14px; border:2px solid var(--line); border-radius:8px; transition:all .15s; background:var(--card);" id="type-inst-card">
           <input type="radio" name="doc-type-mode" value="institutional" style="margin-inline-end:8px;">
           <b style="color:var(--accent);">🏛 מסמך מוסדי</b>
           <div style="font-size:12px; color:var(--muted); margin-top:6px;">מסמך רשמי מארכיון, מסמכי מנהל, צו רשמי, פרוטוקול. רישום סטנדרטי קצר.</div>
         </label>
-        <label style="cursor:pointer; padding:14px; border:2px solid var(--line); border-radius:8px; transition:all .15s; background:white;" id="type-priv-card">
+        <label style="cursor:pointer; padding:14px; border:2px solid var(--line); border-radius:8px; transition:all .15s; background:var(--card);" id="type-priv-card">
           <input type="radio" name="doc-type-mode" value="private" checked style="margin-inline-end:8px;">
           <b style="color:var(--accent);">👤 מסמך ממקור פרטי</b>
           <div style="font-size:12px; color:var(--muted); margin-top:6px;">תיק ממוסר פרטי (משפחה, אספן). רישום מורחב לפי נהלי ספיר — חטיבה, יוצר, מקוריות, פריטים נלווים, סיווג ועוד.</div>
@@ -409,25 +303,25 @@
       <span class="num">1</span>
       <span class="title">מסמך <small>Document — PDF / תמונה · בודד או batch (עד 20)</small></span>
       <div style="margin-inline-start:auto; display:flex; gap:6px; flex-wrap:wrap;">
-        <label id="merge-jpgs-btn" class="upload-btn" for="merge-jpgs-input" style="padding:5px 10px; font-size:12px; border-color:#2e7d4e; color:#1f5c38;" title="איחוד מספר JPGs לקובץ PDF אחד">🔗 איחוד JPGs → PDF</label>
+        <label id="merge-jpgs-btn" class="upload-btn" for="merge-jpgs-input" style="padding:5px 10px; font-size:12px;" title="איחוד מספר JPGs לקובץ PDF אחד">🔗 איחוד JPGs → PDF</label>
         <input type="file" id="merge-jpgs-input" accept="image/jpeg,image/jpg,image/png,image/webp" multiple class="visually-hidden-file">
         <label id="doc-batch-add-btn" class="upload-btn" for="doc-batch-input" style="padding:5px 10px; font-size:12px;">📤 העלה batch (עד 20)</label>
         <input type="file" id="doc-batch-input" accept="application/pdf,image/*" multiple class="visually-hidden-file">
-        <label id="doc-folder-add-btn" class="upload-btn" for="doc-folder-input" style="padding:5px 10px; font-size:12px; border-color:#2e7d4e; color:#1f5c38;" title="העלאת תיקייה שלמה של סריקות">📁 העלה תיקייה</label>
+        <label id="doc-folder-add-btn" class="upload-btn" for="doc-folder-input" style="padding:5px 10px; font-size:12px;" title="העלאת תיקייה שלמה של סריקות">📁 העלה תיקייה</label>
         <input type="file" id="doc-folder-input" webkitdirectory directory multiple class="visually-hidden-file">
       </div>
     </div>
     <div class="body">
 
       <!-- Queue panel for documents -->
-      <div id="doc-queue-panel" style="display:none; margin-bottom:14px; padding:10px 12px; background:#ebf3ed; border:1px solid #b8d4c0; border-radius:8px;">
+      <div id="doc-queue-panel" style="display:none; margin-bottom:14px; padding:10px 12px; background:color-mix(in srgb, var(--accent) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius:8px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-          <div style="font-weight:700; color:#1f5c38; font-size:13.5px;">
-            📂 תור מסמכים <span id="doc-queue-summary" style="font-weight:400; font-size:12px; color:#3a7d57; margin-inline-start:6px;"></span>
+          <div style="font-weight:700; color:var(--accent); font-size:13.5px;">
+            📂 תור מסמכים <span id="doc-queue-summary" style="font-weight:400; font-size:12px; color:var(--muted); margin-inline-start:6px;"></span>
           </div>
           <div style="display:flex; gap:6px;">
-            <label id="doc-queue-add-more-btn" class="upload-btn" for="doc-batch-input" style="padding:3px 9px; font-size:11.5px; border-color:#2e7d4e; color:#1f5c38;">+ הוסף עוד</label>
-            <button type="button" id="doc-queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:#b22222; border-color:#b22222;">🗑 נקה תור</button>
+            <label id="doc-queue-add-more-btn" class="upload-btn" for="doc-batch-input" style="padding:3px 9px; font-size:11.5px;">+ הוסף עוד</label>
+            <button type="button" id="doc-queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:var(--error); border-color:var(--error);">🗑 נקה תור</button>
           </div>
         </div>
         <div id="doc-queue-list" style="display:flex; gap:8px; overflow-x:auto; padding:4px; align-items:stretch;"></div>
@@ -597,9 +491,9 @@
         <!-- ====================================================== -->
         <!--  PRIVATE-ONLY FIELDS (hidden in institutional mode)     -->
         <!-- ====================================================== -->
-        <div class="private-only-section" style="margin-top: 22px; padding-top: 16px; border-top: 3px double #2e7d4e;">
-          <h3 style="margin:0 0 14px; color:#1f5c38; font-size: 15px;">📋 שדות מורחבים — מקור פרטי</h3>
-          <div style="font-size:11.5px; color:var(--muted); margin-bottom:14px; padding:8px 12px; background:#ebf3ed; border-radius:6px;">
+        <div class="private-only-section" style="margin-top: 22px; padding-top: 16px; border-top: 3px double var(--accent);">
+          <h3 style="margin:0 0 14px; color:var(--accent); font-size: 15px;">📋 שדות מורחבים — מקור פרטי</h3>
+          <div style="font-size:11.5px; color:var(--muted); margin-bottom:14px; padding:8px 12px; background:var(--tint); border-radius:6px;">
             השדות הבאים הם לפי <b>נהלי קטלוג ספיר למקורות פרטיים</b>: חטיבה ארכיונית, יוצרי החומר, מקוריות, פריטים נלווים, סיווג ועוד.
           </div>
 
@@ -728,9 +622,9 @@
   <div class="download-bar" id="download-bar" style="display:none;">
     <span style="font-size:13px; color:var(--muted)">דוח מוכן:</span>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button id="validate-btn" class="ghost" type="button" title="פאס בקרה אקדמית — בודק כל טענה בקטלוג מול המסמך המקורי" style="border-color:#6b3f9b; color:#6b3f9b;">🔬 בקרה אקדמית</button>
+      <button id="validate-btn" class="ghost" type="button" title="פאס בקרה אקדמית — בודק כל טענה בקטלוג מול המסמך המקורי" style="border-color:var(--tik); color:var(--tik);">🔬 בקרה אקדמית</button>
       <button id="preview-btn" class="ghost" type="button">👁 תצוגה מקדימה</button>
-      <button id="notebooklm-btn" class="ghost" type="button" title="ייצוא שמות · תאריכים · הקשר מכל המסמכים שפוענחו — קובץ Markdown להעלאה כמקור ב-NotebookLM" style="border-color:#6b3f9b; color:#6b3f9b;">🧠 ייצוא ל-NotebookLM</button>
+      <button id="notebooklm-btn" class="ghost" type="button" title="ייצוא שמות · תאריכים · הקשר מכל המסמכים שפוענחו — קובץ Markdown להעלאה כמקור ב-NotebookLM" style="border-color:var(--tik); color:var(--tik);">🧠 ייצוא ל-NotebookLM</button>
       <button id="download-final-btn">⬇ הורד HTML</button>
     </div>
   </div>
@@ -781,14 +675,14 @@ function applyDocMode() {
   if (instCard && privCard) {
     if (state.doc_mode === 'institutional') {
       instCard.style.borderColor = 'var(--accent)';
-      instCard.style.background = '#fef9e7';
+      instCard.style.background = 'color-mix(in srgb, var(--accent) 12%, var(--card))';
       privCard.style.borderColor = 'var(--line)';
-      privCard.style.background = 'white';
+      privCard.style.background = 'var(--card)';
     } else {
-      privCard.style.borderColor = '#2e7d4e';
-      privCard.style.background = '#ebf3ed';
+      privCard.style.borderColor = 'var(--accent)';
+      privCard.style.background = 'color-mix(in srgb, var(--accent) 12%, var(--card))';
       instCard.style.borderColor = 'var(--line)';
-      instCard.style.background = 'white';
+      instCard.style.background = 'var(--card)';
     }
   }
 }
@@ -964,18 +858,18 @@ if (testGeminiBtn && testGeminiStatus) {
     const key = (apiKeyGemini.value || '').trim();
     testGeminiStatus.innerHTML = '';
     if (!key) {
-      testGeminiStatus.innerHTML = '<span style="color:#c53030;">❌ אין מפתח. הדבק מפתח בשדה למעלה ונסה שוב.</span>';
+      testGeminiStatus.innerHTML = '<span style="color:var(--error);">❌ אין מפתח. הדבק מפתח בשדה למעלה ונסה שוב.</span>';
       return;
     }
     if (!key.startsWith('AIza')) {
-      testGeminiStatus.innerHTML = '<span style="color:#c53030;">⚠ המפתח לא מתחיל ב-"AIza" — זה לא נראה כמו מפתח Gemini תקין.<br>אולי הדבקת מפתח Anthropic (sk-ant-…) במקום?</span>';
+      testGeminiStatus.innerHTML = '<span style="color:var(--error);">⚠ המפתח לא מתחיל ב-"AIza" — זה לא נראה כמו מפתח Gemini תקין.<br>אולי הדבקת מפתח Anthropic (sk-ant-…) במקום?</span>';
       return;
     }
     testGeminiBtn.disabled = true;
     testGeminiBtn.innerText = '⏳ בודק…';
     try {
       // STEP 1: list models — confirms key is valid + shows which models you have access to
-      testGeminiStatus.innerHTML = '<span style="color:#5a5a5a;">⏳ שלב 1/2 · מאמת מפתח מול Gemini API…</span>';
+      testGeminiStatus.innerHTML = '<span style="color:var(--muted);">⏳ שלב 1/2 · מאמת מפתח מול Gemini API…</span>';
       const listRes = await fetch(geminiBase() + '/v1beta/models?pageSize=50', {
         headers: { 'x-goog-api-key': key },
       });
@@ -988,7 +882,7 @@ if (testGeminiBtn && testGeminiStatus) {
         if (reason === 'API_KEY_INVALID' || listRes.status === 400) hint = '<br>👉 המפתח לא חוקי או פג. צור חדש ב-<a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com/app/apikey</a>.';
         else if (listRes.status === 403) hint = '<br>👉 ייתכן ש-Generative Language API לא מופעל בפרויקט שלך. גש ל-<a href="https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com" target="_blank">Google Cloud Console</a> ולחץ "Enable".';
         else if (listRes.status === 429) hint = '<br>👉 חרגת מ-quota. חכה דקה ונסה שוב, או שדרג ל-paid tier.';
-        testGeminiStatus.innerHTML = `<span style="color:#c53030;">❌ <b>שלב 1 נכשל — HTTP ${listRes.status}</b>${reason ? ' (' + reason + ')' : ''}<br>${msg}${hint}</span>`;
+        testGeminiStatus.innerHTML = `<span style="color:var(--error);">❌ <b>שלב 1 נכשל — HTTP ${listRes.status}</b>${reason ? ' (' + reason + ')' : ''}<br>${msg}${hint}</span>`;
         return;
       }
       const listData = JSON.parse(listBody);
@@ -999,7 +893,7 @@ if (testGeminiBtn && testGeminiStatus) {
       const selectedAvailable = allModels.includes(selectedModel);
 
       // STEP 2: try a tiny generateContent call with the selected model
-      testGeminiStatus.innerHTML = `<span style="color:#5a5a5a;">⏳ שלב 2/2 · מנסה לקרוא ל-${selectedModel}…</span>`;
+      testGeminiStatus.innerHTML = `<span style="color:var(--muted);">⏳ שלב 2/2 · מנסה לקרוא ל-${selectedModel}…</span>`;
       const genRes = await fetch(geminiBase() + '/v1beta/models/' + selectedModel + ':generateContent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
@@ -1009,22 +903,22 @@ if (testGeminiBtn && testGeminiStatus) {
         }),
       });
       const genBody = await genRes.text();
-      let resultHtml = `<div style="color:#2f855a; font-weight:600;">✓ <b>שלב 1: המפתח תקין.</b> זוהו ${allModels.length} מודלים זמינים.</div>`;
-      resultHtml += `<div style="margin-top:4px; font-size:10.5px; color:#5a5a5a;"><b>Flash זמינים:</b> ${flashModels.join(', ') || '— אין —'}</div>`;
-      if (proModels.length) resultHtml += `<div style="font-size:10.5px; color:#5a5a5a;"><b>Pro זמינים:</b> ${proModels.join(', ')}</div>`;
+      let resultHtml = `<div style="color:var(--good); font-weight:600;">✓ <b>שלב 1: המפתח תקין.</b> זוהו ${allModels.length} מודלים זמינים.</div>`;
+      resultHtml += `<div style="margin-top:4px; font-size:10.5px; color:var(--muted);"><b>Flash זמינים:</b> ${flashModels.join(', ') || '— אין —'}</div>`;
+      if (proModels.length) resultHtml += `<div style="font-size:10.5px; color:var(--muted);"><b>Pro זמינים:</b> ${proModels.join(', ')}</div>`;
       if (genRes.ok) {
-        resultHtml += `<div style="margin-top:6px; color:#2f855a; font-weight:600;">✓ <b>שלב 2: ${selectedModel} עובד תקין!</b> הכל מוכן לשימוש.</div>`;
+        resultHtml += `<div style="margin-top:6px; color:var(--good); font-weight:600;">✓ <b>שלב 2: ${selectedModel} עובד תקין!</b> הכל מוכן לשימוש.</div>`;
       } else {
         let genParsed = {}; try { genParsed = JSON.parse(genBody); } catch {}
         const genMsg = genParsed.error?.message || genBody.slice(0, 300);
-        resultHtml += `<div style="margin-top:6px; color:#c53030;">❌ <b>שלב 2 נכשל — HTTP ${genRes.status}</b><br>${genMsg}</div>`;
+        resultHtml += `<div style="margin-top:6px; color:var(--error);">❌ <b>שלב 2 נכשל — HTTP ${genRes.status}</b><br>${genMsg}</div>`;
         if (!selectedAvailable && flashModels.length) {
-          resultHtml += `<div style="margin-top:4px; color:#c05621;">👉 <b>${selectedModel} לא מופיע ברשימת המודלים הזמינים אצלך.</b> נסה לבחור אחד מהמודלים שכן מופיעים למעלה (למשל ${flashModels[0]}).</div>`;
+          resultHtml += `<div style="margin-top:4px; color:var(--warn);">👉 <b>${selectedModel} לא מופיע ברשימת המודלים הזמינים אצלך.</b> נסה לבחור אחד מהמודלים שכן מופיעים למעלה (למשל ${flashModels[0]}).</div>`;
         }
       }
       testGeminiStatus.innerHTML = resultHtml;
     } catch (e) {
-      testGeminiStatus.innerHTML = `<span style="color:#c53030;">❌ שגיאת רשת: ${e.message}<br>אולי חומת אש או VPN חוסמים את generativelanguage.googleapis.com?</span>`;
+      testGeminiStatus.innerHTML = `<span style="color:var(--error);">❌ שגיאת רשת: ${e.message}<br>אולי חומת אש או VPN חוסמים את generativelanguage.googleapis.com?</span>`;
     } finally {
       testGeminiBtn.disabled = false;
       testGeminiBtn.innerText = '🔍 בדוק מפתח';
@@ -1158,12 +1052,12 @@ function clearDoc() {
 // =====================================================================
 const DOC_BATCH_MAX = 20;
 const DOC_QUEUE_STATUSES = {
-  pending:   { icon: '⏳', label: 'ממתין',   color: '#8a7140' },
-  analyzing: { icon: '🔄', label: 'מנתח',    color: '#0d47a1' },
-  ready:     { icon: '✓',  label: 'מוכן',    color: '#2e7d32' },
-  reviewing: { icon: '▶',  label: 'בסקירה',  color: '#1f5c38' },
-  done:      { icon: '💾', label: 'נשמר',    color: '#155724' },
-  error:     { icon: '❌', label: 'שגיאה',   color: '#b22222' },
+  pending:   { icon: '⏳', label: 'ממתין',   color: 'var(--muted)' },
+  analyzing: { icon: '🔄', label: 'מנתח',    color: 'var(--brand)' },
+  ready:     { icon: '✓',  label: 'מוכן',    color: 'var(--good)' },
+  reviewing: { icon: '▶',  label: 'בסקירה',  color: 'var(--accent)' },
+  done:      { icon: '💾', label: 'נשמר',    color: 'var(--good)' },
+  error:     { icon: '❌', label: 'שגיאה',   color: 'var(--error)' },
 };
 
 // doc-batch-add-btn and doc-queue-add-more-btn are native <label for="doc-batch-input"> — no JS click().
@@ -1234,8 +1128,8 @@ function renderDocQueuePanel() {
     const isPdf = it.file.type === 'application/pdf';
     const errTip = it.error ? ` title="${esc(it.error)}"` : '';
     return `<div class="doc-queue-item" data-idx="${idx}"${errTip}
-      style="flex:0 0 auto; width:100px; cursor:pointer; padding:5px; border:2px solid ${isActive ? '#2e7d4e' : 'transparent'}; border-radius:6px; background:${isActive ? '#fff' : 'transparent'};">
-      <div style="position:relative; width:90px; height:90px; border-radius:4px; overflow:hidden; background:#e5dfd1; margin:0 auto; display:flex; align-items:center; justify-content:center;">
+      style="flex:0 0 auto; width:100px; cursor:pointer; padding:5px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'};">
+      <div style="position:relative; width:90px; height:90px; border-radius:4px; overflow:hidden; background:var(--tint); margin:0 auto; display:flex; align-items:center; justify-content:center;">
         ${it.thumb ? `<img src="${it.thumb}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="font-size:36px; opacity:.6;">${isPdf ? '📄' : '🖼'}</div>`}
         <div style="position:absolute; bottom:0; right:0; left:0; background:rgba(0,0,0,.7); color:#fff; font-size:9px; text-align:center; padding:1px 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(it.file.name)}</div>
       </div>
@@ -1371,14 +1265,14 @@ function persistDocQueue() {
   if (!items.length || state.doc_queue.length) return;
   const panel = document.getElementById('doc-queue-panel');
   const bar = document.createElement('div');
-  bar.style.cssText = 'background:#fdf3e3;border:1px solid #ecd9b0;border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+  bar.style.cssText = 'background:color-mix(in srgb, var(--warn) 12%, var(--card));border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--ink)';
   const when = new Date(saved.savedAt || Date.now()).toLocaleString('he-IL');
   const done = items.filter(x => x.identification).length;
   const sp = document.createElement('span');
   sp.innerHTML = '💾 נמצאו תוצאות של <b>' + done + '</b> מסמכים מאצווה קודמת (' + esc(when) + '). הקבצים עצמם אינם נשמרים בדפדפן — התוצאות זמינות לצפייה, להעתקה ולהורדה.';
   bar.appendChild(sp);
   const mkBtn = (t, primary) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
-    b.style.cssText = 'border-radius:6px;padding:4px 12px;cursor:pointer;font-family:inherit;font-size:12.5px;border:1px solid ' + (primary ? '#2e7d4e;background:#2e7d4e;color:#fff' : '#d8d4cc;background:#fff;color:#5a5a5a'); return b; };
+    b.style.cssText = 'border-radius:6px;padding:4px 12px;cursor:pointer;font-family:inherit;font-size:12.5px;border:1px solid ' + (primary ? 'var(--accent);background:var(--accent);color:#04160c' : 'var(--line-strong);background:var(--card);color:var(--muted)'); return b; };
   const rb = mkBtn('שחזר תוצאות', true), xb = mkBtn('מחק', false);
   rb.addEventListener('click', () => {
     state.doc_queue = items.map((x, i) => ({ id: 'dqr' + Date.now() + '_' + i, restored: true,
@@ -1415,16 +1309,16 @@ function openMergeModal() {
   // Reuse the existing modal-overlay style by building inline
   const overlay = document.createElement('div');
   overlay.id = 'merge-modal-overlay';
-  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px;';
+  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px;';
   const totalSizeMB = (state.merge_files.reduce((s, f) => s + f.size, 0) / 1024 / 1024).toFixed(1);
   overlay.innerHTML = `
-    <div style="background:white; border-radius:8px; max-width:780px; width:100%; max-height:90vh; overflow:auto;">
+    <div style="background:var(--card); border:1px solid var(--line-strong); border-radius:8px; max-width:780px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 30px 70px -20px rgba(0,0,0,.8);">
       <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
-        <h3 style="margin:0; font-size:16px; color:#1f5c38;">🔗 איחוד JPGs לקובץ PDF אחד</h3>
+        <h3 style="margin:0; font-size:16px; color:var(--accent);">🔗 איחוד JPGs לקובץ PDF אחד</h3>
         <button type="button" id="merge-cancel-x" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
       </div>
       <div style="padding:16px 18px;">
-        <div style="background:#ebf3ed; border:1px solid #b8d4c0; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; color:#1f5c38;">
+        <div style="background:color-mix(in srgb, var(--accent) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; color:var(--accent);">
           <b>${state.merge_files.length} קבצים</b> · סה״כ <b>${totalSizeMB} MB</b>. מיון אלפביתי אוטומטי. תוכל לסדר מחדש (↑/↓) או להסיר (✕).
         </div>
         <div style="margin-bottom:10px;">
@@ -1457,7 +1351,7 @@ function openMergeModal() {
         <span id="merge-progress" style="font-size:12.5px; color:var(--muted);"></span>
         <div style="display:flex; gap:8px;">
           <button type="button" id="merge-cancel" class="ghost">ביטול</button>
-          <button type="button" id="merge-go" class="primary" style="background:#2e7d4e;">📥 צור PDF</button>
+          <button type="button" id="merge-go" class="primary" style="background:var(--accent); color:#04160c;">📥 צור PDF</button>
         </div>
       </div>
     </div>`;
@@ -1480,7 +1374,7 @@ function renderMergeList() {
       <div style="display:flex; gap:4px;">
         <button type="button" class="merge-up ghost" style="padding:2px 7px; font-size:11px;" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button type="button" class="merge-down ghost" style="padding:2px 7px; font-size:11px;" ${i === state.merge_files.length - 1 ? 'disabled' : ''}>↓</button>
-        <button type="button" class="merge-remove ghost" style="padding:2px 7px; font-size:11px; color:#b22222; border-color:#b22222;">✕</button>
+        <button type="button" class="merge-remove ghost" style="padding:2px 7px; font-size:11px; color:var(--error); border-color:var(--error);">✕</button>
       </div>
     </div>
   `).join('');
@@ -1618,15 +1512,15 @@ async function performMerge() {
     const modalContainer = overlay.querySelector('div'); // First child div = the modal container
     modalContainer.innerHTML = `
       <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
-        <h3 style="margin:0; font-size:16px; color:#155724;">✓ ה-PDF נוצר בהצלחה</h3>
+        <h3 style="margin:0; font-size:16px; color:var(--good);">✓ ה-PDF נוצר בהצלחה</h3>
         <button type="button" id="merge-close-x" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
       </div>
       <div style="padding:30px 18px; text-align:center;">
         <div style="font-size:48px; line-height:1; margin-bottom:10px;">📄✓</div>
-        <div style="font-size:16px; color:#155724; font-weight:700; margin-bottom:6px; direction:ltr; unicode-bidi:isolate;">${esc(outputName)}</div>
+        <div style="font-size:16px; color:var(--good); font-weight:700; margin-bottom:6px; direction:ltr; unicode-bidi:isolate;">${esc(outputName)}</div>
         <div style="font-size:13px; color:var(--muted); margin-bottom:24px;">${state.merge_files.length} עמודים · ${(pdfBlob.size/1024/1024).toFixed(1)} MB</div>
         <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-          <button type="button" id="merge-load" class="primary" style="background:#2e7d4e; padding:10px 18px; font-size:14px;">📥 טען לפיענוח כעת</button>
+          <button type="button" id="merge-load" class="primary" style="background:var(--accent); color:#04160c; padding:10px 18px; font-size:14px;">📥 טען לפיענוח כעת</button>
           <button type="button" id="merge-download" class="ghost" style="padding:10px 18px; font-size:14px;">⬇ הורד למחשב</button>
           <button type="button" id="merge-both" class="ghost" style="padding:10px 18px; font-size:14px;">⬇📥 גם וגם</button>
         </div>
@@ -1829,13 +1723,13 @@ function promptForManualOCR(reason) {
   return new Promise((resolve, reject) => {
     // Reuse existing modal pattern — simple overlay with textarea
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
     const isApiFail = reason.startsWith('api_failed');
     const reasonMsg = isApiFail
-      ? `<div style="background:#fff3cd; border:1px solid #ffe69c; border-radius:6px; padding:10px; margin-bottom:14px; font-size:12.5px; color:#856404;">⚠ ה-API של Transkribus חזר עם שגיאה (${esc(reason.split(':')[1] || 'CORS/רשת')}). אפשר להמשיך ידנית — בצע OCR ב-app.transkribus.org והדבק את התוצאה.</div>`
-      : '<div style="background:#e3f2fd; border:1px solid #bbdefb; border-radius:6px; padding:10px; margin-bottom:14px; font-size:12.5px; color:#0d47a1;">📋 מצב הזנה ידנית: בצע OCR ב-Transkribus והדבק את התוצאה כאן.</div>';
+      ? `<div style="background:color-mix(in srgb, var(--warn) 14%, var(--card)); border:1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius:6px; padding:10px; margin-bottom:14px; font-size:12.5px; color:var(--warn);">⚠ ה-API של Transkribus חזר עם שגיאה (${esc(reason.split(':')[1] || 'CORS/רשת')}). אפשר להמשיך ידנית — בצע OCR ב-app.transkribus.org והדבק את התוצאה.</div>`
+      : '<div style="background:color-mix(in srgb, var(--brand) 14%, var(--card)); border:1px solid color-mix(in srgb, var(--brand) 40%, transparent); border-radius:6px; padding:10px; margin-bottom:14px; font-size:12.5px; color:var(--brand);">📋 מצב הזנה ידנית: בצע OCR ב-Transkribus והדבק את התוצאה כאן.</div>';
     overlay.innerHTML = `
-      <div style="background:white; border-radius:8px; max-width:720px; width:100%; max-height:90vh; overflow:auto;">
+      <div style="background:var(--card); border:1px solid var(--line-strong); border-radius:8px; max-width:720px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 30px 70px -20px rgba(0,0,0,.8);">
         <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
           <h3 style="margin:0; font-size:16px; color:var(--accent);">🇪🇺 הדבקת OCR מ-Transkribus</h3>
           <button type="button" id="tk-modal-cancel" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
@@ -2325,7 +2219,7 @@ function showRawResponseError(err) {
   const safeParse = esc(err.parseError || '');
   status.innerHTML = `
     <div style="font-weight:700; margin-bottom:6px">❌ ${esc(err.message)}</div>
-    <div style="font-size:12px; margin-bottom:10px">פירוט שגיאת JSON: <code style="background:#fff; padding:2px 6px; border-radius:3px; direction:ltr; unicode-bidi:isolate;">${safeParse}</code></div>
+    <div style="font-size:12px; margin-bottom:10px">פירוט שגיאת JSON: <code style="background:var(--card-hover); color:var(--ink); padding:2px 6px; border-radius:3px; direction:ltr; unicode-bidi:isolate;">${safeParse}</code></div>
     <details>
       <summary style="cursor:pointer; font-weight:600; padding:6px 0">▸ הצג את התגובה הגולמית של ${esc(err.label || 'AI')} (להעתקה / תיקון ידני)</summary>
       <textarea id="raw-response-area" readonly style="width:100%; min-height:240px; margin-top:8px; font-family:'SF Mono',Menlo,monospace; font-size:11.5px; direction:ltr; text-align:left; line-height:1.4;">${safeRaw}</textarea>
@@ -2349,7 +2243,7 @@ function showRawResponseError(err) {
   document.getElementById('retry-parse-btn').addEventListener('click', () => {
     const ta = document.getElementById('raw-response-area');
     ta.removeAttribute('readonly');
-    ta.style.background = '#fffbeb';
+    ta.style.background = 'color-mix(in srgb, var(--warn) 16%, var(--card))';
     ta.focus();
     const btn = document.getElementById('retry-parse-btn');
     btn.textContent = '✓ פענח את הערוך';
@@ -2932,7 +2826,10 @@ function paintConfidenceFor(id, conf) {
 // 'span class="cv c-high">V✓</span>' with a dropped leading '<'), plus bare
 // V✓/H~/V? tokens. Confidence belongs in the data, never in the copy-paste text.
 function stripConfidenceMarkup(v) {
-  if (typeof v !== 'string') return v || '';
+  // The model sometimes returns a prose field as an array of lines; coerce so
+  // the strip runs on a string instead of passing the raw array (with markup) through.
+  if (Array.isArray(v)) v = v.filter(x => x != null).join('\n');
+  if (typeof v !== 'string') return v == null ? '' : String(v);
   return v
     .replace(/(?:<|&lt;)?\s*\/?\s*span(?:\s[^<>]*)?(?:>|&gt;)/gi, '')
     .replace(/[VH]\s*[✓~?]/g, '')
@@ -3337,24 +3234,24 @@ async function runAcademicValidation(useAnthropic) {
 
 function showValidationReport(report) {
   const verdictColors = {
-    OK: { bg: '#d4edda', border: '#c3e6cb', color: '#155724', label: '✓ הקטלוג תקין' },
-    NEEDS_REVISION: { bg: '#fff3cd', border: '#ffe69c', color: '#856404', label: '⚠ נדרשת בדיקה' },
-    CRITICAL_ISSUES: { bg: '#f8d7da', border: '#f5c6cb', color: '#721c24', label: '❌ בעיות חמורות' },
+    OK: { bg: 'color-mix(in srgb, var(--good) 16%, var(--card))', border: 'color-mix(in srgb, var(--good) 40%, transparent)', color: 'var(--good)', label: '✓ הקטלוג תקין' },
+    NEEDS_REVISION: { bg: 'color-mix(in srgb, var(--warn) 16%, var(--card))', border: 'color-mix(in srgb, var(--warn) 40%, transparent)', color: 'var(--warn)', label: '⚠ נדרשת בדיקה' },
+    CRITICAL_ISSUES: { bg: 'color-mix(in srgb, var(--error) 16%, var(--card))', border: 'color-mix(in srgb, var(--error) 40%, transparent)', color: 'var(--error)', label: '❌ בעיות חמורות' },
   };
   const v = verdictColors[report.overall_verdict] || verdictColors.NEEDS_REVISION;
   const fieldVerdictColors = {
-    CONFIRMED:    { icon: '✓', color: '#2e7d32', bg: '#e8f5e9' },
-    INFERRED:     { icon: '~', color: '#b07000', bg: '#fff8e1' },
-    UNSUPPORTED:  { icon: '⚠', color: '#c62828', bg: '#ffebee' },
-    HALLUCINATED: { icon: '❌', color: '#b71c1c', bg: '#ffcdd2' },
+    CONFIRMED:    { icon: '✓', color: 'var(--good)', bg: 'color-mix(in srgb, var(--good) 10%, var(--card))' },
+    INFERRED:     { icon: '~', color: 'var(--warn)', bg: 'color-mix(in srgb, var(--warn) 10%, var(--card))' },
+    UNSUPPORTED:  { icon: '⚠', color: 'var(--error)', bg: 'color-mix(in srgb, var(--error) 10%, var(--card))' },
+    HALLUCINATED: { icon: '❌', color: 'var(--error)', bg: 'color-mix(in srgb, var(--error) 16%, var(--card))' },
   };
 
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px;';
+  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px;';
   overlay.innerHTML = `
-    <div style="background:white; border-radius:8px; max-width:920px; width:100%; max-height:90vh; display:flex; flex-direction:column;">
+    <div style="background:var(--card); border:1px solid var(--line-strong); border-radius:8px; max-width:920px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 30px 70px -20px rgba(0,0,0,.8);">
       <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
-        <h3 style="margin:0; font-size:16px; color:#6b3f9b;">🔬 דוח בקרה אקדמית</h3>
+        <h3 style="margin:0; font-size:16px; color:var(--tik);">🔬 דוח בקרה אקדמית</h3>
         <button type="button" id="val-close-x" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
       </div>
       <div style="padding:16px 18px; overflow-y:auto; flex:1;">
@@ -3369,9 +3266,9 @@ function showValidationReport(report) {
         </div>
 
         ${(report.critical_issues || []).length ? `
-          <div style="background:#fff5f5; border:1px solid #fbb; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
-            <div style="font-weight:700; color:#b71c1c; margin-bottom:6px;">🚨 בעיות חמורות</div>
-            <ul style="margin:0; padding-inline-start:20px; color:#7a1f1f; font-size:13px;">
+          <div style="background:color-mix(in srgb, var(--error) 14%, var(--card)); border:1px solid color-mix(in srgb, var(--error) 45%, transparent); border-radius:6px; padding:10px 14px; margin-bottom:12px;">
+            <div style="font-weight:700; color:var(--error); margin-bottom:6px;">🚨 בעיות חמורות</div>
+            <ul style="margin:0; padding-inline-start:20px; color:var(--error); font-size:13px;">
               ${report.critical_issues.map(i => `<li>${esc(i)}</li>`).join('')}
             </ul>
           </div>` : ''}
@@ -3390,8 +3287,8 @@ function showValidationReport(report) {
                 </div>
                 <div style="font-size:12.5px; color:var(--ink); margin-bottom:3px;"><b>ערך:</b> ${esc(fv.value || '—')}</div>
                 ${fv.evidence ? `<div style="font-size:12px; color:var(--muted); margin-bottom:3px;"><b>ראיה:</b> ${esc(fv.evidence)}</div>` : ''}
-                ${fv.issue ? `<div style="font-size:12px; color:#b71c1c; margin-top:4px;"><b>🚨 בעיה:</b> ${esc(fv.issue)}</div>` : ''}
-                ${fv.suggested_fix ? `<div style="font-size:12px; color:#155724; margin-top:4px;"><b>💡 הצעת תיקון:</b> ${esc(fv.suggested_fix)}</div>` : ''}
+                ${fv.issue ? `<div style="font-size:12px; color:var(--error); margin-top:4px;"><b>🚨 בעיה:</b> ${esc(fv.issue)}</div>` : ''}
+                ${fv.suggested_fix ? `<div style="font-size:12px; color:var(--good); margin-top:4px;"><b>💡 הצעת תיקון:</b> ${esc(fv.suggested_fix)}</div>` : ''}
               </div>`;
           }).join('')}
         </div>
