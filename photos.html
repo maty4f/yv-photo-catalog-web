@@ -710,6 +710,7 @@
           <input type="file" id="back-input" class="file-input visually-hidden-file" data-side="back" accept="image/*">
         </div>
       </div>
+      <div class="yv-flow-mount" style="margin-top:10px"></div>
     </div>
   </section>
 
@@ -757,6 +758,7 @@
     <div class="head"><span class="num">4</span><span class="title">תוצאות הזיהוי <small>Results — ניתן לערוך ידנית</small></span></div>
     <div class="body">
 
+      <div class="yv-progress-mount"></div>
       <div id="results" class="results">
 
         <!-- Title -->
@@ -2386,6 +2388,7 @@ async function runUnifiedJob(file, contextText, onStatus, backFile) {
   fd.append('file', file);
   fd.append('kind', 'photo');
   fd.append('context', (contextText || '').trim());
+  if (window.yvFlow) fd.append('flow', yvFlow.current('photos'));   // מהיר / מדורג / מעמיק
   if (backFile) fd.append('back', backFile);   // verso — read alongside the front
   if (onStatus) onStatus('מעלה לשרת המאוחד…' + (backFile ? ' (חזית + גב)' : ''));
 
@@ -2395,6 +2398,7 @@ async function runUnifiedJob(file, contextText, onStatus, backFile) {
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
 
   if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… ~2-3 דק׳');
+  if (window.yvProgress) yvProgress.begin({ screen: 'photos', kind: 'photo' });
   // Poll for completion via GET /api/jobs/:id. SSE (EventSource) does NOT stream
   // reliably through the Cloudflare tunnel — events get buffered/dropped, so the
   // queue item would hang on "מנתח" forever even after the server finished.
@@ -2407,6 +2411,7 @@ async function runUnifiedJob(file, contextText, onStatus, backFile) {
     let job = null;
     try { job = await (await fetch(jobUrl)).json(); } catch (e) { /* transient — keep polling */ }
     if (!job) { if (Date.now() - t0 > MAX_MS) throw new Error('timeout בניתוח'); continue; }
+    if (window.yvProgress) yvProgress.pump(job);
     if (onStatus && Array.isArray(job.events) && job.events.length) {
       const last = job.events[job.events.length - 1];
       const line = String(last.text || last.message || '').trim().split('\n').pop().slice(0, 160);
@@ -4998,5 +5003,12 @@ refreshButtons();
 <script src="yv-autosave.js"></script>
 <script src="yv-misid.js"></script>
 <script>yvMisid.init({ screen: 'photos', roots: ['#results'] });</script>
+<script src="yv-flow.js"></script>
+<script>yvFlow.init({ screen: 'photos', label: 'זרימת עיבוד:', options: [
+  { value: 'tiered', label: 'מדורג (מומלץ)', hint: 'Gemini לכולם + Claude לעוגני-זיהוי' },
+  { value: 'fast', label: 'מהיר', hint: 'Gemini בלבד — הכי מהיר וזול' },
+  { value: 'free', label: 'מעמיק', hint: 'Claude תמיד — הכי יסודי, איטי' },
+] });</script>
+<script src="yv-progress.js"></script>
 </body>
 </html>

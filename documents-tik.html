@@ -210,10 +210,13 @@
     <div class="hint">המידע הזה ישמש ל"הערות מוסר החומר" ולהקשר — לא יוצג כעובדה מהתיק.</div>
   </div>
 
+  <div class="yv-flow-mount" style="margin:8px 0"></div>
   <button class="go" id="run" disabled>קטלג תיק</button>
   <button class="go" id="describe-fast" disabled style="background:#2c5d8a;margin-inline-start:8px">⚡ תיאור מהיר (Gemini→Claude)</button>
   <div class="status" id="status"></div>
   <div id="pdf-bar" style="display:none;margin-top:10px;font-size:13.5px;padding:8px 12px;border-radius:6px;background:#eef4f7;color:#234"></div>
+
+  <div class="yv-progress-mount"></div>
 
   <!-- RESULTS -->
   <div id="results">
@@ -1136,11 +1139,26 @@ async function fastDescribe(){
     // provided context for the unified engine path (written server-side as the
     // standard <pdf>.context.txt sidecar); older servers simply ignore the field
     fd.append('context',[$('context').value.trim(),(state.intakeText||'').trim()].filter(Boolean).join('\n\n'));
+    if(window.yvFlow)fd.append('reader',yvFlow.current('documents-tik'));   // אוטומטי / Claude / Gemini
     const t=Date.now();
     showStatus(`<span class="spinner"></span>תיאור מהיר · מעלה את התיק לשרת (${mb}MB)…`,'info');
-    let post;try{post=await fetch(serverBase()+'/api/tik-describe',{method:'POST',body:fd});}catch(e){throw new Error('העלאה נכשלה: '+e.message);}
-    if(!post.ok){const e=await post.json().catch(()=>({}));throw new Error(e.error||('שרת HTTP '+post.status));}
-    const {jobId}=await post.json();
+    // XHR (not fetch) so the archivist sees upload progress — a big tik through the
+    // Cloudflare tunnel uploads at ~0.5MB/s, and a silent spinner reads as a hang.
+    const post=await new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();let pct=0;
+      xhr.open('POST',serverBase()+'/api/tik-describe');
+      xhr.upload.onprogress=ev=>{if(ev.lengthComputable){pct=Math.round(ev.loaded/ev.total*100);showStatus(`<span class="spinner"></span>תיאור מהיר · מעלה את התיק לשרת… ${pct}% מתוך ${mb}MB`,'info');}};
+      xhr.onload=()=>resolve(xhr);
+      xhr.onerror=()=>{  // fetch-wrap doesn't see XHR — log the api-fail ourselves
+        if(window.__yvLog)__yvLog.push({type:'api-fail',url:serverBase()+'/api/tik-describe',text:`upload died at ${pct}% of ${mb}MB`});
+        reject(new Error(`העלאה נכשלה אחרי ${Math.round((Date.now()-t)/1000)} שניות (נעצרה ב-${pct}% מתוך ${mb}MB) — החיבור לשרת נותק באמצע. אם זה חוזר בתיק גדול: פתח את המסך ישירות במחשב שמריץ את השרת (http://localhost:3000) או פצל את התיק.`));
+      };
+      xhr.onabort=()=>reject(new Error('ההעלאה בוטלה'));
+      xhr.send(fd);
+    });
+    if(post.status<200||post.status>=300){let e={};try{e=JSON.parse(post.responseText);}catch{}throw new Error(e.error||('שרת HTTP '+post.status));}
+    let jr={};try{jr=JSON.parse(post.responseText);}catch{}
+    const {jobId}=jr;
     if(!jobId)throw new Error('השרת לא החזיר jobId (ודא שגרסת השרת החדשה רצה).');
     // Poll until the SERVER resolves the job (done/error). The server self-resolves
     // via its own watchdogs (Gemini ≤10 min + retries, synthesis ≤40 min/attempt),
@@ -1149,11 +1167,13 @@ async function fastDescribe(){
     // The 90-min figure is only a backstop against a dead connection. Each poll is a
     // quick GET, so the Cloudflare ~100s limit never bites.
     const started=Date.now(),maxMs=90*60*1000;
+    if(window.yvProgress)yvProgress.begin({screen:'documents-tik',kind:'tik'});
     while(Date.now()-started<maxMs){
       await new Promise(r=>setTimeout(r,3000));
       let pr;try{pr=await fetch(serverBase()+'/api/tik-describe/'+jobId);}catch(e){continue;}
       if(!pr.ok)continue;
       const j=await pr.json();
+      if(window.yvProgress)yvProgress.pump({status:j.status==='done'?'done':(j.status==='error'?'error':'running'),events:[]});
       showStatus(`<span class="spinner"></span>תיאור מהיר · Gemini קורא את כל התיק → Claude מסנתז הקשר היסטורי… (${Math.round((Date.now()-t)/1000)} שׄ)`,'info');
       if(j.status==='done'){
         renderRecord(parseJson(j.text,'Claude'));
@@ -1309,5 +1329,12 @@ idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('ove
 <script src="yv-autosave.js"></script>
 <script src="yv-misid.js"></script>
 <script>yvMisid.init({ screen: 'documents-tik', roots: ['#results'] });</script>
+<script src="yv-flow.js"></script>
+<script>yvFlow.init({ screen: 'documents-tik', label: 'קורא התיק:', options: [
+  { value: 'auto', label: 'אוטומטי (מומלץ)', hint: 'Gemini קורא → גיבוי Claude → Mistral' },
+  { value: 'claude', label: 'קורא Claude', hint: 'לתיקים גדולים / כשמכסת Gemini אזלה' },
+  { value: 'gemini', label: 'Gemini בלבד', hint: 'ללא גיבוי לקורא' },
+] });</script>
+<script src="yv-progress.js"></script>
 </body>
 </html>

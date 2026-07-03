@@ -213,9 +213,13 @@
 
   <!-- =================== כפתור =================== -->
   <div class="panel">
+    <div class="yv-flow-mount" style="margin-bottom:10px"></div>
     <button id="analyze-btn" class="primary" disabled>🔍 הפק רישום ארכיוני</button>
     <div id="status" class="status"></div>
   </div>
+
+  <!-- =================== התקדמות =================== -->
+  <div class="yv-progress-mount"></div>
 
   <!-- =================== תוצאות =================== -->
   <div id="results" class="results">
@@ -1088,6 +1092,7 @@ async function runUnifiedServer() {
   fd.append('file', state.pdf);
   fd.append('kind', 'doc');
   fd.append('context', contextEl.value.trim());
+  if (window.yvFlow) fd.append('flow', yvFlow.current('documents-v2'));   // אוטומטי / Mistral למודפס
   showStatus('מעלה את המסמך לשרת המאוחד…');
 
   const res = await fetch(base + '/api/items', { method: 'POST', body: fd });
@@ -1096,6 +1101,7 @@ async function runUnifiedServer() {
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
 
   showStatus('מנתח בשרת (Gemini → Claude → ולידציה)… מסמך — כמה דקות');
+  if (window.yvProgress) yvProgress.begin({ screen: 'documents-v2', kind: 'doc' });
   await new Promise((resolve, reject) => {
     const es = new EventSource(base + '/api/jobs/' + j.jobId + '/events');
     let serverErr = '';
@@ -1104,6 +1110,7 @@ async function runUnifiedServer() {
         const ev = JSON.parse(e.data);
         if (ev.type === 'error') serverErr = ev.message || '';
         else if (ev.text) {
+          if (window.yvProgress) yvProgress.step(ev.text);
           const line = String(ev.text).trim().split('\n').pop().slice(0, 160);
           if (line) showStatus('🛠 ' + line);
         }
@@ -1114,12 +1121,14 @@ async function runUnifiedServer() {
       let fin = {};
       try { fin = JSON.parse(e.data); } catch (ignore) {}
       if (fin.status === 'done' && fin.outputName) {
+        if (window.yvProgress) yvProgress.end(true);
         const url = base + '/api/output/' + encodeURIComponent(fin.outputName);
         statusEl.className = 'status ok';
         statusEl.innerHTML = '✓ הרישום מוכן — <a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
         await loadUnifiedResults(base, fin.outputName); // fills the editable results; fail-soft
         resolve();
       } else {
+        if (window.yvProgress) yvProgress.end(false, serverErr);
         reject(new Error(serverErr || 'הניתוח הסתיים בשגיאה בשרת'));
       }
     });
@@ -1337,5 +1346,11 @@ ${r.notes ? `<div class="section"><h2>הערות</h2><div>${esc(r.notes).replace
 <script src="yv-autosave.js"></script>
 <script src="yv-misid.js"></script>
 <script>yvMisid.init({ screen: 'documents-v2', roots: ['#results'] });</script>
+<script src="yv-flow.js"></script>
+<script>yvFlow.init({ screen: 'documents-v2', label: 'זרימת עיבוד:', options: [
+  { value: 'auto', label: 'אוטומטי (מומלץ)', hint: 'Gemini מבין את המסמך + גיבוי' },
+  { value: 'mistral', label: 'OCR מהיר (מודפס)', hint: 'Mistral OCR — מהיר לטקסט מודפס נקי' },
+] });</script>
+<script src="yv-progress.js"></script>
 </body>
 </html>

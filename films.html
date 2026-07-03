@@ -395,6 +395,7 @@
         <span id="film-filename" class="filename" style="display:none"></span>
       </label>
       <input type="file" id="film-file-input" accept="video/*" class="visually-hidden-file">
+      <div class="yv-flow-mount" style="text-align:center; margin-top:8px"></div>
       <div style="direction:rtl; text-align:center; margin-top:6px; font-size:12px; color:#856404;">
         🖥️ סרט ארוך (מעל ~10 דק׳) שנמצא על מחשב השרת? <a href="server-films.html" id="server-films-link" style="color:#b45309; font-weight:700;">קטלוג על השרת — בלי העלאה, בכל אורך</a>
       </div>
@@ -488,6 +489,7 @@
   <section class="step">
     <div class="head"><span class="num">4</span><span class="title">תוצאות <small>Results — ניתן לערוך</small></span></div>
     <div class="body">
+      <div class="yv-progress-mount"></div>
       <div id="results" class="results">
 
         <div class="field-group">
@@ -1477,6 +1479,7 @@ async function pollUnifiedJob(base, jobId, onStatus) {
   const jobUrl = base + '/api/jobs/' + jobId;
   const POLL_MS = 2500, MAX_MS = 35 * 60 * 1000; // long: Gemini(80 frames) + a many-scene Claude render
   const t0 = Date.now();
+  if (window.yvProgress) yvProgress.begin({ screen: 'films', kind: 'film' });
   while (true) {
     await new Promise(r => setTimeout(r, POLL_MS));
     let job = null;
@@ -1484,6 +1487,7 @@ async function pollUnifiedJob(base, jobId, onStatus) {
     // stale "running" can never be served after the job is actually done.
     try { job = await (await fetch(jobUrl + (jobUrl.includes('?') ? '&' : '?') + '_=' + Date.now(), { cache: 'no-store' })).json(); } catch (ignore) { /* transient — keep polling */ }
     if (!job) { if (Date.now() - t0 > MAX_MS) return { status: 'error', errorText: 'timeout בניתוח' }; continue; }
+    if (window.yvProgress) yvProgress.pump(job);
     if (onStatus && Array.isArray(job.events) && job.events.length) {
       const last = job.events[job.events.length - 1];
       const line = String(last.text || last.message || '').trim().split('\n').pop().slice(0, 160);
@@ -1511,6 +1515,7 @@ async function catalogViaUnified(base, file, context, onStatus) {
     fd.append('file', file);
     fd.append('kind', 'film');
     fd.append('context', context || '');
+    if (window.yvFlow) fd.append('flow', yvFlow.current('films'));   // עם/בלי גיבוי Qwen
     if (onStatus) onStatus(tryN > 1 ? `מעלה מחדש לשרת (ניסיון ${tryN}/${MAX_TRIES})…` : 'מעלה את הסרט לשרת המאוחד…');
 
     let res = null;
@@ -3014,5 +3019,11 @@ refreshButtons();
 <script src="yv-autosave.js"></script>
 <script src="yv-misid.js"></script>
 <script>yvMisid.init({ screen: 'films', roots: ['#results'] });</script>
+<script src="yv-flow.js"></script>
+<script>yvFlow.init({ screen: 'films', label: 'זרימת עיבוד:', options: [
+  { value: 'auto', label: 'אוטומטי (מומלץ)', hint: 'Gemini לפריימים + גיבוי Qwen' },
+  { value: 'nofallback', label: 'Gemini בלבד', hint: 'ללא גיבוי Qwen' },
+] });</script>
+<script src="yv-progress.js"></script>
 </body>
 </html>
