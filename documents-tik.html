@@ -1130,32 +1130,66 @@ async function fastDescribe(){
     }
     if(!blob){showStatus('צריך PDF יחיד או סריקות תמונה.','err');return;}
     const mb=(blob.size/1024/1024).toFixed(1);
-    if(blob.size>95*1024*1024){showStatus(`⚠ ה-PDF המוקטן עדיין ${mb}MB (מעל ~100MB של המנהרה). הקטן "רוחב תמונה" או פצל את התיק.`,'err');return;}
+    if(blob.size>1900*1024*1024){showStatus(`⚠ ה-PDF ${mb}MB — מעל תקרת 2GB של Gemini Files API. פצל את התיק לשני חלקים.`,'err');return;}
     // Gemini→Claude collaboration: the server has Gemini read every page and extract
     // facts, then Claude (the historian) synthesizes the record from those facts. This
     // prompt is Claude's synthesis brief; the server appends Gemini's extracted facts.
     const prompt=`${TIK_SCHEMA_RULES}\n\n⚠ Gemini כבר קרא את **כל דפי התיק** וחילץ עובדות גולמיות (יצורפו בהמשך ההודעה). תפקידך כהיסטוריון ארכיוני: לסנתז מהן **רשומת-תיק אחת ברמת תיאור** — מפת המסמכים, היקף, מקומות ותקופה, אנשים מרכזיים, ויהלומים — עם **הקשר היסטורי מעמיק ומדויק**. עגן כל קביעה בעובדות בלבד (אל תמציא), והבחן בבירור בין מה שמתועד בתיק לבין ידע היסטורי כללי. החזר field_confidence (✓/~/?) לכל שדה, ו-review_flags לכל הסקה/אי-ודאות/פער שדורש אימות ארכיונאי. **לא** תמלול דף-דף ולא רשימת כל שם בכל דף.${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
-    const fd=new FormData();fd.append('file',blob,name);fd.append('prompt',prompt);
-    // provided context for the unified engine path (written server-side as the
-    // standard <pdf>.context.txt sidecar); older servers simply ignore the field
-    fd.append('context',[$('context').value.trim(),(state.intakeText||'').trim()].filter(Boolean).join('\n\n'));
-    if(window.yvFlow)fd.append('reader',yvFlow.current('documents-tik'));   // אוטומטי / Claude / Gemini
+    // shared non-file fields — the finalize of a chunked upload sends them without the blob.
+    // context is written server-side as the standard <pdf>.context.txt sidecar.
+    const fields={prompt,context:[$('context').value.trim(),(state.intakeText||'').trim()].filter(Boolean).join('\n\n')};
+    if(window.yvFlow)fields.reader=yvFlow.current('documents-tik');   // אוטומטי / Claude / Gemini
     const t=Date.now();
-    showStatus(`<span class="spinner"></span>תיאור מהיר · מעלה את התיק לשרת (${mb}MB)…`,'info');
     // XHR (not fetch) so the archivist sees upload progress — a big tik through the
     // Cloudflare tunnel uploads at ~0.5MB/s, and a silent spinner reads as a hang.
-    const post=await new Promise((resolve,reject)=>{
-      const xhr=new XMLHttpRequest();let pct=0;
-      xhr.open('POST',serverBase()+'/api/tik-describe');
-      xhr.upload.onprogress=ev=>{if(ev.lengthComputable){pct=Math.round(ev.loaded/ev.total*100);showStatus(`<span class="spinner"></span>תיאור מהיר · מעלה את התיק לשרת… ${pct}% מתוך ${mb}MB`,'info');}};
+    const xhrPost=(url,body,onPct)=>new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open('POST',url);
+      xhr.upload.onprogress=ev=>{if(ev.lengthComputable&&onPct)onPct(ev.loaded,ev.total);};
       xhr.onload=()=>resolve(xhr);
-      xhr.onerror=()=>{  // fetch-wrap doesn't see XHR — log the api-fail ourselves
-        if(window.__yvLog)__yvLog.push({type:'api-fail',url:serverBase()+'/api/tik-describe',text:`upload died at ${pct}% of ${mb}MB`});
-        reject(new Error(`העלאה נכשלה אחרי ${Math.round((Date.now()-t)/1000)} שניות (נעצרה ב-${pct}% מתוך ${mb}MB) — החיבור לשרת נותק באמצע. אם זה חוזר בתיק גדול: פתח את המסך ישירות במחשב שמריץ את השרת (http://localhost:3000) או פצל את התיק.`));
-      };
+      xhr.onerror=()=>reject(new Error('network'));
       xhr.onabort=()=>reject(new Error('ההעלאה בוטלה'));
-      xhr.send(fd);
+      xhr.send(body);
     });
+    const CHUNK=32*1024*1024;   // each part safely under Cloudflare's ~100MB request cap
+    let post;
+    if(blob.size<=60*1024*1024){
+      // small tik — ONE request, as always
+      const fd=new FormData();fd.append('file',blob,name);for(const k in fields)fd.append(k,fields[k]);
+      showStatus(`<span class="spinner"></span>תיאור מהיר · מעלה את התיק לשרת (${mb}MB)…`,'info');
+      let pct=0;
+      try{
+        post=await xhrPost(serverBase()+'/api/tik-describe',fd,(l,tt)=>{pct=Math.round(l/tt*100);showStatus(`<span class="spinner"></span>תיאור מהיר · מעלה את התיק לשרת… ${pct}% מתוך ${mb}MB`,'info');});
+      }catch(e){  // fetch-wrap doesn't see XHR — log the api-fail ourselves
+        if(window.__yvLog)__yvLog.push({type:'api-fail',url:serverBase()+'/api/tik-describe',text:`upload died at ${pct}% of ${mb}MB`});
+        throw new Error(`העלאה נכשלה אחרי ${Math.round((Date.now()-t)/1000)} שניות (נעצרה ב-${pct}% מתוך ${mb}MB) — החיבור לשרת נותק באמצע. נסה שוב; אם זה חוזר, בדוק שהשרת רץ.`);
+      }
+    }else{
+      // big tik — sliced to ≤32MB parts (each under the Cloudflare cap), assembled server-side
+      const uploadId=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10)+'-'+Math.random().toString(36).slice(2,10));
+      const total=Math.ceil(blob.size/CHUNK);
+      for(let i=0;i<total;i++){
+        const part=blob.slice(i*CHUNK,Math.min((i+1)*CHUNK,blob.size));
+        let sent=false,lastErr=null;
+        for(let a=0;a<3&&!sent;a++){   // a network blip retries ONE chunk, not the whole tik
+          try{
+            const cfd=new FormData();cfd.append('uploadId',uploadId);cfd.append('index',String(i));cfd.append('total',String(total));cfd.append('name',name);cfd.append('chunk',part,'part');
+            const r=await xhrPost(serverBase()+'/api/upload-chunk',cfd,l=>{const done=Math.min(Math.round((i*CHUNK+l)/blob.size*100),100);showStatus(`<span class="spinner"></span>תיאור מהיר · מעלה נתח ${i+1}/${total}… ${done}% מתוך ${mb}MB`,'info');});
+            if(r.status>=200&&r.status<300){sent=true;break;}
+            let er={};try{er=JSON.parse(r.responseText);}catch{}
+            lastErr=new Error(er.error||('שרת HTTP '+r.status));
+          }catch(e){lastErr=e;}
+          await new Promise(rr=>setTimeout(rr,2500*(a+1)));
+        }
+        if(!sent){
+          if(window.__yvLog)__yvLog.push({type:'api-fail',url:serverBase()+'/api/upload-chunk',text:`chunk ${i+1}/${total} failed: ${lastErr&&lastErr.message}`});
+          throw new Error(`העלאת נתח ${i+1}/${total} נכשלה אחרי 3 ניסיונות (${lastErr&&lastErr.message}) — בדוק את החיבור ונסה שוב.`);
+        }
+      }
+      showStatus(`<span class="spinner"></span>תיאור מהיר · כל ${total} הנתחים הועלו — השרת מרכיב את התיק…`,'info');
+      const ffd=new FormData();ffd.append('uploadId',uploadId);for(const k in fields)ffd.append(k,fields[k]);
+      post=await xhrPost(serverBase()+'/api/tik-describe',ffd);
+    }
     if(post.status<200||post.status>=300){let e={};try{e=JSON.parse(post.responseText);}catch{}throw new Error(e.error||('שרת HTTP '+post.status));}
     let jr={};try{jr=JSON.parse(post.responseText);}catch{}
     const {jobId}=jr;
