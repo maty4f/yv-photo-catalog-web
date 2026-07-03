@@ -1050,7 +1050,8 @@ function clearPhoto(side) {
   const drop = slot.querySelector('.drop');
   drop.classList.remove('has-file');
   slot.classList.remove('has-file');
-  drop.querySelector('.preview-mini').src = '';
+  // removeAttribute, not src='' — empty src resolves to the page URL and logs a resource error
+  drop.querySelector('.preview-mini').removeAttribute('src');
   drop.querySelector('.filename').style.display = 'none';
   drop.parentElement.querySelector('.file-input').value = '';
   refreshButtons();
@@ -4995,5 +4996,7 @@ refreshButtons();
 </script>
 <script src="yv-client-log.js"></script>
 <script src="yv-autosave.js"></script>
+<script src="yv-misid.js"></script>
+<script>yvMisid.init({ screen: 'photos', roots: ['#results'] });</script>
 </body>
 </html>
