@@ -24,6 +24,17 @@
     document.head.appendChild(s);
   }
 
+  // בסיס השרת — אותו דפוס כמו yv-client-log.js: הדשבורדים שומרים את כתובת
+  // השרת ב-localStorage (yv_local_server_url); דף שמוגש מהשרת עצמו משתמש ב-origin.
+  // כך הכפתור עובד גם ממשטח ה-Pages (github.io), לא רק מאותו origin.
+  function serverBase() {
+    try {
+      var u = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
+      if (u) return u;
+    } catch (e) { /* storage blocked — fall through */ }
+    return location.origin;
+  }
+
   // מזהה הפריט: עדיפות ל-getter של המסך; אחרת — קישור הפלט האחרון שמופיע בדף
   // (כל המסכים מציגים קישור /api/output/<שם הרשומה> אחרי שהעבודה הסתיימה).
   function itemId() {
@@ -50,7 +61,7 @@
   function send(btn, payload) {
     btn.disabled = true;
     btn.textContent = '…';
-    fetch('/api/feedback/misid', {
+    fetch(serverBase() + '/api/feedback/misid', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
