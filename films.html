@@ -396,6 +396,10 @@
       </label>
       <input type="file" id="film-file-input" accept="video/*" class="visually-hidden-file">
       <div class="yv-flow-mount" style="text-align:center; margin-top:8px"></div>
+      <label style="display:block; direction:rtl; text-align:center; margin-top:6px; font-size:12.5px; color:#33475b; cursor:pointer;">
+        <input type="checkbox" id="film-direct-upload" style="vertical-align:middle; margin-inline-end:4px;">
+        ⬆️ העלאה מלאה לשרת — הווידאו כולו מועלה (בנתחים מעל 60MB, גם מעל 100MB) והשרת מחלץ פריימים צפופים ב-ffmpeg
+      </label>
       <div style="direction:rtl; text-align:center; margin-top:6px; font-size:12px; color:#856404;">
         🖥️ סרט ארוך (מעל ~10 דק׳) שנמצא על מחשב השרת? <a href="server-films.html" id="server-films-link" style="color:#b45309; font-weight:700;">קטלוג על השרת — בלי העלאה, בכל אורך</a>
       </div>
@@ -1398,8 +1402,10 @@ async function runUnifiedServer() {
 
   // ONE record, always — never a per-part catalog. A SPLIT film → keyframes from
   // ALL parts on a continuous timeline (catalog appears only after every part is
-  // processed); a whole film → keyframes across the whole film. NO video upload
-  // (frames only), so film size / the 100MB tunnel limit are irrelevant.
+  // processed); a whole film → keyframes across the whole film. Default is NO
+  // video upload (frames only), so film size / the 100MB tunnel limit are
+  // irrelevant; the "העלאה מלאה לשרת" checkbox switches a whole film to the
+  // direct-upload path (chunked >60MB) for dense server-side ffmpeg keyframes.
   const split = !!(state.filmParts && state.filmParts.length);
   if (!split && !state.film) throw new Error('אין סרט');
 
@@ -1411,6 +1417,9 @@ async function runUnifiedServer() {
     outputName = await catalogPartsAsOneFilm(base, contextEl.value.trim(), msg => showStatus('⚡ ' + msg, 'info'));
     state.filmParts.forEach(p => { p.status = 'identified'; });
     renderPartsRail();
+  } else if (document.getElementById('film-direct-upload')?.checked) {
+    outputName = await catalogViaUnified(base, state.film, contextEl.value.trim(),
+      makeActionClock(msg => showStatus(msg, 'info')));
   } else {
     outputName = await catalogFilmFrames(base, state.film, contextEl.value.trim(), msg => showStatus(msg, 'info'));
   }
@@ -1503,30 +1512,53 @@ async function pollUnifiedJob(base, jobId, onStatus) {
 }
 
 // Upload one media file to the unified engine and poll until its catalog is
-// ready; returns the produced outputName. Shared by the single-film path and the
-// auto-split per-part path. The Cloudflare tunnel intermittently truncates large
-// uploads (connection cut → corrupt file on the server), so we RE-UPLOAD the same
-// clip up to MAX_TRIES times when the upload is cut or the saved file is corrupt.
+// ready; returns the produced outputName. This is the DIRECT-UPLOAD path (the
+// "העלאה מלאה לשרת" option): the whole video travels to the server and the engine
+// extracts dense keyframes with real ffmpeg — vs the default frames-only path
+// where the browser samples sparse keyframes locally. Files over 60MB are chunk-
+// uploaded via yvChunk (past the tunnel's ~100MB request cap, up to the server's
+// multer limit); smaller ones stay a single POST. The tunnel intermittently
+// truncates large single POSTs (connection cut → corrupt file on the server), so
+// we RE-UPLOAD the same clip up to MAX_TRIES times when the upload is cut or the
+// saved file is corrupt.
 async function catalogViaUnified(base, file, context, onStatus) {
   const MAX_TRIES = 4;
   let lastErr = '';
   for (let tryN = 1; tryN <= MAX_TRIES; tryN++) {
     const fd = new FormData();
-    fd.append('file', file);
     fd.append('kind', 'film');
     fd.append('context', context || '');
     if (window.yvFlow) fd.append('flow', yvFlow.current('films'));   // עם/בלי גיבוי Qwen
-    if (onStatus) onStatus(tryN > 1 ? `מעלה מחדש לשרת (ניסיון ${tryN}/${MAX_TRIES})…` : 'מעלה את הסרט לשרת המאוחד…');
 
     let res = null;
-    try {
-      res = await fetch(base + '/api/items', { method: 'POST', body: fd });
-    } catch (e) {
-      // Connection cut during the upload itself → retry.
-      lastErr = 'ההעלאה נקטעה (' + e.message + ')';
-      if (onStatus) onStatus(`${lastErr} — מנסה שוב (${tryN}/${MAX_TRIES})…`);
-      await new Promise(r => setTimeout(r, 1200 * tryN));
-      continue;
+    if (window.yvChunk && file.size > yvChunk.THRESHOLD) {
+      // Big film — sliced to ≤32MB parts (each under Cloudflare's ~100MB request
+      // cap; per-chunk retry ×3 inside yvChunk), assembled server-side. The
+      // finalize POST carries uploadId instead of the file.
+      const uploadId = await yvChunk.upload(base, file, file.name || 'film.mp4',
+        msg => { if (onStatus) onStatus(msg + (tryN > 1 ? ` (ניסיון ${tryN}/${MAX_TRIES})` : '')); });
+      if (onStatus) onStatus('כל הנתחים הועלו — השרת מרכיב את הסרט ומתחיל בקטלוג…');
+      fd.append('uploadId', uploadId);
+      try {
+        res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+      } catch (e) {
+        lastErr = 'סגירת ההעלאה נכשלה (' + e.message + ')';
+        if (onStatus) onStatus(`${lastErr} — מנסה שוב (${tryN}/${MAX_TRIES})…`);
+        await new Promise(r => setTimeout(r, 1200 * tryN));
+        continue;
+      }
+    } else {
+      fd.append('file', file);
+      if (onStatus) onStatus(tryN > 1 ? `מעלה מחדש לשרת (ניסיון ${tryN}/${MAX_TRIES})…` : 'מעלה את הסרט לשרת המאוחד…');
+      try {
+        res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+      } catch (e) {
+        // Connection cut during the upload itself → retry.
+        lastErr = 'ההעלאה נקטעה (' + e.message + ')';
+        if (onStatus) onStatus(`${lastErr} — מנסה שוב (${tryN}/${MAX_TRIES})…`);
+        await new Promise(r => setTimeout(r, 1200 * tryN));
+        continue;
+      }
     }
     if (res.status === 413)
       throw new Error(`הקובץ נדחה ע"י Cloudflare (גדול מ-${CF_BODY_LIMIT_MB}MB). יש לפצל לחלקים קטנים יותר.`);
@@ -3025,5 +3057,6 @@ refreshButtons();
   { value: 'nofallback', label: 'Gemini בלבד', hint: 'ללא גיבוי Qwen' },
 ] });</script>
 <script src="yv-progress.js"></script>
+<script src="yv-chunk.js"></script>
 </body>
 </html>

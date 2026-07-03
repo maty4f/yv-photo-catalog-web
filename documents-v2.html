@@ -969,7 +969,13 @@ analyzeBtn.addEventListener('click', async () => {
       //   then pass the markdown (not the PDF) to Gemini for the archival record.
       showStatus(`🔬 שולח קובץ גדול (${sizeMB.toFixed(0)}MB) ל-Docling במחשב המקומי…`);
       const fd = new FormData();
-      fd.append('file', state.pdf);
+      if (window.yvChunk && state.pdf.size > yvChunk.THRESHOLD) {
+        // past the tunnel's ~100MB request cap — chunked, assembled server-side
+        fd.append('uploadId', await yvChunk.upload(state.localServerUrl, state.pdf,
+          state.pdf.name || 'doc.pdf', msg => showStatus('🔬 Docling · ' + msg)));
+      } else {
+        fd.append('file', state.pdf);
+      }
       const dRes = await fetch(state.localServerUrl + '/api/docling', { method: 'POST', body: fd });
       if (!dRes.ok) {
         const t = await dRes.text();
@@ -1089,11 +1095,20 @@ async function runUnifiedServer() {
   if (base === null)
     throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
   const fd = new FormData();
-  fd.append('file', state.pdf);
   fd.append('kind', 'doc');
   fd.append('context', contextEl.value.trim());
   if (window.yvFlow) fd.append('flow', yvFlow.current('documents-v2'));   // אוטומטי / Mistral למודפס
-  showStatus('מעלה את המסמך לשרת המאוחד…');
+  if (window.yvChunk && state.pdf.size > yvChunk.THRESHOLD) {
+    // Big scan — sliced to ≤32MB parts (past the tunnel's ~100MB request cap;
+    // per-chunk retry ×3), assembled server-side; the finalize POST carries
+    // uploadId instead of the file.
+    const uploadId = await yvChunk.upload(base, state.pdf, state.pdf.name || 'doc.pdf', msg => showStatus(msg));
+    fd.append('uploadId', uploadId);
+    showStatus('כל הנתחים הועלו — השרת מרכיב את המסמך ומתחיל בקטלוג…');
+  } else {
+    fd.append('file', state.pdf);
+    showStatus('מעלה את המסמך לשרת המאוחד…');
+  }
 
   const res = await fetch(base + '/api/items', { method: 'POST', body: fd });
   const j = await res.json().catch(() => ({}));
@@ -1352,5 +1367,6 @@ ${r.notes ? `<div class="section"><h2>הערות</h2><div>${esc(r.notes).replace
   { value: 'mistral', label: 'OCR מהיר (מודפס)', hint: 'Mistral OCR — מהיר לטקסט מודפס נקי' },
 ] });</script>
 <script src="yv-progress.js"></script>
+<script src="yv-chunk.js"></script>
 </body>
 </html>

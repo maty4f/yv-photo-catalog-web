@@ -905,7 +905,13 @@ const DOCLING_PDF_THRESHOLD_MB = 50;
 async function doclingExtract(file) {
   if (!state.localServerUrl) throw new Error('Docling: חסר URL של שרת מקומי');
   const fd = new FormData();
-  fd.append('file', file);
+  if (window.yvChunk && file.size > yvChunk.THRESHOLD) {
+    // past the tunnel's ~100MB request cap — chunked, assembled server-side
+    fd.append('uploadId', await yvChunk.upload(state.localServerUrl, file,
+      file.name || 'doc.pdf', msg => showStatus('🔬 Docling · ' + msg, 'info')));
+  } else {
+    fd.append('file', file);
+  }
   const res = await fetch(state.localServerUrl + '/api/docling', { method: 'POST', body: fd });
   if (!res.ok) {
     const t = await res.text();
@@ -3741,5 +3747,6 @@ refreshButtons();
 <script src="yv-autosave.js"></script>
 <script src="yv-misid.js"></script>
 <script>yvMisid.init({ screen: 'documents', roots: ['#results'] });</script>
+<script src="yv-chunk.js"></script>
 </body>
 </html>
