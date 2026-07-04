@@ -778,7 +778,7 @@ const state = {
     .includes(localStorage.getItem('yv_api_provider'))
     ? localStorage.getItem('yv_api_provider') : 'unified-server'),
   apiKeys: {
-    anthropic: localStorage.getItem('yv_api_key_anthropic') || localStorage.getItem('yv_api_key') || '',
+    anthropic: '',   // review #1: no browser Claude key — the server proxy injects it
     gemini:    localStorage.getItem('yv_api_key_gemini') || '',
   },
   // ─── Collection state ────────────────────────────────────────
@@ -1210,7 +1210,7 @@ async function reconcileLLM(prompt, label) {
     return parseJsonResponse(data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '', label);
   }
   // anthropic
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': state.apiKeys.anthropic,
       'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
@@ -1849,6 +1849,8 @@ const apiKeyGemini = document.getElementById('api-key-gemini');
 const modelSelAnthropic = document.getElementById('api-model-anthropic');
 const modelSelGemini = document.getElementById('api-model-gemini');
 
+// review #1: purge any Anthropic key a previous version persisted in this browser.
+try { localStorage.removeItem('yv_api_key_anthropic'); localStorage.removeItem('yv_api_key'); } catch {}
 apiKeyAnthropic.value = state.apiKeys.anthropic;
 apiKeyGemini.value = state.apiKeys.gemini;
 providerSel.value = state.provider;
@@ -1887,6 +1889,12 @@ function geminiBase() {
   return (state.proxyGemini && state.localServerUrl)
     ? state.localServerUrl + '/api/gemini-proxy'
     : 'https://generativelanguage.googleapis.com';
+}
+function anthropicBase() {
+  // review #1: Claude calls route through the server proxy, which injects the
+  // server's key — the browser never holds an Anthropic key. The dashboard is
+  // served from the server, so location.origin is a valid fallback base.
+  return (state.localServerUrl || location.origin) + '/api/anthropic-proxy';
 }
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
 const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
@@ -1931,8 +1939,7 @@ providerSel.addEventListener('change', () => {
   refreshAllButtons();
 });
 apiKeyAnthropic.addEventListener('input', () => {
-  state.apiKeys.anthropic = apiKeyAnthropic.value.trim();
-  localStorage.setItem('yv_api_key_anthropic', state.apiKeys.anthropic);
+  state.apiKeys.anthropic = apiKeyAnthropic.value.trim();   // session-only; NOT persisted (review #1)
   refreshAllButtons();
 });
 apiKeyGemini.addEventListener('input', () => {
@@ -1953,6 +1960,10 @@ function syncProviderRows() {
 }
 
 function getActiveApiKey() {
+  // review #1: the Anthropic path goes through the server proxy — a reachable
+  // server IS the credential; the browser holds no Claude key. So provider
+  // 'anthropic' is "ready" whenever a server base exists (always, via origin).
+  if (state.provider === 'anthropic') return (state.localServerUrl || location.origin) ? 'via-server-proxy' : '';
   return state.apiKeys[state.provider] || '';
 }
 function getActiveModel() {
@@ -2474,7 +2485,7 @@ async function callAnthropic() {
   }
   content.push({ type: 'text', text: getRulesAndContext() });
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -4046,7 +4057,7 @@ async function callAnthropicForCollection(sources) {
   const content = await buildCollectionContent(sources, 'anthropic');
   content.push({ type: 'text', text: buildCollectionPrompt(sources) });
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -4325,7 +4336,7 @@ ${heText}`;
     const data = await res.json();
     return (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
   } else {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch((anthropicBase() + '/v1/messages'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -4413,7 +4424,7 @@ async function detectItemTypeFromDesc(descHe) {
       const t = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim().toLowerCase();
       return t.includes('photo') ? 'photo' : t.includes('document') ? 'document' : 'unknown';
     } else {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch((anthropicBase() + '/v1/messages'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

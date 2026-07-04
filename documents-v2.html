@@ -295,7 +295,7 @@ const VALID_MODES = ['unified-server', 'claude-cli', 'gemini-only'];
 const state = {
   mode: VALID_MODES.includes(localStorage.getItem('yv_v2_mode')) ? localStorage.getItem('yv_v2_mode') : 'unified-server',
   apiKey: localStorage.getItem('yv_v2_api_key') || '',
-  apiKeyAnthropic: localStorage.getItem('yv_v2_api_key_anthropic') || '',
+  apiKeyAnthropic: '',   // review #1: no browser Claude key — the server proxy injects it
   model: localStorage.getItem('yv_v2_model') || 'gemini-3.5-flash',
   claudeModel: localStorage.getItem('yv_v2_claude_model') || 'claude-sonnet-4-6',
   localServerUrl: (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, ''),
@@ -360,9 +360,9 @@ apiKeyInput.addEventListener('input', () => {
   localStorage.setItem('yv_v2_api_key', state.apiKey);
   refresh();
 });
+try { localStorage.removeItem('yv_v2_api_key_anthropic'); } catch {}   // review #1: purge any persisted Claude key
 apiKeyAnthropicInput.addEventListener('input', () => {
-  state.apiKeyAnthropic = apiKeyAnthropicInput.value.trim();
-  localStorage.setItem('yv_v2_api_key_anthropic', state.apiKeyAnthropic);
+  state.apiKeyAnthropic = apiKeyAnthropicInput.value.trim();   // session-only; NOT persisted (review #1)
   refresh();
 });
 modelSel.addEventListener('change', () => {
@@ -787,7 +787,7 @@ ${ctx || '(לא ניתן)'}
 ${JSON.stringify(geminiDraft, null, 2)}
 \`\`\``;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(((state.localServerUrl || location.origin) + '/api/anthropic-proxy/v1/messages'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

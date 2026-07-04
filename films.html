@@ -607,7 +607,7 @@ const state = {
   filmParts: [], currentPartIdx: -1, autoRunning: false,
   provider: (['unified-server','gemini','anthropic'].includes(localStorage.getItem('yv_api_provider')) ? localStorage.getItem('yv_api_provider') : 'unified-server'),
   apiKeys: {
-    anthropic: localStorage.getItem('yv_api_key_anthropic') || '',
+    anthropic: '',   // review #1: no browser Claude key — the server proxy injects it
     gemini: localStorage.getItem('yv_api_key_gemini') || '',
   },
   thesaurus_top: [],
@@ -660,6 +660,9 @@ function geminiBase() {
     ? state.localServerUrl + '/api/gemini-proxy'
     : 'https://generativelanguage.googleapis.com';
 }
+function anthropicBase() {   // review #1: Claude via the server proxy — no browser key
+  return (state.localServerUrl || location.origin) + '/api/anthropic-proxy';
+}
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
 const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
 const activeTunnelEl = document.getElementById('active-tunnel-url');
@@ -689,7 +692,8 @@ if (fillTunnelBtn && activeTunnelEl && localServerUrlInput) {
 syncProviderRows();
 
 providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
-apiKeyAnthropic.addEventListener('input', () => { state.apiKeys.anthropic = apiKeyAnthropic.value.trim(); localStorage.setItem('yv_api_key_anthropic', state.apiKeys.anthropic); refreshButtons(); });
+try { localStorage.removeItem('yv_api_key_anthropic'); } catch {}   // review #1: purge any persisted Claude key
+apiKeyAnthropic.addEventListener('input', () => { state.apiKeys.anthropic = apiKeyAnthropic.value.trim(); refreshButtons(); });   // session-only; NOT persisted
 apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
 function syncProviderRows() {
   document.querySelectorAll('.provider-row').forEach(row => {
@@ -697,7 +701,7 @@ function syncProviderRows() {
     row.style.display = providers.includes(state.provider) ? 'grid' : 'none';
   });
 }
-function getActiveApiKey() { return state.apiKeys[state.provider] || ''; }
+function getActiveApiKey() { if (state.provider === 'anthropic') return (state.localServerUrl || location.origin) ? 'via-server-proxy' : ''; return state.apiKeys[state.provider] || ''; }
 function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
 function hasAllRequiredKeys() {
   if (state.provider === 'unified-server') return true; // server-side engine — no browser keys needed
@@ -1846,7 +1850,7 @@ async function callAnthropic() {
     content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.b64 } });
   }
   content.push({ type: 'text', text: buildFilmPrompt() });
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': getActiveApiKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
     body: JSON.stringify({ model: getActiveModel(), max_tokens: 16000, messages: [{ role: 'user', content }] })

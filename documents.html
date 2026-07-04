@@ -166,7 +166,6 @@
         <option value="claude-cli" selected>⭐ Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini)</option>
         <option value="anthropic">Anthropic (Claude API) בלבד (קורא ישירות, בתשלום)</option>
         <option value="gemini">🆓 Google (Gemini) בלבד (חינם)</option>
-        <option value="transkribus">🇪🇺 Transkribus + Claude (כתב יד אירופאי — Sütterlin, Kurrent, יידיש)</option>
       </select>
     </div>
     <div class="row provider-row" data-provider="claude-cli">
@@ -643,9 +642,9 @@
 <script type="module">
 const state = {
   document: null, docMeta: null, identification: null,
-  provider: (['claude-cli','anthropic','gemini','transkribus'].includes(localStorage.getItem('yv_api_provider')) ? localStorage.getItem('yv_api_provider') : 'claude-cli'),
+  provider: (['claude-cli','anthropic','gemini'].includes(localStorage.getItem('yv_api_provider')) ? localStorage.getItem('yv_api_provider') : 'claude-cli'),   // review #1: Transkribus removed from the flow
   apiKeys: {
-    anthropic: localStorage.getItem('yv_api_key_anthropic') || '',
+    anthropic: '',   // review #1: no browser Claude key — the server proxy injects it
     gemini: localStorage.getItem('yv_api_key_gemini') || '',
   },
   thesaurus_top: [],
@@ -653,12 +652,10 @@ const state = {
   doc_mode: localStorage.getItem('yv_doc_mode') || 'private',
   // Translation mode: 'auto' (default) | 'full' | 'summary'
   translation_mode: localStorage.getItem('yv_translation_mode') || 'auto',
-  // Transkribus credentials (separate from API keys)
-  tk_credentials: {
-    username: localStorage.getItem('yv_tk_username') || '',
-    password: localStorage.getItem('yv_tk_password') || '',
-    model:    localStorage.getItem('yv_tk_model') || 'auto',
-  },
+  // Transkribus removed from the flow (review #1, user decision — not in use).
+  // Kept as an empty stub so any lingering reference degrades to blank, never a
+  // stored secret. Purged on load below.
+  tk_credentials: { username: '', password: '', model: 'auto' },
   // Batch queue (same pattern as photos.html)
   doc_queue: [],
   current_doc_queue_index: -1,
@@ -824,6 +821,9 @@ function geminiBase() {
     ? state.localServerUrl + '/api/gemini-proxy'
     : 'https://generativelanguage.googleapis.com';
 }
+function anthropicBase() {   // review #1: Claude via the server proxy — no browser key
+  return (state.localServerUrl || location.origin) + '/api/anthropic-proxy';
+}
 // Copy/fill the active tunnel URL shown in the snippet
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
 const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
@@ -930,13 +930,13 @@ if (testGeminiBtn && testGeminiStatus) {
 syncProviderRows();
 
 providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
-apiKeyAnthropic.addEventListener('input', () => { state.apiKeys.anthropic = apiKeyAnthropic.value.trim(); localStorage.setItem('yv_api_key_anthropic', state.apiKeys.anthropic); refreshButtons(); });
+try { localStorage.removeItem('yv_api_key_anthropic'); } catch {}   // review #1: purge any persisted Claude key
+apiKeyAnthropic.addEventListener('input', () => { state.apiKeys.anthropic = apiKeyAnthropic.value.trim(); refreshButtons(); });   // session-only; NOT persisted
 apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
 function syncProviderRows() {
   // Which setting-rows each provider needs visible (by data-provider token).
   const rowsFor = {
     'claude-cli': ['claude-cli'],                  // local server URL only — no API key
-    'transkribus':['transkribus', 'anthropic'],
     'gemini':     ['gemini'],
     'anthropic':  ['anthropic'],
   }[state.provider] || [state.provider];
@@ -945,12 +945,9 @@ function syncProviderRows() {
   });
 }
 function getActiveApiKey() {
-  if (state.provider === 'transkribus') {
-    // Transkribus needs: TK credentials (or 'manual' model) AND Anthropic key
-    const tk = state.tk_credentials;
-    const hasTk = tk.model === 'manual' || (tk.username && tk.password);
-    return hasTk && state.apiKeys.anthropic ? state.apiKeys.anthropic : '';
-  }
+  // review #1: the Anthropic path goes through the server proxy — a reachable
+  // server IS the credential; the browser holds no Claude key.
+  if (state.provider === 'anthropic') return (state.localServerUrl || location.origin) ? 'via-server-proxy' : '';
   return state.apiKeys[state.provider] || '';
 }
 function hasClaudeCliReady() {
@@ -962,32 +959,14 @@ function hasTranskribusReady() {
 }
 function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
 
-// Wire Transkribus credential inputs (when DOM is ready)
-function wireTranskribusInputs() {
-  const tkUser = document.getElementById('tk-username');
-  const tkPass = document.getElementById('tk-password');
-  const tkModel = document.getElementById('tk-model');
-  if (!tkUser || !tkPass || !tkModel) return;
-  tkUser.value = state.tk_credentials.username;
-  tkPass.value = state.tk_credentials.password;
-  tkModel.value = state.tk_credentials.model;
-  tkUser.addEventListener('input', () => {
-    state.tk_credentials.username = tkUser.value.trim();
-    localStorage.setItem('yv_tk_username', state.tk_credentials.username);
-    refreshButtons();
-  });
-  tkPass.addEventListener('input', () => {
-    state.tk_credentials.password = tkPass.value;
-    localStorage.setItem('yv_tk_password', state.tk_credentials.password);
-    refreshButtons();
-  });
-  tkModel.addEventListener('change', () => {
-    state.tk_credentials.model = tkModel.value;
-    localStorage.setItem('yv_tk_model', state.tk_credentials.model);
-    refreshButtons();
-  });
-}
-setTimeout(wireTranskribusInputs, 50);
+// review #1: Transkribus removed from the flow (not in use). Purge any
+// credentials a previous version persisted in this browser — including the
+// password. The provider option is gone, so nothing wires these inputs.
+try {
+  localStorage.removeItem('yv_tk_username');
+  localStorage.removeItem('yv_tk_password');
+  localStorage.removeItem('yv_tk_model');
+} catch {}
 settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('open'));
 
 async function loadThesaurus() {
@@ -2169,7 +2148,7 @@ ${rulesPrompt}
 החזר JSON תקין בלבד.`}
   ];
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -2729,7 +2708,7 @@ async function callAnthropic() {
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: docB64 } }
     : { type: 'image', source: { type: 'base64', media_type: state.document.type, data: docB64 } };
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': getActiveApiKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
     body: JSON.stringify({
@@ -3219,7 +3198,7 @@ async function runAcademicValidation(useAnthropic) {
     const docPart = isPdf
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: docB64 } }
       : { type: 'image', source: { type: 'base64', media_type: mime, data: docB64 } };
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch((anthropicBase() + '/v1/messages'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
