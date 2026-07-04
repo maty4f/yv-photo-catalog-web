@@ -280,6 +280,9 @@
 
 </div>
 
+<!-- shared AI transport (anthropicFetch) — loaded BEFORE the main script
+     because it references window.yvProviders -->
+<script src="yv-providers.js"></script>
 <script>
 // =====================================================================
 //  State
@@ -772,15 +775,10 @@ ${ctx || '(לא ניתן)'}
 ${JSON.stringify(geminiDraft, null, 2)}
 \`\`\``;
 
-  const res = await fetch(((state.localServerUrl || location.origin) + '/api/anthropic-proxy/v1/messages'), {
-    method: 'POST',
-    // review #2: no client key headers — the proxy injects the server key + API version
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: state.claudeModel,
-      max_tokens: 8192,
-      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
-    }),
+  const res = await yvProviders.anthropicFetch(state, {
+    model: state.claudeModel,
+    max_tokens: 8192,
+    messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
   });
   if (!res.ok) {
     const body = await res.text();

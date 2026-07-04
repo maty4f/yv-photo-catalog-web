@@ -601,6 +601,9 @@
   </div>
 </aside>
 
+<!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
+     the main module because the module references window.yvProviders -->
+<script src="yv-providers.js"></script>
 <script type="module">
 const state = {
   film: null, filmMeta: null, identification: null,
@@ -653,14 +656,7 @@ if (proxyGeminiCheckbox) {
     localStorage.setItem('yv_proxy_gemini', state.proxyGemini ? '1' : '0');
   });
 }
-function geminiBase() {
-  return (state.proxyGemini && state.localServerUrl)
-    ? state.localServerUrl + '/api/gemini-proxy'
-    : 'https://generativelanguage.googleapis.com';
-}
-function anthropicBase() {   // review #1: Claude via the server proxy — no browser key
-  return (state.localServerUrl || location.origin) + '/api/anthropic-proxy';
-}
+function geminiBase() { return yvProviders.geminiBase(state); }  // shared — see yv-providers.js
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
 const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
 const activeTunnelEl = document.getElementById('active-tunnel-url');
@@ -1847,14 +1843,7 @@ async function callAnthropic() {
     content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.b64 } });
   }
   content.push({ type: 'text', text: buildFilmPrompt() });
-  const res = await fetch((anthropicBase() + '/v1/messages'), {
-    method: 'POST',
-    // review #2: no client key headers — the proxy injects the server key + API version
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: getActiveModel(), max_tokens: 16000, messages: [{ role: 'user', content }] })
-  });
-  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`); }
-  const data = await res.json();
+  const data = await yvProviders.anthropicJson(state, { model: getActiveModel(), max_tokens: 16000, messages: [{ role: 'user', content }] });
   return parseJson(data.content?.[0]?.text || '', 'Claude');
 }
 
@@ -1950,28 +1939,9 @@ async function extractKeyframes(file, count) {
   }
 }
 
-function parseJson(text, label) {
-  let s = text.trim();
-  const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) s = fenceMatch[1].trim();
-  if (!s.startsWith('{')) { const m = s.match(/\{[\s\S]*\}/); if (m) s = m[0]; }
-  try { return JSON.parse(s); } catch (e1) {
-    let repaired = s.replace(/,(\s*[}\]])/g, '$1');
-    const openB = (repaired.match(/\{/g) || []).length;
-    const closB = (repaired.match(/\}/g) || []).length;
-    const openS = (repaired.match(/\[/g) || []).length;
-    const closS = (repaired.match(/\]/g) || []).length;
-    let nB = closB, nS = closS;
-    while (nS < openS) { repaired += ']'; nS++; }
-    while (nB < openB) { repaired += '}'; nB++; }
-    try { return JSON.parse(repaired); } catch (e2) {
-      console.error(`${label} raw response:`, text);
-      const err = new Error(`${label} החזיר תגובה לא JSON תקין (${e2.message})`);
-      err.rawText = text; err.parseError = e2.message; err.label = label;
-      throw err;
-    }
-  }
-}
+// bracket-count JSON repair — shared in yv-providers.js. detail:true keeps films'
+// error-message variant (appends the parser message, not the "auto-repair" note).
+function parseJson(text, label) { return yvProviders.parseJson(text, label, { detail: true }); }
 
 function fillResults(d) {
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = stripConfidenceMarkup(v); };

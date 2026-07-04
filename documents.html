@@ -611,6 +611,9 @@
 
 </div>
 
+<!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
+     the main module because the module references window.yvProviders -->
+<script src="yv-providers.js"></script>
 <script type="module">
 const state = {
   document: null, docMeta: null, identification: null,
@@ -782,14 +785,7 @@ async function doclingExtract(file) {
 // Helper: return the base URL to use for Gemini API.
 // If proxyGemini is enabled AND localServerUrl is set → route through /api/gemini-proxy
 // Otherwise → direct generativelanguage.googleapis.com
-function geminiBase() {
-  return (state.proxyGemini && state.localServerUrl)
-    ? state.localServerUrl + '/api/gemini-proxy'
-    : 'https://generativelanguage.googleapis.com';
-}
-function anthropicBase() {   // review #1: Claude via the server proxy — no browser key
-  return (state.localServerUrl || location.origin) + '/api/anthropic-proxy';
-}
+function geminiBase() { return yvProviders.geminiBase(state); }  // shared — see yv-providers.js
 // Copy/fill the active tunnel URL shown in the snippet
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
 const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
@@ -1948,15 +1944,10 @@ ${rulesPrompt}
 החזר JSON תקין בלבד.`}
   ];
 
-  const res = await fetch((anthropicBase() + '/v1/messages'), {
-    method: 'POST',
-    // review #2: no client key headers — the proxy injects the server key + API version
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: modelSelAnthropic.value,
-      max_tokens: 32000,
-      messages: [{ role: 'user', content: claudeContent }],
-    }),
+  const res = await yvProviders.anthropicFetch(state, {
+    model: modelSelAnthropic.value,
+    max_tokens: 32000,
+    messages: [{ role: 'user', content: claudeContent }],
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -2493,54 +2484,16 @@ async function callAnthropic() {
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: docB64 } }
     : { type: 'image', source: { type: 'base64', media_type: state.document.type, data: docB64 } };
 
-  const res = await fetch((anthropicBase() + '/v1/messages'), {
-    method: 'POST',
-    // review #2: no client key headers — the proxy injects the server key + API version
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: getActiveModel(),
-      max_tokens: 32000,
-      messages: [{ role: 'user', content: [docPart, { type: 'text', text: buildDocPrompt() }] }]
-    })
+  const data = await yvProviders.anthropicJson(state, {
+    model: getActiveModel(),
+    max_tokens: 32000,
+    messages: [{ role: 'user', content: [docPart, { type: 'text', text: buildDocPrompt() }] }]
   });
-  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`); }
-  const data = await res.json();
   return parseJson(data.content?.[0]?.text || '', 'Claude');
 }
 
-function parseJson(text, label) {
-  let s = text.trim();
-  // 1. Strip code fences (```json … ```)
-  const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) s = fenceMatch[1].trim();
-  // 2. Find first { ... last }
-  if (!s.startsWith('{')) { const m = s.match(/\{[\s\S]*\}/); if (m) s = m[0]; }
-
-  // 3. First attempt — as-is
-  try { return JSON.parse(s); } catch (e1) {
-    // 4. Repair attempts:
-    //    - trailing commas: , ] or , }
-    //    - unbalanced brackets/braces (truncation)
-    let repaired = s.replace(/,(\s*[}\]])/g, '$1');
-    const openB = (repaired.match(/\{/g) || []).length;
-    const closB = (repaired.match(/\}/g) || []).length;
-    const openS = (repaired.match(/\[/g) || []).length;
-    const closS = (repaired.match(/\]/g) || []).length;
-    let nB = closB, nS = closS;
-    while (nS < openS) { repaired += ']'; nS++; }
-    while (nB < openB) { repaired += '}'; nB++; }
-    try { return JSON.parse(repaired); } catch (e2) {
-      // 5. Failed — preserve raw text in error for UI display
-      console.error(`${label} raw response:`, text);
-      console.error(`${label} parse error:`, e2.message);
-      const err = new Error(`${label} החזיר תגובה לא JSON תקין (גם אחרי ניסיון תיקון אוטומטי)`);
-      err.rawText = text;
-      err.parseError = e2.message;
-      err.label = label;
-      throw err;
-    }
-  }
-}
+// bracket-count JSON repair — shared in yv-providers.js (default error-message variant).
+function parseJson(text, label) { return yvProviders.parseJson(text, label); }
 
 // Map confidence symbol to badge class + label
 function confInfo(c) {
@@ -2985,15 +2938,10 @@ async function runAcademicValidation(useAnthropic) {
     const docPart = isPdf
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: docB64 } }
       : { type: 'image', source: { type: 'base64', media_type: mime, data: docB64 } };
-    const res = await fetch((anthropicBase() + '/v1/messages'), {
-      method: 'POST',
-      // review #2: no client key headers — the proxy injects the server key + API version
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: modelSelAnthropic.value,
-        max_tokens: 16000,
-        messages: [{ role: 'user', content: [docPart, { type: 'text', text: prompt }] }],
-      })
+    const res = await yvProviders.anthropicFetch(state, {
+      model: modelSelAnthropic.value,
+      max_tokens: 16000,
+      messages: [{ role: 'user', content: [docPart, { type: 'text', text: prompt }] }],
     });
     if (!res.ok) {
       const err = await res.text();
