@@ -109,14 +109,17 @@
     render();
   }
 
-  function applyEvents(job) {
+  // textOnly: when the server reports an HONEST percent, milestone regexes must
+  // not inflate the floor (a generic /gemini/ match jumps to 32% on the very
+  // first read window) — events then drive only the stage text.
+  function applyEvents(job, textOnly) {
     if (!A || !job || !Array.isArray(job.events)) return;
     for (var i = 0; i < job.events.length; i++) {
       var t = String(job.events[i].text || job.events[i].message || '');
       for (var m = 0; m < MILESTONES.length; m++) {
-        if (MILESTONES[m].re.test(t) && MILESTONES[m].p > A.floor) {
-          A.floor = MILESTONES[m].p;
-          A.stageHe = MILESTONES[m].he;
+        if (MILESTONES[m].re.test(t)) {
+          if (!textOnly && MILESTONES[m].p > A.floor) A.floor = MILESTONES[m].p;
+          if (MILESTONES[m].p > (A.stageP || 0)) { A.stageP = MILESTONES[m].p; A.stageHe = MILESTONES[m].he; }
         }
       }
     }
@@ -147,7 +150,19 @@
     // Feed the poll loop's job object (events + status). Safe if begin() was skipped.
     pump: function (job) {
       if (!A || A.state !== 'run' || !job) return;
-      applyEvents(job);
+      // Server-computed HONEST percent (e.g. tik window pages / total pages) beats
+      // any milestone guess — adopt it as the floor, and project a real ETA from it
+      // (elapsed / pct) instead of the static per-kind estimate.
+      var hasSrv = typeof job.progressPct === 'number';
+      applyEvents(job, hasSrv);
+      if (hasSrv) {
+        var sp = Math.min(95, job.progressPct);
+        if (sp > A.floor) {
+          A.floor = sp;
+          var el = (A.now() - A.t0) / 1000;
+          if (sp >= 5 && el > 20) A.est = Math.max(A.est, el * 100 / sp);
+        }
+      }
       if (job.status === 'done') { this.end(true); return; }
       if (job.status === 'error') {
         var er = (job.events || []).filter(function (e) { return e.type === 'error'; }).pop();

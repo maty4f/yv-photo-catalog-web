@@ -1220,20 +1220,26 @@ async function fastDescribe(){
     const {jobId}=jr;
     if(!jobId)throw new Error('השרת לא החזיר jobId (ודא שגרסת השרת החדשה רצה).');
     // Poll until the SERVER resolves the job (done/error). The server self-resolves
-    // via its own watchdogs (Gemini ≤10 min + retries, synthesis ≤40 min/attempt),
-    // so we must keep waiting — a dense tik legitimately runs ~15-25 min and a 12-min
-    // client cap was reporting a FALSE "failed" while the server finished correctly.
-    // The 90-min figure is only a backstop against a dead connection. Each poll is a
-    // quick GET, so the Cloudflare ~100s limit never bites.
-    const started=Date.now(),maxMs=90*60*1000;
+    // via its own watchdogs (idle-based engine kill + bounded model calls), so we
+    // keep waiting as long as the job shows PROGRESS: the 90-min window slides —
+    // it resets whenever a new engine event arrives, and only a genuinely silent
+    // stretch aborts (a huge tik legitimately runs hours). Each poll is a quick
+    // GET, so the Cloudflare ~100s limit never bites.
+    let started=Date.now(),lastEvCount=0;const maxMs=90*60*1000;
     if(window.yvProgress)yvProgress.begin({screen:'documents-tik',kind:'tik'});
     while(Date.now()-started<maxMs){
       await new Promise(r=>setTimeout(r,3000));
       let pr;try{pr=await fetch(serverBase()+'/api/tik-describe/'+jobId);}catch(e){continue;}
       if(!pr.ok)continue;
       const j=await pr.json();
-      if(window.yvProgress)yvProgress.pump({status:j.status==='done'?'done':(j.status==='error'?'error':'running'),events:[]});
-      showStatus(`<span class="spinner"></span>תיאור מהיר · Gemini קורא את כל התיק → Claude מסנתז הקשר היסטורי… (${Math.round((Date.now()-t)/1000)} שׄ)`,'info');
+      const evs=Array.isArray(j.events)?j.events:[];
+      if(evs.length>lastEvCount){lastEvCount=evs.length;started=Date.now();}   // progress → slide the deadline
+      if(window.yvProgress)yvProgress.pump({status:j.status==='done'?'done':(j.status==='error'?'error':'running'),events:evs,progressPct:j.progressPct});
+      // Live line: what the engine checks RIGHT NOW + which model + real elapsed.
+      const lastEv=evs.length?String(evs[evs.length-1].text||'').trim():'';
+      const mdl=j.progressModel?` · מודל: ${esc(j.progressModel)}`:'';
+      const pctTxt=(typeof j.progressPct==='number')?` · ${j.progressPct}%`:'';
+      showStatus(`<span class="spinner"></span>תיאור מהיר${mdl}${pctTxt} · ${lastEv?esc(lastEv):'המנוע התחיל…'} (${Math.round((Date.now()-t)/1000)} שׄ)`,'info');
       if(j.status==='done'){
         renderRecord(parseJson(j.text,'Claude'));
         const split=(j.geminiSec&&j.claudeSec)?`Gemini ${j.geminiSec}שׄ + Claude ${j.claudeSec}שׄ`:(j.model||'Gemini+Claude');
@@ -1246,7 +1252,7 @@ async function fastDescribe(){
         throw new Error(j.error||'תיאור נכשל');
       }
     }
-    throw new Error('הדפדפן המתין 90 דקות והתיאור עדיין לא הסתיים — ייתכן שהשרת עדיין עובד או נתקע. בדוק מול המקטלג לפני ניסיון חוזר.');
+    throw new Error('לא התקבלה שום התקדמות מהשרת במשך 90 דקות — ייתכן שהשרת נתקע או שהחיבור נותק. בדוק את מסך ההפעלות (logs.html) לפני ניסיון חוזר.');
   }catch(err){console.error(err);showStatus('שגיאה בתיאור מהיר: '+esc(err.message),'err');}
   finally{$('run').disabled=false;$('describe-fast').disabled=false;}
 }
