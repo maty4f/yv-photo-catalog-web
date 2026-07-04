@@ -7,14 +7,17 @@ permissions:
   contents: read
   pages: write
   id-token: write
+# One Pages deployment at a time. cancel-in-progress:false lets an in-flight
+# production deploy finish (cancelling mid-deploy can wedge the Pages lock).
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Split build/deploy (GitHub's canonical Pages pattern): the artifact is
+  # produced ONCE in build; deploy only consumes it. Re-running the deploy job
+  # therefore never creates a second "github-pages" artifact — the cause of the
+  # "Multiple artifacts named github-pages … Artifact count is 2" failures.
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,5 +25,12 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
