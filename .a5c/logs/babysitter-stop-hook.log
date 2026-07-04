@@ -1,0 +1,84 @@
+[INFO] 2026-06-15T08:21:04.590Z handleHookRunStop started
+[INFO] 2026-06-15T08:21:04.594Z Hook input received
+[INFO] 2026-06-15T08:21:04.596Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Session ID: cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e
+[INFO] 2026-06-15T08:21:04.596Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-15T08:21:04.596Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-15T08:21:04.596Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e.md
+[INFO] 2026-06-15T08:21:04.602Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] No active loop found for session cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e — allowing exit
+[INFO] 2026-06-15T08:24:21.452Z handleHookRunStop started
+[INFO] 2026-06-15T08:24:21.459Z Hook input received
+[INFO] 2026-06-15T08:24:21.460Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Session ID: cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e
+[INFO] 2026-06-15T08:24:21.460Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-15T08:24:21.460Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-15T08:24:21.461Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e.md
+[INFO] 2026-06-15T08:24:21.463Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] No active loop found for session cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e — allowing exit
+[INFO] 2026-06-15T10:17:30.296Z handleHookRunStop started
+[INFO] 2026-06-15T10:17:30.302Z Hook input received
+[INFO] 2026-06-15T10:17:30.302Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Session ID: cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e
+[INFO] 2026-06-15T10:17:30.303Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-15T10:17:30.303Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-15T10:17:30.303Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e.md
+[INFO] 2026-06-15T10:17:30.306Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] No active loop found for session cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e — allowing exit
+[INFO] 2026-06-15T12:02:41.775Z handleHookRunStop started
+[INFO] 2026-06-15T12:02:41.789Z Hook input received
+[INFO] 2026-06-15T12:02:41.789Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Session ID: cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e
+[INFO] 2026-06-15T12:02:41.789Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-15T12:02:41.790Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-15T12:02:41.790Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e.md
+[INFO] 2026-06-15T12:02:41.792Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] No active loop found for session cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e — allowing exit
+[INFO] 2026-06-15T12:58:54.078Z handleHookRunStop started
+[INFO] 2026-06-15T12:58:54.084Z Hook input received
+[INFO] 2026-06-15T12:58:54.085Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Session ID: cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e
+[INFO] 2026-06-15T12:58:54.086Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-15T12:58:54.086Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-15T12:58:54.086Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e.md
+[INFO] 2026-06-15T12:58:54.088Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] No active loop found for session cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e — allowing exit
+[INFO] 2026-06-15T13:00:28.198Z handleHookRunStop started
+[INFO] 2026-06-15T13:00:28.272Z Hook input received
+[INFO] 2026-06-15T13:00:28.272Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Session ID: cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e
+[INFO] 2026-06-15T13:00:28.273Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-15T13:00:28.273Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-15T13:00:28.273Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e.md
+[INFO] 2026-06-15T13:00:28.277Z [session=cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e] No active loop found for session cfa2ce1a-4429-4b6b-9f99-f4bd072aff0e — allowing exit
+[INFO] 2026-06-16T15:56:12.024Z handleHookRunStop started
+[INFO] 2026-06-16T15:56:12.028Z Hook input received
+[INFO] 2026-06-16T15:56:12.028Z [session=2cd2e1a9-4ebe-4256-95f2-3ec253b0c2c8] Session ID: 2cd2e1a9-4ebe-4256-95f2-3ec253b0c2c8
+[INFO] 2026-06-16T15:56:12.028Z [session=2cd2e1a9-4ebe-4256-95f2-3ec253b0c2c8] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-16T15:56:12.028Z [session=2cd2e1a9-4ebe-4256-95f2-3ec253b0c2c8] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-16T15:56:12.029Z [session=2cd2e1a9-4ebe-4256-95f2-3ec253b0c2c8] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/2cd2e1a9-4ebe-4256-95f2-3ec253b0c2c8.md
+[INFO] 2026-06-16T15:56:12.029Z [session=2cd2e1a9-4ebe-4256-95f2-3ec253b0c2c8] No active loop found for session 2cd2e1a9-4ebe-4256-95f2-3ec253b0c2c8 — allowing exit
+[INFO] 2026-06-23T15:18:51.984Z handleHookRunStop started
+[INFO] 2026-06-23T15:18:51.988Z Hook input received
+[INFO] 2026-06-23T15:18:51.988Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Session ID: 6d5f47ac-a052-48b1-b991-77af162d6ec7
+[INFO] 2026-06-23T15:18:51.988Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-23T15:18:51.988Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-23T15:18:51.988Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/6d5f47ac-a052-48b1-b991-77af162d6ec7.md
+[INFO] 2026-06-23T15:18:51.988Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] No active loop found for session 6d5f47ac-a052-48b1-b991-77af162d6ec7 — allowing exit
+[INFO] 2026-06-23T17:05:21.475Z handleHookRunStop started
+[INFO] 2026-06-23T17:05:21.481Z Hook input received
+[INFO] 2026-06-23T17:05:21.481Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Session ID: 6d5f47ac-a052-48b1-b991-77af162d6ec7
+[INFO] 2026-06-23T17:05:21.481Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-23T17:05:21.481Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-23T17:05:21.481Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/6d5f47ac-a052-48b1-b991-77af162d6ec7.md
+[INFO] 2026-06-23T17:05:21.482Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] No active loop found for session 6d5f47ac-a052-48b1-b991-77af162d6ec7 — allowing exit
+[INFO] 2026-06-24T07:23:15.602Z handleHookRunStop started
+[INFO] 2026-06-24T07:23:15.606Z Hook input received
+[INFO] 2026-06-24T07:23:15.606Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Session ID: 6d5f47ac-a052-48b1-b991-77af162d6ec7
+[INFO] 2026-06-24T07:23:15.606Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-06-24T07:23:15.606Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-06-24T07:23:15.606Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/6d5f47ac-a052-48b1-b991-77af162d6ec7.md
+[INFO] 2026-06-24T07:23:15.606Z [session=6d5f47ac-a052-48b1-b991-77af162d6ec7] No active loop found for session 6d5f47ac-a052-48b1-b991-77af162d6ec7 — allowing exit
+[INFO] 2026-07-02T15:54:54.832Z handleHookRunStop started
+[INFO] 2026-07-02T15:54:54.835Z Hook input received
+[INFO] 2026-07-02T15:54:54.835Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] Session ID: 62bffb93-e8a1-4d4f-839e-ba12df01c693
+[INFO] 2026-07-02T15:54:54.835Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-07-02T15:54:54.835Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-07-02T15:54:54.835Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/62bffb93-e8a1-4d4f-839e-ba12df01c693.md
+[INFO] 2026-07-02T15:54:54.836Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] No active loop found for session 62bffb93-e8a1-4d4f-839e-ba12df01c693 — allowing exit
+[INFO] 2026-07-02T16:29:06.139Z handleHookRunStop started
+[INFO] 2026-07-02T16:29:06.150Z Hook input received
+[INFO] 2026-07-02T16:29:06.150Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] Session ID: 62bffb93-e8a1-4d4f-839e-ba12df01c693
+[INFO] 2026-07-02T16:29:06.150Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-07-02T16:29:06.150Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-07-02T16:29:06.151Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/62bffb93-e8a1-4d4f-839e-ba12df01c693.md
+[INFO] 2026-07-02T16:29:06.152Z [session=62bffb93-e8a1-4d4f-839e-ba12df01c693] No active loop found for session 62bffb93-e8a1-4d4f-839e-ba12df01c693 — allowing exit
