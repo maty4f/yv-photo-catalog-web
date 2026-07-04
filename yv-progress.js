@@ -1,7 +1,10 @@
 // yv-progress.js — a live progress card for the cataloging screens: a circular
 // gauge (the "graph") that fills toward completion, a big percent in the center,
-// a running clock (elapsed mm:ss), a linear stage bar with the current step, and
-// a rough ETA. Shared across photos/films/documents/tik.
+// a running clock (elapsed mm:ss), a linear stage bar with the current step, a
+// metrics row (window N/M · pages a–b/total · model), and a live WORK TRAIL — a
+// scrolling, timestamped log of every window/stage as it happens, so the archivist
+// sees exactly what the engine is doing RIGHT NOW inside the system itself.
+// Shared across photos/films/documents/tik.
 //
 // The percent is HONEST-ish, not fabricated: it's the max of (a) a milestone floor
 // derived from the engine's own stage log lines in the job's event stream, and
@@ -58,7 +61,23 @@
       '.yv-prog .bar{height:8px;border-radius:5px;background:#e8edf1;overflow:hidden}' +
       '.yv-prog .bar > i{display:block;height:100%;width:0;border-radius:5px;' +
       'background:linear-gradient(90deg,#2c5f7c,#4a90b8);transition:width .5s ease}' +
-      '.yv-prog.done .bar > i{background:#1a7f37}.yv-prog.err .bar > i{background:#c0392b}';
+      '.yv-prog.done .bar > i{background:#1a7f37}.yv-prog.err .bar > i{background:#c0392b}' +
+      // metrics chips (window N/M · pages · model) + the live work-trail log
+      '.yv-prog .meta{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}' +
+      '.yv-prog .meta .chip{font-size:11.5px;background:#eef3f7;color:#33586e;border-radius:999px;' +
+      'padding:2px 9px;unicode-bidi:isolate;font-variant-numeric:tabular-nums}' +
+      '.yv-prog .meta .chip.model{background:#e7f0ff;color:#2a5db0}' +
+      '.yv-prog .trail-wrap{flex:1 1 100%;margin:10px 0 0;border-top:1px solid #edf1f4;padding-top:8px}' +
+      '.yv-prog .trail-wrap > summary{cursor:pointer;font-size:12px;color:#6b7a89;list-style:none;user-select:none}' +
+      '.yv-prog .trail-wrap > summary::-webkit-details-marker{display:none}' +
+      '.yv-prog .trail-wrap > summary b{color:#33475b}' +
+      '.yv-prog .trail{margin:8px 0 0;padding:0 2px 0 0;max-height:150px;overflow-y:auto;list-style:none;' +
+      'font-size:12px;line-height:1.7;color:#4a5b6b;unicode-bidi:isolate}' +
+      '.yv-prog .trail li{display:flex;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '.yv-prog .trail li .t{color:#9aa7b3;font-variant-numeric:tabular-nums;flex:0 0 auto}' +
+      '.yv-prog .trail li .m{overflow:hidden;text-overflow:ellipsis}' +
+      '.yv-prog .trail li.now{color:#1f2d3a;font-weight:600}' +
+      '.yv-prog .trail li.warn{color:#b26a00}.yv-prog .trail li.bad{color:#c0392b}';
     document.head.appendChild(s);
   }
 
@@ -78,7 +97,10 @@
       'stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + C.toFixed(1) + '"></circle>' +
       '</svg><div class="pct"><b>0%</b><small>התקדמות</small></div></div>' +
       '<div class="body"><div class="clock">00:00<span class="eta"></span></div>' +
-      '<div class="stage">ממתין…</div><div class="bar"><i></i></div></div>';
+      '<div class="stage">ממתין…</div><div class="bar"><i></i></div>' +
+      '<div class="meta"></div></div>' +
+      '<details class="trail-wrap" open><summary>נתיב העבודה · <b class="tcount">0</b> שלבים</summary>' +
+      '<ol class="trail"></ol></details>';
     return el;
   }
 
@@ -109,6 +131,73 @@
     render();
   }
 
+  // Parse one engine narration line into structured facts for the metrics row:
+  // the current read window (pages a–b of total), which model, the total window
+  // count, and whether the line is a warning/error. Pure.
+  function parseLine(text) {
+    var t = String(text || '');
+    var out = { model: /Claude/i.test(t) ? 'Claude' : (/Gemini/i.test(t) ? 'Gemini' : null) };
+    var win = t.match(/חלון עמ' (\d+)[–-](\d+)\/(\d+)/u);
+    if (win) { out.isWindow = true; out.a = +win[1]; out.b = +win[2]; out.pageTotal = +win[3]; }
+    var tot = t.match(/ב-(\d+) חלונות|(\d+) חלונות של/u);
+    if (tot) out.totalWindows = +(tot[1] || tot[2]);
+    if (/❌|שגיאה|error|נכשל.*בכל/iu.test(t)) out.kind = 'bad';
+    else if (/⚠|נכשל|timeout|מפוצל|נופל|גיבוי|🔁|⟳/iu.test(t)) out.kind = 'warn';
+    return out;
+  }
+
+  function renderMeta() {
+    if (!A || !A.el) return;
+    var meta = A.el.querySelector('.meta');
+    if (!meta) return;
+    var chips = [];
+    if (A.winDone) {
+      var tot = Math.max(A.winTotal || 0, A.winDone);
+      chips.push('<span class="chip">חלון ' + A.winDone + (tot ? '/' + tot : '') + '</span>');
+    }
+    if (A.pageA) chips.push('<span class="chip">עמ׳ ' + A.pageA + '–' + A.pageB +
+                            (A.pageTotal ? '/' + A.pageTotal : '') + '</span>');
+    if (A.model) chips.push('<span class="chip model">מודל: ' + A.model + '</span>');
+    meta.innerHTML = chips.join('');
+  }
+
+  // Append the not-yet-shown events to the live work trail (timestamped by when
+  // first seen — honest and monotonic), and update the metrics row from them.
+  function pushTrail(events) {
+    if (!A || !A.el || !Array.isArray(events)) return;
+    var ol = A.el.querySelector('.trail');
+    var start = A.trailCount || 0;
+    var elapsed = (A.now() - A.t0) / 1000;
+    for (var i = start; i < events.length; i++) {
+      var raw = String(events[i].text || events[i].message || '').trim().split('\n').pop();
+      if (!raw) continue;
+      var p = parseLine(raw);
+      if (p.isWindow) { A.winDone = (A.winDone || 0) + 1; A.pageA = p.a; A.pageB = p.b; A.pageTotal = p.pageTotal; }
+      if (p.totalWindows) A.winTotal = p.totalWindows;
+      if (p.model) A.model = p.model;
+      if (ol) {
+        if (A.lastLi) A.lastLi.classList.remove('now');
+        var li = document.createElement('li');
+        li.className = (p.kind || '') + ' now';
+        li.innerHTML = '<span class="t">' + mmss(elapsed) + '</span>' +
+                       '<span class="m">' + esc(raw.slice(0, 160)) + '</span>';
+        ol.appendChild(li);
+        A.lastLi = li;
+        ol.scrollTop = ol.scrollHeight;   // keep the newest line in view
+      }
+    }
+    A.trailCount = events.length;
+    var cEl = A.el.querySelector('.tcount');
+    if (cEl) cEl.textContent = String(events.length);
+    renderMeta();
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
   // textOnly: when the server reports an HONEST percent, milestone regexes must
   // not inflate the floor (a generic /gemini/ match jumps to 32% on the very
   // first read window) — events then drive only the stage text.
@@ -123,6 +212,8 @@
         }
       }
     }
+    // Feed the live trail (new events only) + metrics row.
+    pushTrail(job.events);
     // Show the latest human line under the bar (trimmed), else the stage name.
     var last = job.events.length ? job.events[job.events.length - 1] : null;
     var line = last ? String(last.text || last.message || '').trim().split('\n').pop().slice(0, 90) : '';
@@ -142,7 +233,8 @@
       var now = cfg.now || function () { return Date.now(); };
       if (A && A.timer) clearInterval(A.timer);
       A = { el: el, kind: cfg.kind, est: cfg.estSec || EST[cfg.kind] || 120,
-            t0: now(), now: now, pct: 0, floor: 0, state: 'run', stageHe: '', frozen: null, timer: null };
+            t0: now(), now: now, pct: 0, floor: 0, state: 'run', stageHe: '', frozen: null, timer: null,
+            trailCount: 0, winDone: 0, winTotal: 0, pageA: 0, pageB: 0, pageTotal: 0, model: '', lastLi: null };
       render();
       if (!cfg.now) A.timer = setInterval(tick, 1000);   // live clock; tests drive tick() manually
       return A;
@@ -171,9 +263,13 @@
       tick();
     },
     // For client-side screens with no job object — advance by a stage text line.
+    // Accumulate into a synthetic cumulative stream so the trail appends (not
+    // resets) each call, matching the server-job pump contract.
     step: function (text) {
       if (!A || A.state !== 'run') return;
-      applyEvents({ events: [{ text: String(text || '') }] });
+      A.stepEvents = A.stepEvents || [];
+      A.stepEvents.push({ text: String(text || '') });
+      applyEvents({ events: A.stepEvents });
       tick();
     },
     end: function (ok, msg) {
@@ -187,6 +283,17 @@
         A.el.querySelector('.ring').className = 'ring ' + (ok ? 'done' : 'err');
         A.el.querySelector('.pct small').textContent = ok ? '✓ הושלם' : '✗ שגיאה';
         if (!ok && msg) A.el.querySelector('.stage').textContent = String(msg).slice(0, 120);
+        // Close out the trail: drop the live highlight and stamp a terminal line.
+        if (A.lastLi) A.lastLi.classList.remove('now');
+        var ol = A.el.querySelector('.trail');
+        if (ol) {
+          var li = document.createElement('li');
+          li.className = ok ? '' : 'bad';
+          li.innerHTML = '<span class="t">' + mmss(A.frozen) + '</span><span class="m">' +
+                         (ok ? '✓ הקטלוג הושלם' : '✗ ' + esc(String(msg || 'שגיאה').slice(0, 140))) + '</span>';
+          ol.appendChild(li);
+          ol.scrollTop = ol.scrollHeight;
+        }
       }
       render();
     },
