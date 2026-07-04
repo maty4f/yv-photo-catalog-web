@@ -118,13 +118,6 @@
         <div class="small">השג חינם ב-<a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
       </div>
     </div>
-    <div class="row" id="row-anthropic">
-      <label>מפתח Anthropic</label>
-      <div>
-        <input type="password" id="api-key-anthropic" class="ltr" placeholder="sk-ant-…" autocomplete="off">
-        <div class="small">נדרש למצב Hybrid · <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a></div>
-      </div>
-    </div>
     <div class="row">
       <label>מודל Gemini</label>
       <select id="model">
@@ -295,7 +288,7 @@ const VALID_MODES = ['unified-server', 'claude-cli', 'gemini-only'];
 const state = {
   mode: VALID_MODES.includes(localStorage.getItem('yv_v2_mode')) ? localStorage.getItem('yv_v2_mode') : 'unified-server',
   apiKey: localStorage.getItem('yv_v2_api_key') || '',
-  apiKeyAnthropic: '',   // review #1: no browser Claude key — the server proxy injects it
+  // review #2: no Anthropic key in the browser — the server proxy injects its own
   model: localStorage.getItem('yv_v2_model') || 'gemini-3.5-flash',
   claudeModel: localStorage.getItem('yv_v2_claude_model') || 'claude-sonnet-4-6',
   localServerUrl: (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, ''),
@@ -320,7 +313,6 @@ if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(lo
 const $ = id => document.getElementById(id);
 const modeSel = $('mode');
 const apiKeyInput = $('api-key');
-const apiKeyAnthropicInput = $('api-key-anthropic');
 const modelSel = $('model');
 const claudeModelSel = $('claude-model');
 const drop = $('drop');
@@ -333,18 +325,15 @@ const contextEl = $('context');
 const analyzeBtn = $('analyze-btn');
 const statusEl = $('status');
 const resultsEl = $('results');
-const rowAnthropic = $('row-anthropic');
 const rowClaudeModel = $('row-claude-model');
 
 modeSel.value = state.mode;
 apiKeyInput.value = state.apiKey;
-apiKeyAnthropicInput.value = state.apiKeyAnthropic;
 modelSel.value = state.model;
 claudeModelSel.value = state.claudeModel;
 
 function syncModeUI() {
-  // Anthropic key and Claude model rows were only for the removed hybrid mode — always hidden.
-  rowAnthropic.style.display = 'none';
+  // The Claude model row was only for the removed hybrid mode — always hidden.
   rowClaudeModel.style.display = 'none';
 }
 syncModeUI();
@@ -361,10 +350,6 @@ apiKeyInput.addEventListener('input', () => {
   refresh();
 });
 try { localStorage.removeItem('yv_v2_api_key_anthropic'); } catch {}   // review #1: purge any persisted Claude key
-apiKeyAnthropicInput.addEventListener('input', () => {
-  state.apiKeyAnthropic = apiKeyAnthropicInput.value.trim();   // session-only; NOT persisted (review #1)
-  refresh();
-});
 modelSel.addEventListener('change', () => {
   state.model = modelSel.value;
   localStorage.setItem('yv_v2_model', state.model);
@@ -789,12 +774,8 @@ ${JSON.stringify(geminiDraft, null, 2)}
 
   const res = await fetch(((state.localServerUrl || location.origin) + '/api/anthropic-proxy/v1/messages'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': state.apiKeyAnthropic,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    // review #2: no client key headers — the proxy injects the server key + API version
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: state.claudeModel,
       max_tokens: 8192,

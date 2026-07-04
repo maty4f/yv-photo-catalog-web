@@ -232,7 +232,7 @@
 
     <div class="row provider-row" data-provider="anthropic">
       <label>מפתח Anthropic</label>
-      <input type="password" id="api-key-anthropic" placeholder="sk-ant-…" autocomplete="off">
+      <div style="font-size:12px; color:var(--muted); align-self:center;">🔒 לא נדרש מפתח בדפדפן — הבקשות עוברות דרך השרת המקומי, והמפתח מוזרק שם.</div>
     </div>
     <div class="row provider-row" data-provider="anthropic">
       <label>מודל Claude</label>
@@ -257,12 +257,12 @@
     </div>
 
     <div class="hint">
-      📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: חלוקת תפקידים — <b>Gemini הוא העיניים</b>: קריאה ויזואלית בלבד (אישים, חפצים, מקומות, OCR). <b>Claude הוא הטקסט והבקרה</b>: בודק את הקריאה של Gemini (סתירות, אי-התאמות תקופתיות, ביטחון-יתר → מנמיך ודאות), ואז כותב את קטלוג ספיר בעברית אקדמית. Claude לא רואה את התמונה — רק את הקריאה של Gemini. דורש שני מפתחות. ראה <code>reference/confidence_dual_axis.md</code>.
+      📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: חלוקת תפקידים — <b>Gemini הוא העיניים</b>: קריאה ויזואלית בלבד (אישים, חפצים, מקומות, OCR). <b>Claude הוא הטקסט והבקרה</b>: בודק את הקריאה של Gemini (סתירות, אי-התאמות תקופתיות, ביטחון-יתר → מנמיך ודאות), ואז כותב את קטלוג ספיר בעברית אקדמית. Claude לא רואה את התמונה — רק את הקריאה של Gemini. מפתח Claude מוזרק בשרת (דרך ה-proxy) — בדפדפן נדרש לכל היותר מפתח Gemini. ראה <code>reference/confidence_dual_axis.md</code>.
       <br>📍 <b>🆓 Gemini בלבד (חינם)</b>: זיהוי ויזואלי + OCR חזק במעבר אחד. הכי זול — בדרך כלל בתוך ה-free tier של Google. ללא שכבת אימות היסטורי, פחות חזק על Sapir/עברית אקדמית. <b>מסלול חינמי חלופי:</b> השתמש ב-CLI <code>yv photo catalog &lt;file&gt;</code> שמדפיס prompt → הדבק ב-Claude Code (שיש לך) → גם זה $0.
       <br>📍 <b>Anthropic בלבד (בתשלום)</b>: זיהוי ויזואלי + סינתזה במודל אחד. מהיר וטוב לתצלום פשוט; פחות חזק על OCR של כיתובים מטושטשים.
       <br>—
-      <br>🔒 המפתחות נשמרים אך ורק ב-localStorage של הדפדפן שלך.
-      <br>📍 <b>Anthropic</b>: api.anthropic.com · השגת מפתח: <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> · ~$0.05–0.30 לזיהוי
+      <br>🔒 מפתח Gemini (אם הוזן) נשמר ב-localStorage של הדפדפן שלך. מפתח Anthropic אינו קיים בדפדפן כלל — השרת מזריק אותו ב-proxy.
+      <br>📍 <b>Anthropic</b>: דרך שרת ה-proxy המקומי (המפתח בצד השרת — אין צורך להשיג מפתח) · ~$0.05–0.30 לזיהוי
       <br>📍 <b>Gemini</b>: generativelanguage.googleapis.com · השגת מפתח: <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a> · בדרך כלל זול יותר, יש tier חינמי
     </div>
   </div>
@@ -715,7 +715,7 @@
   </div><!-- /#photo-workflow -->
 
   <div class="footer-hint">
-    <strong>💡 פרטיות:</strong> הכל קורה בדפדפן שלך. ה-API key (אם יש) נשמר רק ב-localStorage. תצלומים נשלחים ישירות ל-api.anthropic.com (HTTPS) — לא דרך שום שרת ביניים.
+    <strong>💡 פרטיות:</strong> מפתח Gemini (אם הוזן) נשמר רק ב-localStorage. בקשות Claude עוברות דרך שרת ה-proxy המקומי שלך (HTTPS) — הדפדפן אינו מחזיק מפתח Anthropic, והשרת מזריק את המפתח שלו.
   </div>
 
   <footer class="bottom">
@@ -778,7 +778,7 @@ const state = {
     .includes(localStorage.getItem('yv_api_provider'))
     ? localStorage.getItem('yv_api_provider') : 'unified-server'),
   apiKeys: {
-    anthropic: '',   // review #1: no browser Claude key — the server proxy injects it
+    // review #2: no Anthropic entry — the server proxy injects its own key
     gemini:    localStorage.getItem('yv_api_key_gemini') || '',
   },
   // ─── Collection state ────────────────────────────────────────
@@ -1212,8 +1212,8 @@ async function reconcileLLM(prompt, label) {
   // anthropic
   const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': state.apiKeys.anthropic,
-      'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    // review #2: no client key headers — the proxy injects the server key + API version
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: getActiveModel(), max_tokens: 16000, messages: [{ role: 'user', content: prompt }] }),
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || 'Anthropic HTTP ' + res.status); }
@@ -1844,14 +1844,12 @@ async function extractCSV(file, delim) {
 const settingsToggle = document.getElementById('settings-toggle');
 const settingsPanel = document.getElementById('settings-panel');
 const providerSel = document.getElementById('api-provider');
-const apiKeyAnthropic = document.getElementById('api-key-anthropic');
 const apiKeyGemini = document.getElementById('api-key-gemini');
 const modelSelAnthropic = document.getElementById('api-model-anthropic');
 const modelSelGemini = document.getElementById('api-model-gemini');
 
 // review #1: purge any Anthropic key a previous version persisted in this browser.
 try { localStorage.removeItem('yv_api_key_anthropic'); localStorage.removeItem('yv_api_key'); } catch {}
-apiKeyAnthropic.value = state.apiKeys.anthropic;
 apiKeyGemini.value = state.apiKeys.gemini;
 providerSel.value = state.provider;
 
@@ -1936,10 +1934,6 @@ providerSel.addEventListener('change', () => {
   state.provider = providerSel.value;
   localStorage.setItem('yv_api_provider', state.provider);
   syncProviderRows();
-  refreshAllButtons();
-});
-apiKeyAnthropic.addEventListener('input', () => {
-  state.apiKeys.anthropic = apiKeyAnthropic.value.trim();   // session-only; NOT persisted (review #1)
   refreshAllButtons();
 });
 apiKeyGemini.addEventListener('input', () => {
@@ -2487,12 +2481,8 @@ async function callAnthropic() {
 
   const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': state.apiKeys.anthropic,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    // review #2: no client key headers — the proxy injects the server key + API version
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: getActiveModel(),
       max_tokens: 16000,
@@ -4059,12 +4049,8 @@ async function callAnthropicForCollection(sources) {
 
   const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': state.apiKeys.anthropic,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    // review #2: no client key headers — the proxy injects the server key + API version
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: getActiveModel(),
       max_tokens: 16000,
@@ -4338,12 +4324,8 @@ ${heText}`;
   } else {
     const res = await fetch((anthropicBase() + '/v1/messages'), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': state.apiKeys.anthropic,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      // review #2: no client key headers — the proxy injects the server key + API version
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: getActiveModel(),
         max_tokens: 2000,
@@ -4426,12 +4408,8 @@ async function detectItemTypeFromDesc(descHe) {
     } else {
       const res = await fetch((anthropicBase() + '/v1/messages'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': state.apiKeys.anthropic,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
+        // review #2: no client key headers — the proxy injects the server key + API version
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: getActiveModel(),
           max_tokens: 30,

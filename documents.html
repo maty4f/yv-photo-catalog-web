@@ -164,7 +164,7 @@
       <label>ספק API</label>
       <select id="api-provider">
         <option value="claude-cli" selected>⭐ Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini)</option>
-        <option value="anthropic">Anthropic (Claude API) בלבד (קורא ישירות, בתשלום)</option>
+        <option value="anthropic">Anthropic (Claude API) בלבד (דרך שרת ה-proxy, בתשלום)</option>
         <option value="gemini">🆓 Google (Gemini) בלבד (חינם)</option>
       </select>
     </div>
@@ -212,7 +212,7 @@
     </div>
     <div class="row provider-row" data-provider="anthropic">
       <label>מפתח Anthropic</label>
-      <input type="password" id="api-key-anthropic" placeholder="sk-ant-…" autocomplete="off">
+      <div style="font-size:12px; color:var(--muted); align-self:center;">🔒 לא נדרש מפתח בדפדפן — הבקשות עוברות דרך השרת המקומי, והמפתח מוזרק שם.</div>
     </div>
     <div class="row provider-row" data-provider="anthropic">
       <label>מודל Claude</label>
@@ -242,38 +242,10 @@
       </select>
     </div>
 
-    <!-- Transkribus credentials — shown only when provider=transkribus -->
-    <div class="row provider-row" data-provider="transkribus">
-      <label>שם משתמש Transkribus</label>
-      <input type="text" id="tk-username" placeholder="user@example.com" autocomplete="username">
-    </div>
-    <div class="row provider-row" data-provider="transkribus">
-      <label>סיסמת Transkribus</label>
-      <input type="password" id="tk-password" placeholder="הסיסמה ב-app.transkribus.org" autocomplete="current-password">
-    </div>
-    <div class="row provider-row" data-provider="transkribus">
-      <label>מודל Transkribus</label>
-      <select id="tk-model">
-        <option value="auto">זיהוי אוטומטי לפי שפה (Transkribus_Universal)</option>
-        <option value="german_kurrent">German Kurrent (כתב יד גרמני, 1500-1941)</option>
-        <option value="german_sutterlin">German Sütterlin (כתב יד גרמני 1911-1941)</option>
-        <option value="yiddish_handwriting">Yiddish Handwriting</option>
-        <option value="hebrew_modern">Hebrew Modern (עברית מודרנית)</option>
-        <option value="russian_handwriting">Russian Handwriting</option>
-        <option value="polish_handwriting">Polish Handwriting</option>
-        <option value="manual">📋 הזנה ידנית (אני אבצע OCR ב-Transkribus ואדביק את התוצאה)</option>
-      </select>
-    </div>
-    <div class="row provider-row" data-provider="transkribus" id="tk-claude-key-note">
-      <label style="color:var(--warn);">⚠ דרוש גם:</label>
-      <div style="font-size:12px; color:var(--warn);">מפתח Anthropic — Claude יבנה את קטלוג ספיר מה-OCR. ראה למעלה.</div>
-    </div>
     <div class="hint">
-      📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: Gemini עושה זיהוי ראשוני — OCR נאמן בשפת המקור (חינמי, איכותי) → Claude עושה זיהוי משני — בונה את שדות קטלוג ספיר, מתרגם לעברית אקדמית, מאמת היסטורית (סוג מסמך, צדדים, תאריכים, מקומות). שניהם מסמנים <b>ודאות dual-axis V/H</b>: V=ויזואלי (מה קריא במסמך), H=היסטורי (מה תואם תיעוד). דורש שני מפתחות. עלות ~$0.002/דף. ראה <code>reference/confidence_dual_axis.md</code>.
+      📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: Gemini עושה זיהוי ראשוני — OCR נאמן בשפת המקור (חינמי, איכותי) → Claude עושה זיהוי משני — בונה את שדות קטלוג ספיר, מתרגם לעברית אקדמית, מאמת היסטורית (סוג מסמך, צדדים, תאריכים, מקומות). שניהם מסמנים <b>ודאות dual-axis V/H</b>: V=ויזואלי (מה קריא במסמך), H=היסטורי (מה תואם תיעוד). מפתח Claude מוזרק בשרת (דרך ה-proxy) — בדפדפן נדרש לכל היותר מפתח Gemini. עלות ~$0.002/דף. ראה <code>reference/confidence_dual_axis.md</code>.
       <br>📍 <b>🆓 Gemini בלבד (חינם)</b>: OCR + ניתוח במעבר אחד, בדרך כלל בתוך ה-free tier. ללא שכבת אימות היסטורי בעברית אקדמית. <b>מסלול חינמי חלופי (מומלץ למסמכים מורכבים):</b> <code>yv doc catalog &lt;file&gt; --pipeline-free</code> — Gemini API (free tier) + claude CLI שלך = pipeline אמיתי, $0.
       <br>📍 <b>למסמכים מודפסים</b>: שני הספקים עובדים מצוין. Gemini Flash הכי זול.
-      <br>📍 <b>לכתב יד מאתגר</b>: Hybrid או Transkribus — דיוק גבוה יותר ושכבת אימות היסטורי.
-      <br>📍 <b>🇪🇺 Transkribus</b>: סטנדרט הזהב לכתב יד אירופאי. 500 קרדיטים/חודש חינם (~50-100 עמ׳). דרוש חשבון ב-<a href="https://app.transkribus.org" target="_blank">app.transkribus.org</a>. אם API חסום (CORS) — בחר "הזנה ידנית" ותדביק את ה-OCR.
       <br>📍 <b>שפות נתמכות</b>: גרמנית (כולל Fraktur/Sütterlin), יידיש, פולנית, רוסית, צ'כית, סלובקית, הונגרית, אוקראינית, ליטאית, לטבית, רומנית, יוונית, עברית, אנגלית, צרפתית, איטלקית.
     </div>
   </div>
@@ -644,7 +616,7 @@ const state = {
   document: null, docMeta: null, identification: null,
   provider: (['claude-cli','anthropic','gemini'].includes(localStorage.getItem('yv_api_provider')) ? localStorage.getItem('yv_api_provider') : 'claude-cli'),   // review #1: Transkribus removed from the flow
   apiKeys: {
-    anthropic: '',   // review #1: no browser Claude key — the server proxy injects it
+    // review #2: no Anthropic entry — the server proxy injects its own key
     gemini: localStorage.getItem('yv_api_key_gemini') || '',
   },
   thesaurus_top: [],
@@ -652,10 +624,6 @@ const state = {
   doc_mode: localStorage.getItem('yv_doc_mode') || 'private',
   // Translation mode: 'auto' (default) | 'full' | 'summary'
   translation_mode: localStorage.getItem('yv_translation_mode') || 'auto',
-  // Transkribus removed from the flow (review #1, user decision — not in use).
-  // Kept as an empty stub so any lingering reference degrades to blank, never a
-  // stored secret. Purged on load below.
-  tk_credentials: { username: '', password: '', model: 'auto' },
   // Batch queue (same pattern as photos.html)
   doc_queue: [],
   current_doc_queue_index: -1,
@@ -740,12 +708,10 @@ setTimeout(updateTranslationLabels, 100);
 const settingsToggle = document.getElementById('settings-toggle');
 const settingsPanel = document.getElementById('settings-panel');
 const providerSel = document.getElementById('api-provider');
-const apiKeyAnthropic = document.getElementById('api-key-anthropic');
 const apiKeyGemini = document.getElementById('api-key-gemini');
 const modelSelAnthropic = document.getElementById('api-model-anthropic');
 const modelSelGemini = document.getElementById('api-model-gemini');
 
-apiKeyAnthropic.value = state.apiKeys.anthropic;
 apiKeyGemini.value = state.apiKeys.gemini;
 providerSel.value = state.provider;
 
@@ -931,7 +897,6 @@ syncProviderRows();
 
 providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
 try { localStorage.removeItem('yv_api_key_anthropic'); } catch {}   // review #1: purge any persisted Claude key
-apiKeyAnthropic.addEventListener('input', () => { state.apiKeys.anthropic = apiKeyAnthropic.value.trim(); refreshButtons(); });   // session-only; NOT persisted
 apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
 function syncProviderRows() {
   // Which setting-rows each provider needs visible (by data-provider token).
@@ -953,15 +918,11 @@ function getActiveApiKey() {
 function hasClaudeCliReady() {
   return !!state.localServerUrl;
 }
-function hasTranskribusReady() {
-  const tk = state.tk_credentials;
-  return state.apiKeys.anthropic && (tk.model === 'manual' || (tk.username && tk.password));
-}
 function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
 
 // review #1: Transkribus removed from the flow (not in use). Purge any
 // credentials a previous version persisted in this browser — including the
-// password. The provider option is gone, so nothing wires these inputs.
+// password. All Transkribus UI/code is deleted; this only cleans old browsers.
 try {
   localStorage.removeItem('yv_tk_username');
   localStorage.removeItem('yv_tk_password');
@@ -1203,7 +1164,6 @@ async function identifyDocQueueItem(item) {
   state.docMeta = { mime: item.file.type, size_bytes: item.file.size, page_count: 1 };
   try {
     if (state.provider === 'claude-cli') return await callClaudeCliDirect();
-    if (state.provider === 'transkribus') return await callTranskribus();
     if (state.provider === 'gemini') return await callGemini();
     return await callAnthropic();
   } finally {
@@ -1624,166 +1584,6 @@ async function extractPDFText(file) {
   return pages.join('\n\n') || '[לא ניתן לחלץ — ייתכן ש-PDF סרוק]';
 }
 
-// =====================================================================
-//  TRANSKRIBUS: specialized HTR for European handwriting → Claude catalog
-//
-//  Workflow:
-//    1. If user chose 'manual' model OR direct API blocked by CORS:
-//       → Show modal: 'Run OCR in Transkribus and paste result here'
-//    2. Else: try direct API (login → upload → HTR → poll → download)
-//    3. Always: pass OCR text to Claude for structured catalog (re-use
-//       claudeStructureFromOCR from Hybrid)
-//
-//  Transkribus is asynchronous: HTR can take 1-5 minutes per page.
-//  Free tier: 500 credits/month (~50-100 pages).
-//  Strong on: Sütterlin, Kurrent (German), Yiddish, Polish, Russian.
-// =====================================================================
-
-const TK_API_BASE = 'https://app.transkribus.org/processing';
-const TK_MODEL_HINTS = {
-  german_kurrent:     'German Kurrent — כתב יד גרמני 1500-1941',
-  german_sutterlin:   'German Sütterlin — כתב יד גרמני 1911-1941',
-  yiddish_handwriting:'Yiddish Handwriting',
-  hebrew_modern:      'Hebrew Modern',
-  russian_handwriting:'Russian Handwriting',
-  polish_handwriting: 'Polish Handwriting',
-  auto:               'Transkribus Universal (multilingual)',
-};
-
-async function callTranskribus() {
-  if (!state.document) throw new Error('אין מסמך');
-  const tk = state.tk_credentials;
-
-  let ocrText = '';
-  if (tk.model === 'manual') {
-    // Manual paste mode — show modal, await user paste
-    showStatus('שלב 1/2 · ממתין לטקסט OCR מ-Transkribus (ידני)…', 'info');
-    ocrText = await promptForManualOCR('manual');
-  } else {
-    // Try direct API first
-    showStatus('שלב 1/2 · מתחבר ל-Transkribus…', 'info');
-    try {
-      ocrText = await transkribusDirectAPI(tk);
-    } catch (err) {
-      console.warn('Transkribus direct API failed, falling back to manual:', err);
-      showStatus('Transkribus API חסום (CORS / רשת). עבור למצב ידני…', 'warn');
-      ocrText = await promptForManualOCR(`api_failed:${err.message}`);
-    }
-  }
-
-  // Step 2: Claude builds the structured catalog from the OCR
-  showStatus('שלב 2/2 · Claude מבנה את הקטלוג לפי חוקי ספיר…', 'info');
-  return await claudeStructureFromOCR(ocrText);
-}
-
-// Direct API attempt — likely blocked by CORS in browsers; if so, throw and fall back
-async function transkribusDirectAPI(tk) {
-  // Step 1: Login → get JWT token
-  // NOTE: Most Transkribus deployments use cookie-based session auth without CORS
-  // for the legacy API. The new app.transkribus.org has limited browser-CORS support.
-  // We attempt anyway; if it works (e.g. user has a CORS proxy or the API supports it
-  // in the future), great. Otherwise we throw and the caller falls back to manual.
-  const loginRes = await fetch(`${TK_API_BASE}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ user: tk.username, pw: tk.password }).toString(),
-    mode: 'cors',
-  });
-  if (!loginRes.ok) throw new Error(`Transkribus login HTTP ${loginRes.status}`);
-  const tkData = await loginRes.json();
-  const token = tkData.sessionId || tkData.token || tkData.access_token;
-  if (!token) throw new Error('Transkribus לא החזיר token');
-
-  // Step 2: Upload document
-  showStatus('שלב 1/2 · מעלה את המסמך ל-Transkribus…', 'info');
-  const formData = new FormData();
-  formData.append('file', state.document);
-  formData.append('model', tk.model);
-  const uploadRes = await fetch(`${TK_API_BASE}/jobs`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` },
-    body: formData,
-  });
-  if (!uploadRes.ok) throw new Error(`Upload HTTP ${uploadRes.status}`);
-  const job = await uploadRes.json();
-  const jobId = job.jobId || job.id;
-  if (!jobId) throw new Error('Transkribus לא החזיר jobId');
-
-  // Step 3: Poll until done (1-5 min for typical pages)
-  showStatus('שלב 1/2 · Transkribus מבצע HTR (יכול לקחת 1-5 דקות לעמוד)…', 'info');
-  let attempts = 0;
-  const MAX_ATTEMPTS = 120;  // 120 × 5s = 10 min
-  while (attempts++ < MAX_ATTEMPTS) {
-    await new Promise(r => setTimeout(r, 5000));
-    const statRes = await fetch(`${TK_API_BASE}/jobs/${jobId}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    if (!statRes.ok) throw new Error(`Status HTTP ${statRes.status}`);
-    const stat = await statRes.json();
-    if (stat.status === 'FINISHED' || stat.state === 'FINISHED') break;
-    if (stat.status === 'FAILED' || stat.state === 'FAILED') {
-      throw new Error('Transkribus HTR failed: ' + (stat.errorMsg || stat.message || 'unknown'));
-    }
-    showStatus(`שלב 1/2 · Transkribus עובד… (${attempts * 5}s, סטטוס: ${stat.status || stat.state || 'מעבד'})`, 'info');
-  }
-
-  // Step 4: Download result
-  const resultRes = await fetch(`${TK_API_BASE}/jobs/${jobId}/result`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  if (!resultRes.ok) throw new Error(`Download HTTP ${resultRes.status}`);
-  const text = await resultRes.text();
-  if (!text.trim()) throw new Error('Transkribus החזיר OCR ריק');
-  return text;
-}
-
-// Manual paste modal — for when direct API is blocked
-function promptForManualOCR(reason) {
-  return new Promise((resolve, reject) => {
-    // Reuse existing modal pattern — simple overlay with textarea
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-    const isApiFail = reason.startsWith('api_failed');
-    const reasonMsg = isApiFail
-      ? `<div style="background:color-mix(in srgb, var(--warn) 14%, var(--card)); border:1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius:6px; padding:10px; margin-bottom:14px; font-size:12.5px; color:var(--warn);">⚠ ה-API של Transkribus חזר עם שגיאה (${esc(reason.split(':')[1] || 'CORS/רשת')}). אפשר להמשיך ידנית — בצע OCR ב-app.transkribus.org והדבק את התוצאה.</div>`
-      : '<div style="background:color-mix(in srgb, var(--brand) 14%, var(--card)); border:1px solid color-mix(in srgb, var(--brand) 40%, transparent); border-radius:6px; padding:10px; margin-bottom:14px; font-size:12.5px; color:var(--brand);">📋 מצב הזנה ידנית: בצע OCR ב-Transkribus והדבק את התוצאה כאן.</div>';
-    overlay.innerHTML = `
-      <div style="background:var(--card); border:1px solid var(--line-strong); border-radius:8px; max-width:720px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 30px 70px -20px rgba(0,0,0,.8);">
-        <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
-          <h3 style="margin:0; font-size:16px; color:var(--accent);">🇪🇺 הדבקת OCR מ-Transkribus</h3>
-          <button type="button" id="tk-modal-cancel" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
-        </div>
-        <div style="padding:16px 18px;">
-          ${reasonMsg}
-          <ol style="margin:0 0 14px; padding-inline-start:20px; font-size:13px; color:var(--ink); line-height:1.7;">
-            <li>פתח <a href="https://app.transkribus.org" target="_blank">app.transkribus.org</a> והתחבר</li>
-            <li>צור / פתח Collection. העלה את המסמך</li>
-            <li>הפעל HTR (Handwritten Text Recognition) עם המודל המתאים (לדוגמה: <code>German Kurrent</code>)</li>
-            <li>המתן לסיום (1-5 דקות לעמוד)</li>
-            <li>בחר את העמוד → תפריט יצוא → טקסט פשוט (Plain Text)</li>
-            <li>העתק את כל הטקסט והדבק כאן ⬇</li>
-          </ol>
-          <textarea id="tk-manual-text" placeholder="הדבק כאן את הטקסט שיצא מ-Transkribus…" style="width:100%; min-height:240px; padding:10px; font-family:'SF Mono',Menlo,monospace; font-size:12.5px; direction:ltr; text-align:left; border:1px solid var(--line); border-radius:6px; line-height:1.5;"></textarea>
-        </div>
-        <div style="padding:12px 18px; border-top:1px solid var(--line); display:flex; gap:8px; justify-content:flex-end;">
-          <button type="button" id="tk-modal-cancel2" class="ghost">ביטול</button>
-          <button type="button" id="tk-modal-ok" class="primary">✓ המשך לקטלוג</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    const cancel = () => { overlay.remove(); reject(new Error('בוטל ע"י המשתמש')); };
-    overlay.querySelector('#tk-modal-cancel').onclick = cancel;
-    overlay.querySelector('#tk-modal-cancel2').onclick = cancel;
-    overlay.querySelector('#tk-modal-ok').onclick = () => {
-      const text = overlay.querySelector('#tk-manual-text').value.trim();
-      if (!text) { alert('יש להדביק טקסט'); return; }
-      overlay.remove();
-      resolve(text);
-    };
-    setTimeout(() => overlay.querySelector('#tk-manual-text').focus(), 100);
-  });
-}
-
 // ── Claude CLI direct read ──────────────────────────────────────────────
 // ── Claude CLI direct read ──────────────────────────────────────────────
 // Claude reads the document image/PDF DIRECTLY via the local server's
@@ -2150,12 +1950,8 @@ ${rulesPrompt}
 
   const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': state.apiKeys.anthropic,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    // review #2: no client key headers — the proxy injects the server key + API version
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: modelSelAnthropic.value,
       max_tokens: 32000,
@@ -2181,14 +1977,6 @@ function refreshButtons() {
   if (state.provider === 'claude-cli') {
     hasKey = hasClaudeCliReady();
     if (!hasKey) missingMsg = 'מצב Claude CLI דורש URL של שרת מקומי (בהרצה מ-localhost מוגדר אוטומטית)';
-  } else if (state.provider === 'transkribus') {
-    hasKey = hasTranskribusReady();
-    const tk = state.tk_credentials;
-    if (!hasKey) {
-      if (!state.apiKeys.anthropic) missingMsg = 'דרוש מפתח Anthropic ל-Claude (שלב הקטלוג)';
-      else if (tk.model !== 'manual' && (!tk.username || !tk.password))
-        missingMsg = 'דרושים שם משתמש וסיסמה של Transkribus (או בחר "הזנה ידנית")';
-    }
   } else {
     hasKey = !!getActiveApiKey();
     if (!hasKey) missingMsg = 'יש להגדיר API key';
@@ -2197,9 +1985,7 @@ function refreshButtons() {
   identifyBtn.title = !hasDoc ? 'יש להעלות מסמך' : (!hasKey ? missingMsg : '');
   identifyBtn.innerHTML = state.provider === 'claude-cli'
     ? '🔍 פענח (Claude קורא ישירות)'
-    : state.provider === 'transkribus'
-      ? (state.tk_credentials.model === 'manual' ? '🔍 פענח (Transkribus ידני→Claude)' : '🔍 פענח (Transkribus→Claude)')
-      : state.provider === 'gemini' ? '🔍 פענח (Gemini)' : '🔍 פענח (Claude)';
+    : state.provider === 'gemini' ? '🔍 פענח (Gemini)' : '🔍 פענח (Claude)';
 }
 
 identifyBtn.addEventListener('click', async () => {
@@ -2209,7 +1995,6 @@ identifyBtn.addEventListener('click', async () => {
   showStatus('שולח את המסמך ל-' + providerLabel + ' לפיענוח (30-90 שניות)…', 'info');
   try {
     const result = state.provider === 'claude-cli' ? await callClaudeCliDirect()
-      : state.provider === 'transkribus' ? await callTranskribus()
       : state.provider === 'gemini' ? await callGemini() : await callAnthropic();
     state.identification = result;
     fillResults(result);
@@ -2710,7 +2495,8 @@ async function callAnthropic() {
 
   const res = await fetch((anthropicBase() + '/v1/messages'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': getActiveApiKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    // review #2: no client key headers — the proxy injects the server key + API version
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: getActiveModel(),
       max_tokens: 32000,
@@ -3062,12 +2848,13 @@ document.getElementById('validate-btn').addEventListener('click', async () => {
     return;
   }
   // Pick which API to use for validation:
-  // - If Hybrid/Anthropic available → use Claude (best for reasoning)
+  // - If the server proxy is reachable → use Claude (best for reasoning);
+  //   review #2: the server holds the key, so a reachable server IS the credential
   // - Else fall back to Gemini
-  const useAnthropic = !!state.apiKeys.anthropic;
+  const useAnthropic = !!(state.localServerUrl || '');
   const useGemini = !!state.apiKeys.gemini;
   if (!useAnthropic && !useGemini) {
-    alert('דרוש API key (Anthropic או Gemini) לבדיקה.');
+    alert('דרושה גישה לשרת המקומי (Claude) או מפתח Gemini לבדיקה.');
     return;
   }
 
@@ -3200,12 +2987,8 @@ async function runAcademicValidation(useAnthropic) {
       : { type: 'image', source: { type: 'base64', media_type: mime, data: docB64 } };
     const res = await fetch((anthropicBase() + '/v1/messages'), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': state.apiKeys.anthropic,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      // review #2: no client key headers — the proxy injects the server key + API version
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: modelSelAnthropic.value,
         max_tokens: 16000,
