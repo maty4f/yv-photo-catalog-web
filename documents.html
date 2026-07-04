@@ -321,6 +321,7 @@
           </div>
           <div style="display:flex; gap:6px;">
             <label id="doc-queue-add-more-btn" class="upload-btn" for="doc-batch-input" style="padding:3px 9px; font-size:11.5px;">+ הוסף עוד</label>
+            <button type="button" id="doc-queue-download-pdf-btn" class="ghost" style="padding:3px 9px; font-size:11.5px;" title="איחוד כל דפי התיק שבתור לקובץ PDF אחד להורדה">⬇ הורד תיק כ-PDF</button>
             <button type="button" id="doc-queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:var(--error); border-color:var(--error);">🗑 נקה תור</button>
           </div>
         </div>
@@ -1305,7 +1306,45 @@ document.getElementById('merge-jpgs-input').addEventListener('change', e => {
   openMergeModal();
 });
 
-function openMergeModal() {
+// ⬇ הורד תיק כ-PDF — download the whole תיק that is loaded in the queue as ONE
+// PDF file: a single queued PDF is downloaded as-is; page scans are merged via
+// the existing jsPDF modal, in queue order (= the תיק's page order).
+document.getElementById('doc-queue-download-pdf-btn').addEventListener('click', () => {
+  if (!state.doc_queue.length) { alert('התור ריק — העלה את דפי התיק קודם.'); return; }
+  const withBlob = state.doc_queue.filter(it => it.file);
+  const restored = state.doc_queue.length - withBlob.length;
+  const pdfItems = withBlob.filter(it => it.file.type === 'application/pdf');
+  const imgs = withBlob.filter(it => it.file.type.startsWith('image/')).map(it => it.file);
+  if (pdfItems.length === 1 && !imgs.length) { // התיק הוא קובץ PDF יחיד — מורידים כמו שהוא
+    const f = pdfItems[0].file;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(f);
+    a.download = f.name || 'tik.pdf';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    showStatus(`✓ הורד: ${f.name || 'tik.pdf'}`, 'ok');
+    return;
+  }
+  if (!imgs.length) {
+    alert(restored
+      ? 'הקבצים המקוריים אינם זמינים אחרי רענון הדף — העלה את דפי התיק מחדש כדי לאחד אותם ל-PDF.'
+      : 'בתור אין סריקות תמונה לאיחוד. איחוד של כמה קובצי PDF אינו נתמך בדפדפן.');
+    return;
+  }
+  const notes = [];
+  if (pdfItems.length) notes.push(`${pdfItems.length} קובצי PDF שבתור לא ייכללו באיחוד (נתמכות סריקות תמונה בלבד)`);
+  if (restored) notes.push(`${restored} פריטים ששוחזרו מרענון — הקובץ המקורי שלהם אינו זמין ולא ייכללו`);
+  state.merge_files = imgs; // סדר התור = סדר הדפים בתיק — לא ממיינים מחדש
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  openMergeModal({
+    title: '⬇ הורדת התיק כקובץ PDF אחד',
+    orderNote: 'הדפים בסדר התור.',
+    name: `tik_${today}.pdf`,
+    note: notes.join(' · '),
+  });
+});
+
+function openMergeModal(opts = {}) {
   // Reuse the existing modal-overlay style by building inline
   const overlay = document.createElement('div');
   overlay.id = 'merge-modal-overlay';
@@ -1314,16 +1353,17 @@ function openMergeModal() {
   overlay.innerHTML = `
     <div style="background:var(--card); border:1px solid var(--line-strong); border-radius:8px; max-width:780px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 30px 70px -20px rgba(0,0,0,.8);">
       <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
-        <h3 style="margin:0; font-size:16px; color:var(--accent);">🔗 איחוד JPGs לקובץ PDF אחד</h3>
+        <h3 style="margin:0; font-size:16px; color:var(--accent);">${opts.title || '🔗 איחוד JPGs לקובץ PDF אחד'}</h3>
         <button type="button" id="merge-cancel-x" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
       </div>
       <div style="padding:16px 18px;">
         <div style="background:color-mix(in srgb, var(--accent) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; color:var(--accent);">
-          <b>${state.merge_files.length} קבצים</b> · סה״כ <b>${totalSizeMB} MB</b>. מיון אלפביתי אוטומטי. תוכל לסדר מחדש (↑/↓) או להסיר (✕).
+          <b>${state.merge_files.length} קבצים</b> · סה״כ <b>${totalSizeMB} MB</b>. ${opts.orderNote || 'מיון אלפביתי אוטומטי.'} תוכל לסדר מחדש (↑/↓) או להסיר (✕).
         </div>
+        ${opts.note ? `<div style="background:color-mix(in srgb, var(--warn) 12%, var(--card)); border:1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius:6px; padding:8px 12px; margin-bottom:14px; font-size:12.5px; color:var(--warn);">⚠ ${opts.note}</div>` : ''}
         <div style="margin-bottom:10px;">
           <label class="label">שם הקובץ המאוחד</label>
-          <input type="text" id="merge-output-name" value="merged_document.pdf" style="font-family:'SF Mono',monospace; direction:ltr; text-align:left;">
+          <input type="text" id="merge-output-name" value="${opts.name || 'merged_document.pdf'}" style="font-family:'SF Mono',monospace; direction:ltr; text-align:left;">
         </div>
         <div style="margin-bottom:10px;">
           <label class="label">גודל עמוד</label>

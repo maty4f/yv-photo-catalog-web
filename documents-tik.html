@@ -178,6 +178,7 @@
     <input type="file" id="folder-input" webkitdirectory directory multiple class="visually-hidden-file">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
       <label id="pick-folder" class="upload-btn" for="folder-input" style="color:var(--films);border-color:var(--films)">📁 העלה תיקייה שלמה</label>
+      <button type="button" id="download-tik-pdf" class="copy-btn" style="background:var(--brand);color:#04222a" disabled title="איחוד כל דפי התיק לקובץ PDF אחד והורדתו למחשב">⬇ הורד את התיק כ-PDF</button>
       <button type="button" id="clear-files" class="copy-btn" style="background:var(--error);color:#fff">נקה</button>
     </div>
     <div class="hint">תיקייה = תיק אחד. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
@@ -958,29 +959,70 @@ function triggerDownload(blob,fname){
 // When the תיק is made of image scans (not a single PDF), merge them into one
 // PDF alongside the cataloging. Runs in parallel with the analysis; failures are
 // surfaced in the PDF bar only and never abort the catalog run.
+function tikPdfKey(){return state.files.map(f=>f.name+':'+f.size).join('|');}
+function pdfBarDone(msg){
+  const bar=$('pdf-bar');bar.style.display='block';bar.innerHTML=msg+' ';
+  const b=document.createElement('button');b.className='copy-btn';b.style.background='var(--films)';b.style.color='#fff';b.textContent='⬇ הורד שוב';
+  b.addEventListener('click',()=>triggerDownload(state.pdfBlob,state.pdfName));
+  bar.appendChild(b);
+}
+// Merge the loaded image scans into ONE full-quality PDF. Cached per file set,
+// so a catalog run and the download button never build the same PDF twice.
+async function buildCombinedPdf(){
+  const imgs=state.files.filter(f=>mimeOf(f)!=='application/pdf');
+  if(!imgs.length)return null;
+  const key=tikPdfKey();
+  if(state.pdfBlob&&state.pdfKey===key)return state.pdfBlob;
+  const bar=$('pdf-bar');bar.style.display='block';
+  bar.textContent='⏳ בונה PDF מאוחד מ-'+imgs.length+' תמונות…';
+  const pages=[];
+  for(let i=0;i<imgs.length;i++){
+    pages.push(await pdfPageFor(imgs[i]));
+    bar.textContent='⏳ בונה PDF מאוחד… '+(i+1)+'/'+imgs.length;
+  }
+  const tikName=((imgs[0].webkitRelativePath||'').split('/')[0]||'תיק').replace(/[\\/:*?"<>|]+/g,'_');
+  const today=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  state.pdfBlob=new Blob([buildImagesPdf(pages)],{type:'application/pdf'});
+  state.pdfName=tikName+'_'+today+'.pdf';
+  state.pdfKey=key;
+  return state.pdfBlob;
+}
 async function maybeBuildCombinedPdf(){
   const imgs=state.files.filter(f=>mimeOf(f)!=='application/pdf');
   if(!imgs.length)return;
-  const bar=$('pdf-bar');bar.style.display='block';
-  bar.textContent='⏳ בונה PDF מאוחד מ-'+imgs.length+' תמונות…';
   try{
-    const pages=[];
-    for(let i=0;i<imgs.length;i++){
-      pages.push(await pdfPageFor(imgs[i]));
-      bar.textContent='⏳ בונה PDF מאוחד… '+(i+1)+'/'+imgs.length;
-    }
-    const tikName=((imgs[0].webkitRelativePath||'').split('/')[0]||'תיק').replace(/[\\/:*?"<>|]+/g,'_');
-    const today=new Date().toISOString().slice(0,10).replace(/-/g,'');
-    const fname=tikName+'_'+today+'.pdf';
-    state.pdfBlob=new Blob([buildImagesPdf(pages)],{type:'application/pdf'});
-    state.pdfName=fname;
-    triggerDownload(state.pdfBlob,fname);
-    bar.innerHTML='✓ PDF מאוחד מוכן ('+imgs.length+' עמ׳) — '+esc(fname)+' ';
-    const b=document.createElement('button');b.className='copy-btn';b.style.background='var(--films)';b.style.color='#fff';b.textContent='⬇ הורד שוב';
-    b.addEventListener('click',()=>triggerDownload(state.pdfBlob,state.pdfName));
-    bar.appendChild(b);
-  }catch(e){bar.innerHTML='⚠ בניית ה-PDF המאוחד נכשלה: '+esc(e.message);}
+    await buildCombinedPdf();
+    triggerDownload(state.pdfBlob,state.pdfName);
+    pdfBarDone('✓ PDF מאוחד מוכן ('+imgs.length+' עמ׳) — '+esc(state.pdfName));
+  }catch(e){const bar=$('pdf-bar');bar.style.display='block';bar.innerHTML='⚠ בניית ה-PDF המאוחד נכשלה: '+esc(e.message);}
 }
+// ⬇ הורד את התיק כ-PDF — on-demand download of the whole תיק as one PDF file,
+// without running any cataloging: a single uploaded PDF is downloaded as-is;
+// image scans are merged client-side (same builder the catalog run uses).
+$('download-tik-pdf').addEventListener('click',async()=>{
+  if(!state.files.length){showStatus('העלה תיק (PDF או סריקות) קודם.','err');return;}
+  const btn=$('download-tik-pdf'),bar=$('pdf-bar');
+  const pdfs=state.files.filter(f=>mimeOf(f)==='application/pdf');
+  const imgs=state.files.filter(f=>mimeOf(f)!=='application/pdf');
+  if(pdfs.length===1&&!imgs.length){ // התיק כבר קובץ PDF אחד — מורידים כמו שהוא
+    triggerDownload(pdfs[0],pdfs[0].name||'tik.pdf');
+    bar.style.display='block';bar.innerHTML='✓ הורד: '+esc(pdfs[0].name||'tik.pdf');
+    return;
+  }
+  if(!imgs.length){
+    bar.style.display='block';
+    bar.innerHTML='⚠ התיק מכיל כמה קובצי PDF — איחוד קובצי PDF אינו נתמך בדפדפן. העלה את דפי התיק כסריקות תמונה, או אחד את ה-PDF-ים בכלי חיצוני.';
+    return;
+  }
+  btn.disabled=true;
+  try{
+    await buildCombinedPdf();
+    triggerDownload(state.pdfBlob,state.pdfName);
+    const skip=pdfs.length?' · ⚠ '+pdfs.length+' קובצי PDF שבתיק לא נכללו':'';
+    pdfBarDone('✓ ה-PDF של התיק ירד ('+imgs.length+' עמ׳) — '+esc(state.pdfName)+skip);
+  }catch(e){bar.style.display='block';bar.innerHTML='⚠ בניית ה-PDF נכשלה: '+esc(e.message);}
+  finally{btn.disabled=!state.files.length;}
+});
 
 /* ---------- run (chunked: Claude reads every page, then synthesizes one record) ---------- */
 $('run').addEventListener('click',async()=>{
@@ -1261,6 +1303,7 @@ function renderFiles(){
   $('filelist').innerHTML=note+rows+more;
   $('run').disabled=!n;
   $('describe-fast').disabled=!n;
+  $('download-tik-pdf').disabled=!n;
 }
 function addFiles(list){
   const files=Array.from(list)
