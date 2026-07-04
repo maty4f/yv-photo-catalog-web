@@ -203,8 +203,17 @@
 
   <!-- RESULTS -->
   <div id="results">
-    <div id="tik-export-bar" style="display:none; margin-bottom:12px;">
-      <button type="button" id="notebooklm-btn" class="copy-btn" title="ייצוא שמות · תאריכים · הקשר של התיק — קובץ Markdown להעלאה כמקור ב-NotebookLM">🧠 ייצוא ל-NotebookLM</button>
+    <div id="tik-export-bar" style="display:none; margin-bottom:12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+      <span style="font-size:12.5px;color:var(--muted)">הורדת הקטלוג:</span>
+      <button type="button" id="export-xlsx-btn" class="copy-btn" style="background:#1a7f4b;color:#fff" title="הורדת הרשומה כקובץ Excel רב-גיליונות (רשומה · מפת התיק · מפתח שמות · ציר זמן), RTL">📊 Excel</button>
+      <button type="button" id="export-pdf-btn" class="copy-btn" style="background:#b2432e;color:#fff" title="הורדת הרשומה כ-PDF דרך חלון ההדפסה של הדפדפן (בחר 'שמור כ-PDF')">📄 PDF</button>
+      <select id="export-arch-fmt" class="copy-btn" style="background:#2c5f7c;color:#fff;padding-inline:8px" title="פורמט חילופין ארכיוני תקני">
+        <option value="ead2002">EAD 2002 (XML)</option>
+        <option value="dc">Dublin Core (XML)</option>
+        <option value="csv-atom">AtoM (CSV)</option>
+      </select>
+      <button type="button" id="export-arch-btn" class="copy-btn" style="background:#2c5f7c;color:#fff" title="ייצוא לפורמט ארכיוני תקני לייבוא במערכות תיאור ארכיוני">🗄 ייצוא ארכיוני</button>
+      <button type="button" id="notebooklm-btn" class="copy-btn" title="ייצוא שמות · תאריכים · הקשר של התיק — קובץ Markdown להעלאה כמקור ב-NotebookLM">🧠 NotebookLM</button>
     </div>
     <div id="disagree-box"></div>
     <div id="record"></div>
@@ -825,6 +834,93 @@ $('notebooklm-btn').addEventListener('click',()=>{
   showStatus(`✓ הורד ל-NotebookLM: ${fname}`,'ok');
 });
 
+/* ---------- catalog downloads: Excel · PDF · archival interchange ---------- */
+function downloadBlob(blob,fname){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=fname;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function tikStem(){
+  const t=(state.lastRecord&&state.lastRecord.title||'תיק').replace(/<[^>]+>/g,'').trim().replace(/[\\/:*?"<>|]+/g,'_').slice(0,50);
+  return `tik_${t||'record'}_${new Date().toISOString().slice(0,10).replace(/-/g,'')}`;
+}
+// Client-side CSV fallback (UTF-8 BOM → opens in Excel) when the server xlsx
+// endpoint isn't reachable (e.g. viewing on the static Pages surface).
+function recordToCsv(rec){
+  const q=v=>{const s=String(v==null?'':v).replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const L=[];const sec=(title,head,rows)=>{L.push(q(title));if(head)L.push(head.map(q).join(','));rows.forEach(r=>L.push(r.map(q).join(',')));L.push('');};
+  const j=(a,s)=>(a||[]).map(x=>String(x==null?'':x).replace(/<[^>]+>/g,'').trim()).filter(Boolean).join(s||', ');
+  sec('רשומה',['שדה','ערך'],[
+    ['כותר',rec.title],['מקומות קשורים',j(rec.related_places,'; ')],
+    ['תאריך אותנטי',[rec.date_authentic_start,rec.date_authentic_end].filter(Boolean).join(' – ')],
+    ['שפות',j(rec.languages)],['סיווג',rec.classification||''],['הערת תוכן',rec.content_note||''],
+  ]);
+  sec('מפת התיק',['דפים','סוג','תאריך','שפות','תיאור'],(rec.document_inventory||[]).map(d=>[d.pages,d.doc_type,d.date,d.languages,d.description]));
+  sec('מפתח שמות',['שם','כתיב מקורי','תפקיד','לידה','פטירה','מקום','גורל','דפים'],(rec.names_index||[]).map(p=>[p.name,p.name_original,p.role,p.birth,p.death,p.place,p.fate,p.source_pages]));
+  sec('ציר זמן',['תאריך','אירוע','מקום','דפים','ודאות'],(rec.timeline||[]).map(t=>[t.date,t.event,t.place,t.source_pages,t.confidence]));
+  return '﻿'+L.join('\n');
+}
+$('export-xlsx-btn').addEventListener('click',async()=>{
+  const rec=state.lastRecord; if(!rec){showStatus('אין רשומה לייצוא','err');return;}
+  const stem=tikStem();
+  showStatus('<span class="spinner"></span>בונה קובץ Excel…','info');
+  try{
+    const r=await fetch(serverBase()+'/api/export-xlsx',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({record:rec,filename:stem})});
+    if(!r.ok){let e={};try{e=await r.json();}catch{}throw new Error(e.error||('שרת HTTP '+r.status));}
+    downloadBlob(await r.blob(),stem+'.xlsx');
+    showStatus(`✓ הורד Excel: ${stem}.xlsx`,'ok');
+  }catch(err){
+    // No server (e.g. Pages) or endpoint down → CSV fallback that opens in Excel.
+    downloadBlob(new Blob([recordToCsv(rec)],{type:'text/csv;charset=utf-8'}),stem+'.csv');
+    showStatus(`✓ הורד כ-CSV (נפתח ב-Excel): ${stem}.csv · (שרת Excel לא זמין: ${esc(err.message)})`,'ok');
+  }
+});
+$('export-pdf-btn').addEventListener('click',()=>{
+  const rec=state.lastRecord; if(!rec){showStatus('אין רשומה לייצוא','err');return;}
+  // Print the rendered record via a dedicated RTL print window → user picks
+  // "Save as PDF". Most reliable, RTL-perfect, zero-lib, works on every surface.
+  const body=$('record').innerHTML;
+  const flags=$('disagree-box').innerHTML;
+  const w=window.open('','_blank');
+  if(!w){showStatus('הדפדפן חסם את חלון ההדפסה — אשר חלונות קופצים ונסה שוב','err');return;}
+  w.document.write(`<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>${esc((rec.title||'תיק').replace(/<[^>]+>/g,''))}</title>
+<style>@page{size:A4;margin:14mm}body{font-family:'Segoe UI',Arial,sans-serif;direction:rtl;text-align:right;color:#1a1a1a;font-size:12px;line-height:1.5}
+h1{font-size:16px;border-bottom:2px solid #2c5f7c;padding-bottom:6px}
+.section-bar{background:#2c5f7c;color:#fff;padding:4px 10px;margin:14px 0 8px;font-weight:700;border-radius:4px;font-size:12.5px}
+.field{margin:6px 0}.field .label,.label{font-weight:700;color:#2c5f7c;font-size:11px}
+.copy-btn{display:none!important}
+table.tbl{width:100%;border-collapse:collapse;font-size:10.5px;margin:4px 0}
+table.tbl th,table.tbl td{border:1px solid #cbd5df;padding:3px 6px;text-align:right;vertical-align:top}
+table.tbl th{background:#eef3f7}
+.chip{display:inline-block;background:#eef3f7;border-radius:10px;padding:1px 8px;margin:2px;font-size:10.5px}
+.disagree{border:1px solid #e0b000;background:#fffbe6;padding:8px 12px;border-radius:6px;margin-bottom:10px}
+.diamond{border-inline-start:3px solid #b8860b;padding-inline-start:8px;margin:4px 0}
+.none{color:#8a97a3}</style></head><body>
+<h1>${esc((rec.title||'רשומת תיק').replace(/<[^>]+>/g,''))}</h1>${flags}${body}
+<p style="margin-top:16px;color:#8a97a3;font-size:10px">הופק ממערכת הקטלוג · ${new Date().toLocaleString('he-IL')}</p>
+</body></html>`);
+  w.document.close();
+  setTimeout(()=>{w.focus();w.print();},350);
+  showStatus('✓ נפתח חלון הדפסה — בחר "שמור כ-PDF"','ok');
+});
+$('export-arch-btn').addEventListener('click',async()=>{
+  const rec=state.lastRecord; if(!rec){showStatus('אין רשומה לייצוא','err');return;}
+  if(!state.outputName){showStatus('ייצוא ארכיוני זמין רק לתיק שקוטלג בהרצה זו (נדרש קובץ הפלט בשרת) — הרץ תיאור מהיר ונסה שוב','err');return;}
+  const fmt=$('export-arch-fmt').value;
+  showStatus(`<span class="spinner"></span>מייצא לפורמט ${fmt}…`,'info');
+  try{
+    const r=await fetch(serverBase()+'/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:state.outputName,format:fmt})});
+    const jr=await r.json();
+    if(!r.ok||!jr.ok)throw new Error(jr.error||('שרת HTTP '+r.status));
+    // The server wrote output/<...>.<fmt>.{xml,csv}; download it.
+    const dl=await fetch(serverBase()+'/api/output/'+encodeURIComponent(jr.outputName));
+    if(!dl.ok)throw new Error('הקובץ נוצר אך ההורדה נכשלה ('+dl.status+')');
+    downloadBlob(await dl.blob(),jr.outputName);
+    showStatus(`✓ הורד ייצוא ארכיוני: ${jr.outputName}`,'ok');
+  }catch(err){showStatus('ייצוא ארכיוני נכשל: '+esc(err.message),'err');}
+});
+
 /* ---------- chat about the תיק (grounded in what Claude already read) ---------- */
 // Context = the per-chunk reading notes (Claude's full pass over every page) +
 // the synthesized record. No images are re-sent; the chat reasons over text only.
@@ -1241,6 +1337,7 @@ async function fastDescribe(){
       const pctTxt=(typeof j.progressPct==='number')?` · ${j.progressPct}%`:'';
       showStatus(`<span class="spinner"></span>תיאור מהיר${mdl}${pctTxt} · ${lastEv?esc(lastEv):'המנוע התחיל…'} (${Math.round((Date.now()-t)/1000)} שׄ)`,'info');
       if(j.status==='done'){
+        state.outputName=j.outputName||null;   // enables archival export (server sidecar)
         renderRecord(parseJson(j.text,'Claude'));
         const split=(j.geminiSec&&j.claudeSec)?`Gemini ${j.geminiSec}שׄ + Claude ${j.claudeSec}שׄ`:(j.model||'Gemini+Claude');
         showStatus(`✓ תיאור הושלם תוך ${j.elapsedSec||Math.round((Date.now()-t)/1000)} שׄ (${split}). בדוק את נקודות הבדיקה ו-review_flags לפני הדבקה לספיר.`,'ok');
