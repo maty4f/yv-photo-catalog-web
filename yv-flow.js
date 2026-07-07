@@ -9,7 +9,16 @@
 (function () {
   'use strict';
   var CFG = {};   // screen → config
-  var VAL = {};   // screen → current value
+  var VAL = {};   // screen → current value (flow / reader)
+  var BE = {};    // screen → Claude backend value ('' = default/subscription | 'api')
+
+  // The Claude-backend toggle is identical on every screen: subscription CLI
+  // (default, $0) vs the Anthropic API (paid, no headless CLI stalls). '' means
+  // "leave the server default" so an unset toggle never changes behavior.
+  var BACKEND_OPTS = [
+    { value: '', label: 'Claude: מנוי (0$)', hint: 'CLI המנוי — ברירת מחדל' },
+    { value: 'api', label: 'Claude: API', hint: 'Anthropic API — ללא סטולים, ~$0.05/פריט' },
+  ];
 
   function styleOnce() {
     if (document.getElementById('yv-flow-style')) return;
@@ -61,6 +70,28 @@
     hint.className = 'yv-flow-hint';
     wrap.appendChild(hint);
     updateHint(wrap, cfg, sel.value);
+
+    // Optional Claude-backend toggle (opt-in via cfg.backend). Independent of the
+    // flow/reader choice above; persisted under its own key so it survives reloads.
+    if (cfg.backend) {
+      var beSel = document.createElement('select');
+      BACKEND_OPTS.forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o.value; opt.textContent = o.label;
+        if (o.hint) opt.title = o.hint;
+        beSel.appendChild(opt);
+      });
+      var beSaved = null;
+      try { beSaved = localStorage.getItem('yv_backend_' + cfg.screen); } catch (e) { /* storage blocked */ }
+      var beValid = BACKEND_OPTS.some(function (o) { return o.value === beSaved; });
+      beSel.value = beValid ? beSaved : '';
+      BE[cfg.screen] = beSel.value;
+      beSel.addEventListener('change', function () {
+        BE[cfg.screen] = beSel.value;
+        try { localStorage.setItem('yv_backend_' + cfg.screen, beSel.value); } catch (e) { /* ignore */ }
+      });
+      wrap.appendChild(beSel);
+    }
     return wrap;
   }
 
@@ -82,6 +113,11 @@
     // The screen's current choice (falls back to the configured default).
     current: function (screen) {
       return VAL[screen] != null ? VAL[screen] : (CFG[screen] && CFG[screen].def) || '';
+    },
+    // The screen's Claude-backend choice ('' | 'api'). '' when the toggle is off
+    // or untouched → the server keeps its default (subscription CLI).
+    backend: function (screen) {
+      return BE[screen] != null ? BE[screen] : '';
     },
   };
 })();

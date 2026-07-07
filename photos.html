@@ -170,7 +170,7 @@
     </div>
     <div class="actions-top">
       <a href="index.html" style="text-decoration:none"><button class="gear" type="button">← דף הבית</button></a>
-      <button class="gear" id="studios-toggle" type="button">🏛 מאגר סטודיו</button>
+      <button class="gear" id="studios-toggle" type="button">🏛 צלמים ובתי צילום</button>
       <button class="gear" id="settings-toggle" type="button">⚙ הגדרות API</button>
     </div>
   </header>
@@ -256,15 +256,119 @@
       </select>
     </div>
 
-    <div class="hint">
-      📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: חלוקת תפקידים — <b>Gemini הוא העיניים</b>: קריאה ויזואלית בלבד (אישים, חפצים, מקומות, OCR). <b>Claude הוא הטקסט והבקרה</b>: בודק את הקריאה של Gemini (סתירות, אי-התאמות תקופתיות, ביטחון-יתר → מנמיך ודאות), ואז כותב את קטלוג ספיר בעברית אקדמית. Claude לא רואה את התמונה — רק את הקריאה של Gemini. מפתח Claude מוזרק בשרת (דרך ה-proxy) — בדפדפן נדרש לכל היותר מפתח Gemini. ראה <code>reference/confidence_dual_axis.md</code>.
-      <br>📍 <b>🆓 Gemini בלבד (חינם)</b>: זיהוי ויזואלי + OCR חזק במעבר אחד. הכי זול — בדרך כלל בתוך ה-free tier של Google. ללא שכבת אימות היסטורי, פחות חזק על Sapir/עברית אקדמית. <b>מסלול חינמי חלופי:</b> השתמש ב-CLI <code>yv photo catalog &lt;file&gt;</code> שמדפיס prompt → הדבק ב-Claude Code (שיש לך) → גם זה $0.
-      <br>📍 <b>Anthropic בלבד (בתשלום)</b>: זיהוי ויזואלי + סינתזה במודל אחד. מהיר וטוב לתצלום פשוט; פחות חזק על OCR של כיתובים מטושטשים.
-      <br>—
-      <br>🔒 מפתח Gemini (אם הוזן) נשמר ב-localStorage של הדפדפן שלך. מפתח Anthropic אינו קיים בדפדפן כלל — השרת מזריק אותו ב-proxy.
-      <br>📍 <b>Anthropic</b>: דרך שרת ה-proxy המקומי (המפתח בצד השרת — אין צורך להשיג מפתח) · ~$0.05–0.30 לזיהוי
-      <br>📍 <b>Gemini</b>: generativelanguage.googleapis.com · השגת מפתח: <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a> · בדרך כלל זול יותר, יש tier חינמי
+    <style>
+      .model-status{background:var(--tint); border:1px solid var(--line); border-radius:8px; padding:12px 14px; font-size:12.5px; direction:rtl; text-align:right}
+      .ms-head{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap}
+      .ms-head b{font-size:13.5px; color:var(--ink)}
+      .ms-updated{font-size:11px; color:var(--muted)}
+      .ms-row{display:flex; align-items:center; gap:10px; margin:9px 0; flex-wrap:wrap}
+      .ms-chain-label{min-width:118px; font-weight:600; color:var(--ink)}
+      .ms-chain-label small{color:var(--muted); font-weight:400}
+      .ms-chain{display:flex; align-items:center; gap:2px; flex-wrap:wrap}
+      .ms-node{display:flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--muted); font-size:12px; position:relative; unicode-bidi:isolate; margin-top:9px}
+      .ms-node.active{border-color:var(--accent); color:var(--ink); box-shadow:0 0 0 1px var(--accent); font-weight:700}
+      .ms-node.active::after{content:'▶ פעיל'; position:absolute; top:-9px; inset-inline-start:6px; background:var(--accent); color:#1a1206; font-size:9px; font-weight:800; padding:0 5px; border-radius:5px; white-space:nowrap}
+      .ms-arr{color:var(--muted); font-size:14px; padding:0 3px}
+      .ms-dot{width:9px; height:9px; border-radius:50%; background:#556; flex:none}
+      .ms-dot.up{background:#34d399} .ms-dot.limited{background:#fbbf24} .ms-dot.down{background:#f87171} .ms-dot.standby{background:#556}
+      .ms-legend{display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; padding-top:9px; border-top:1px solid var(--line); font-size:11px; color:var(--muted); align-items:center}
+      .ms-legend .ms-dot{display:inline-block; vertical-align:middle; margin-inline-end:4px}
+      .ms-active-key{color:var(--accent); font-weight:700}
+      .ms-details{margin-top:10px}
+      .ms-details summary{cursor:pointer; color:var(--muted); font-size:11.5px}
+    </style>
+    <div class="model-status" id="model-status">
+      <div class="ms-head">
+        <b>🛰️ מודלים וזמינות — חי</b>
+        <span class="ms-updated" id="ms-updated">בודק…</span>
+      </div>
+      <div class="ms-row">
+        <div class="ms-chain-label">👁 קריאה <small>(העיניים)</small></div>
+        <div class="ms-chain">
+          <span class="ms-node" data-model="gemini"><i class="ms-dot"></i>Gemini</span>
+          <span class="ms-arr">←</span>
+          <span class="ms-node" data-model="qwen"><i class="ms-dot"></i>Qwen3-VL</span>
+          <span class="ms-arr">←</span>
+          <span class="ms-node" data-model="mistral"><i class="ms-dot"></i>Mistral OCR</span>
+        </div>
+      </div>
+      <div class="ms-row">
+        <div class="ms-chain-label">✍ סינתזה <small>(הכותב)</small></div>
+        <div class="ms-chain">
+          <span class="ms-node" data-model="claude-cli"><i class="ms-dot"></i>Claude CLI</span>
+          <span class="ms-arr">←</span>
+          <span class="ms-node" data-model="claude-api"><i class="ms-dot"></i>Claude API</span>
+          <span class="ms-arr">←</span>
+          <span class="ms-node" data-model="gemini-synth"><i class="ms-dot"></i>Gemini</span>
+        </div>
+      </div>
+      <div class="ms-legend">
+        <span><i class="ms-dot up"></i>זמין</span>
+        <span><i class="ms-dot limited"></i>מוגבל</span>
+        <span><i class="ms-dot down"></i>נפל</span>
+        <span><i class="ms-dot standby"></i>גיבוי בהמתנה</span>
+        <span class="ms-active-key">▶ המסלול הפעיל עכשיו</span>
+      </div>
+      <details class="ms-details">
+        <summary>ℹ️ הסבר על המסלולים והעלויות</summary>
+        <div class="hint" style="margin-top:8px">
+          📍 <b>⭐ Hybrid (מומלץ — דיוק היסטורי)</b>: חלוקת תפקידים — <b>Gemini הוא העיניים</b>: קריאה ויזואלית בלבד (אישים, חפצים, מקומות, OCR). <b>Claude הוא הטקסט והבקרה</b>: בודק את הקריאה של Gemini (סתירות, אי-התאמות תקופתיות, ביטחון-יתר → מנמיך ודאות), ואז כותב את קטלוג ספיר בעברית אקדמית. Claude לא רואה את התמונה — רק את הקריאה של Gemini. מפתח Claude מוזרק בשרת (דרך ה-proxy) — בדפדפן נדרש לכל היותר מפתח Gemini. ראה <code>reference/confidence_dual_axis.md</code>.
+          <br>📍 <b>🆓 Gemini בלבד (חינם)</b>: זיהוי ויזואלי + OCR חזק במעבר אחד. הכי זול — בדרך כלל בתוך ה-free tier של Google. ללא שכבת אימות היסטורי, פחות חזק על Sapir/עברית אקדמית.
+          <br>📍 <b>Anthropic בלבד (בתשלום)</b>: זיהוי ויזואלי + סינתזה במודל אחד. מהיר וטוב לתצלום פשוט; פחות חזק על OCR של כיתובים מטושטשים.
+          <br>—
+          <br>🔒 מפתח Gemini (אם הוזן) נשמר ב-localStorage של הדפדפן שלך. מפתח Anthropic אינו קיים בדפדפן כלל — השרת מזריק אותו ב-proxy · ~$0.05–0.30 לזיהוי · <a href="https://aistudio.google.com/app/apikey" target="_blank">השגת מפתח Gemini</a>.
+        </div>
+      </details>
     </div>
+    <script>
+    (function(){
+      // Self-contained live model-availability poller — reads /api/status and
+      // marks which route in each fallback chain is serving right now.
+      function serverBase(){
+        var u = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
+        if (u && !/trycloudflare\.com/.test(u)) return u;
+        if (location.origin && /^https?:/.test(location.origin) &&
+            !/localhost|127\.0\.0\.1/.test(location.origin)) return location.origin;
+        return u || location.origin;
+      }
+      function mapState(s){ return s==='ok' ? 'up' : s==='limited' ? 'limited'
+        : (s==='error' || s==='no-key') ? 'down' : 'standby'; }
+      function setNode(model, dotState, active){
+        var n = document.querySelector('.ms-node[data-model="'+model+'"]');
+        if(!n) return;
+        n.querySelector('.ms-dot').className = 'ms-dot ' + dotState;
+        n.classList.toggle('active', !!active);
+      }
+      function render(st){
+        var g = mapState(st && st.gemini && st.gemini.status);
+        var c = mapState(st && st.claude && st.claude.status);
+        // Reading chain: Gemini primary; if not fully up → Qwen carries it.
+        var readGemini = (g === 'up');
+        setNode('gemini', g, readGemini);
+        setNode('qwen', 'standby', !readGemini);
+        setNode('mistral', 'standby', false);
+        // Synthesis chain: Claude CLI first; if CLI not up → Claude API takes over.
+        var cliUp = (c === 'up');
+        setNode('claude-cli', c, cliUp);
+        setNode('claude-api', cliUp ? 'standby' : 'up', !cliUp);
+        setNode('gemini-synth', 'standby', false);
+        document.getElementById('ms-updated').textContent =
+          'עודכן ' + new Date().toLocaleTimeString('he-IL');
+      }
+      function renderUnknown(){
+        ['gemini','qwen','mistral','claude-cli','claude-api','gemini-synth']
+          .forEach(function(m){ setNode(m, 'standby', false); });
+        document.getElementById('ms-updated').textContent = 'לא ניתן לבדוק (אין חיבור לשרת)';
+      }
+      function poll(){
+        fetch(serverBase() + '/api/status', { cache: 'no-store' })
+          .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+          .then(render).catch(renderUnknown);
+      }
+      poll();
+      setInterval(poll, 15000);
+    })();
+    </script>
   </div>
 
   <!-- ====================================================== -->
@@ -282,10 +386,10 @@
 
   <!-- Studios DB Panel -->
   <div class="studios-panel" id="studios-panel">
-    <h4>🏛 מאגר סטודיו צילום באירופה <small id="studios-count" style="font-weight:400; color:var(--muted); margin-inline-start:6px"></small></h4>
+    <h4>🏛 מאגר צלמים ובתי צילום באירופה <small id="studios-count" style="font-weight:400; color:var(--muted); margin-inline-start:6px"></small></h4>
     <div class="search-row">
-      <input type="text" id="studios-search" placeholder="חיפוש: שם / עיר / מדינה…">
-      <button type="button" id="studio-add-btn" class="ghost">➕ הוסף סטודיו</button>
+      <input type="text" id="studios-search" placeholder="חיפוש: צלם / סטודיו / עיר / מדינה…">
+      <button type="button" id="studio-add-btn" class="ghost">➕ הוסף</button>
       <button type="button" id="studio-export-btn" class="ghost">⬇ ייצוא JSON</button>
     </div>
     <div class="studios-list" id="studios-list"></div>
@@ -709,6 +813,7 @@
       <button id="preview-btn" class="ghost" type="button">👁 תצוגה מקדימה</button>
       <button id="download-final-btn">⬇ הורד תצלום זה</button>
       <button id="save-next-btn" class="big primary" type="button">💾 שמור והמשך לתצלום הבא →</button>
+      <button id="dl-next-collection-btn" class="ghost" type="button" style="border-color: var(--docs); color: var(--docs);" title="שמור את האוסף הנוכחי, נקה את הקטלוג ופתח אוסף חדש">📁 אוסף הבא →</button>
     </div>
   </div>
 
@@ -730,7 +835,7 @@
 <!-- ============================================ -->
 <div class="modal-overlay" id="studio-modal">
   <div class="modal">
-    <div class="head"><h3>הוסף סטודיו צילום</h3><button type="button" class="gear" id="studio-modal-close">✕</button></div>
+    <div class="head"><h3>הוסף צלם / בית צילום</h3><button type="button" class="gear" id="studio-modal-close">✕</button></div>
     <div class="body">
       <label>שם הסטודיו (כפי שכתוב בחותמת)</label>
       <input type="text" id="sm-name" placeholder="Atelier Forbert">
@@ -746,6 +851,8 @@
       <input type="text" id="sm-to" placeholder="1939">
       <label>בעלים</label>
       <input type="text" id="sm-owner" placeholder="Leon Forbert">
+      <label>צלמים (מופרדים בפסיקים)</label>
+      <input type="text" id="sm-photographers" placeholder="Leon Forbert, Bernard Forbert">
       <label>חותמות / סימנים מובחנים</label>
       <input type="text" id="sm-stamps" placeholder="FOTO FORBERT WARSZAWA">
       <label>הערות</label>
@@ -1684,7 +1791,7 @@ async function identifyQueueItem(item) {
       // Batch via the server engine: the collection profile + this photo's
       // intake row ride along in the `context` field (the engine reads it as
       // the .context.txt sidecar). Returns the same shape as the direct paths.
-      const { base, outputName } = await runUnifiedJob(item.front, collectionContextFor(item), null, item.back);
+      const { base, outputName } = await runUnifiedJob(item.front, collectionContextFor(item), null, item.back, item.addedAt);
       const jsonUrl = base + '/api/output/' + encodeURIComponent(outputName.replace(/\.html$/i, '.json'));
       const fres = await fetch(jsonUrl);
       if (!fres.ok) throw new Error('סיכום שדות לא זמין מהשרת (HTTP ' + fres.status + ')');
@@ -1974,7 +2081,7 @@ async function loadStudios() {
   const userAdds = JSON.parse(localStorage.getItem('yv_user_studios') || '[]');
   state.studios = [...(seed.studios || []), ...userAdds];
   state.studioById = Object.fromEntries(state.studios.map(s => [s.id, s]));
-  document.getElementById('studios-count').textContent = `· ${state.studios.length} סטודיו`;
+  document.getElementById('studios-count').textContent = `· ${state.studios.length} רשומות`;
 }
 loadStudios();
 
@@ -2017,7 +2124,7 @@ studiosSearch.addEventListener('input', renderStudiosList);
 function renderStudiosList() {
   const q = studiosSearch.value.trim().toLowerCase();
   const filtered = !q ? state.studios : state.studios.filter(s =>
-    [s.name, ...(s.name_alt||[]), s.city, s.country, s.country_he, s.city_he, s.owner].some(v => v && v.toLowerCase().includes(q))
+    [s.name, ...(s.name_alt||[]), s.city, s.country, s.country_he, s.city_he, s.owner, ...(s.photographers||[])].some(v => v && v.toLowerCase().includes(q))
   );
   if (!filtered.length) {
     studiosList.innerHTML = '<div class="empty">— אין תוצאות —</div>';
@@ -2026,7 +2133,7 @@ function renderStudiosList() {
   studiosList.innerHTML = filtered.map(s => `
     <div class="studio-item">
       <div><b>${esc(s.name)}</b> — ${esc(s.city)}, ${esc(s.country)}</div>
-      <div class="meta">${esc([s.active_from, s.active_to].filter(Boolean).join('–'))}${s.owner ? ' · ' + esc(s.owner) : ''}${s.jewish_owned ? ' · בעלות יהודית' : ''}</div>
+      <div class="meta">${esc([s.active_from, s.active_to].filter(Boolean).join('–'))}${s.owner ? ' · ' + esc(s.owner) : ''}${(s.photographers&&s.photographers.length) ? ' · 📷 ' + esc(s.photographers.join(', ')) : ''}${s.jewish_owned ? ' · בעלות יהודית' : ''}</div>
     </div>
   `).join('');
 }
@@ -2034,7 +2141,7 @@ function renderStudiosList() {
 // Studio modal
 const studioModal = document.getElementById('studio-modal');
 document.getElementById('studio-add-btn').addEventListener('click', () => {
-  ['name','name-alt','city','country','from','to','owner','stamps','notes'].forEach(k => {
+  ['name','name-alt','city','country','from','to','owner','photographers','stamps','notes'].forEach(k => {
     document.getElementById('sm-' + k).value = '';
   });
   studioModal.classList.add('show');
@@ -2055,6 +2162,7 @@ document.getElementById('sm-save').addEventListener('click', () => {
     active_from: document.getElementById('sm-from').value.trim() || null,
     active_to: document.getElementById('sm-to').value.trim() || null,
     owner: document.getElementById('sm-owner').value.trim() || null,
+    photographers: document.getElementById('sm-photographers').value.split(',').map(s => s.trim()).filter(Boolean),
     stamps_and_marks: [document.getElementById('sm-stamps').value.trim()].filter(Boolean),
     notes: document.getElementById('sm-notes').value.trim() || null,
     yv_photos_count: 0,
@@ -2065,7 +2173,7 @@ document.getElementById('sm-save').addEventListener('click', () => {
   state.studios.push(entry);
   state.studioById[entry.id] = entry;
   saveUserStudios();
-  document.getElementById('studios-count').textContent = `· ${state.studios.length} סטודיו`;
+  document.getElementById('studios-count').textContent = `· ${state.studios.length} רשומות`;
   renderStudiosList();
   studioModal.classList.remove('show');
 });
@@ -2175,8 +2283,12 @@ async function resolveUnifiedBase() {
 // Core: POST one file to the unified server and wait for the job to finish.
 // Returns { base, outputName }. No field-fetch, no UI side-effects — callers
 // (single-photo and the batch queue) handle the result their own way.
-async function runUnifiedJob(file, contextText, onStatus, backFile) {
+async function runUnifiedJob(file, contextText, onStatus, backFile, startedAt) {
   if (!file) throw new Error('יש להעלות חזית תצלום');
+  // Clock origin for the progress ring: the queue passes the item's upload time so
+  // the ring shows the true upload→done span (incl. queue wait); the single-photo
+  // path leaves it undefined → counts from here (this call ≈ the upload start).
+  const widgetT0 = startedAt || Date.now();
   const base = await resolveUnifiedBase();
   if (base === null)
     throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
@@ -2186,6 +2298,7 @@ async function runUnifiedJob(file, contextText, onStatus, backFile) {
   fd.append('kind', 'photo');
   fd.append('context', (contextText || '').trim());
   if (window.yvFlow) fd.append('flow', yvFlow.current('photos'));   // מהיר / מדורג / מעמיק
+  if (window.yvFlow && yvFlow.backend) fd.append('backend', yvFlow.backend('photos'));   // Claude: מנוי / API
   if (backFile) fd.append('back', backFile);   // verso — read alongside the front
   if (onStatus) onStatus('מעלה לשרת המאוחד…' + (backFile ? ' (חזית + גב)' : ''));
 
@@ -2195,7 +2308,7 @@ async function runUnifiedJob(file, contextText, onStatus, backFile) {
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
 
   if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… ~2-3 דק׳');
-  if (window.yvProgress) yvProgress.begin({ screen: 'photos', kind: 'photo' });
+  if (window.yvProgress) yvProgress.begin({ screen: 'photos', kind: 'photo', t0: widgetT0 });
   // Poll for completion via GET /api/jobs/:id. SSE (EventSource) does NOT stream
   // reliably through the Cloudflare tunnel — events get buffered/dropped, so the
   // queue item would hang on "מנתח" forever even after the server finished.
@@ -2977,7 +3090,7 @@ function renderStudioResult(s) {
       state.studios.push(ne);
       state.studioById[ne.id] = ne;
       saveUserStudios();
-      document.getElementById('studios-count').textContent = `· ${state.studios.length} סטודיו`;
+      document.getElementById('studios-count').textContent = `· ${state.studios.length} רשומות`;
       box.innerHTML = `<div class="studio-result"><span class="known">✓ נוסף למאגר: ${esc(ne.name)}</span></div>`;
     });
   } else {
@@ -4505,6 +4618,10 @@ function showCollectionSetup() {
 document.getElementById('cb-back-btn').addEventListener('click', showCollectionSetup);
 
 // "Next collection" — fully reset and start fresh on a new collection
+// Bottom "next collection" button (in the download bar) reuses the top handler —
+// saves+clears the current catalog and opens a fresh collection.
+document.getElementById('dl-next-collection-btn')?.addEventListener('click', () =>
+  document.getElementById('cb-next-collection-btn').click());
 document.getElementById('cb-next-collection-btn').addEventListener('click', () => {
   const photosCount = state.collection?.photos?.length || 0;
   const idLabel = state.collection?.id || '';
@@ -4739,7 +4856,7 @@ refreshButtons();
 <script src="yv-misid.js"></script>
 <script>yvMisid.init({ screen: 'photos', roots: ['#results'] });</script>
 <script src="yv-flow.js"></script>
-<script>yvFlow.init({ screen: 'photos', label: 'זרימת עיבוד:', options: [
+<script>yvFlow.init({ screen: 'photos', backend: true, label: 'זרימת עיבוד:', options: [
   { value: 'tiered', label: 'מדורג (מומלץ)', hint: 'Gemini לכולם + Claude לעוגני-זיהוי' },
   { value: 'fast', label: 'מהיר', hint: 'Gemini בלבד — הכי מהיר וזול' },
   { value: 'free', label: 'מעמיק', hint: 'Claude תמיד — הכי יסודי, איטי' },

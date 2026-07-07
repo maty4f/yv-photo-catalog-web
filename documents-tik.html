@@ -1260,6 +1260,7 @@ async function fastDescribe(){
     // context is written server-side as the standard <pdf>.context.txt sidecar.
     const fields={prompt,context:[$('context').value.trim(),(state.intakeText||'').trim()].filter(Boolean).join('\n\n')};
     if(window.yvFlow)fields.reader=yvFlow.current('documents-tik');   // אוטומטי / Claude / Gemini
+    if(window.yvFlow&&yvFlow.backend)fields.backend=yvFlow.backend('documents-tik');   // Claude: מנוי / API
     const t=Date.now();
     // XHR (not fetch) so the archivist sees upload progress — a big tik through the
     // Cloudflare tunnel uploads at ~0.5MB/s, and a silent spinner reads as a hang.
@@ -1493,7 +1494,7 @@ idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('ove
 <script src="yv-misid.js"></script>
 <script>yvMisid.init({ screen: 'documents-tik', roots: ['#results'] });</script>
 <script src="yv-flow.js"></script>
-<script>yvFlow.init({ screen: 'documents-tik', label: 'קורא התיק:', options: [
+<script>yvFlow.init({ screen: 'documents-tik', backend: true, label: 'קורא התיק:', options: [
   { value: 'auto', label: 'אוטומטי (מומלץ)', hint: 'Gemini קורא → גיבוי Claude → Mistral' },
   { value: 'claude', label: 'קורא Claude', hint: 'לתיקים גדולים / כשמכסת Gemini אזלה' },
   { value: 'gemini', label: 'Gemini בלבד', hint: 'ללא גיבוי לקורא' },

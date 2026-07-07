@@ -110,10 +110,11 @@
     A.el.querySelector('.pct b').textContent = p + '%';
     A.el.querySelector('.arc').setAttribute('stroke-dashoffset', (C * (1 - A.pct / 100)).toFixed(1));
     A.el.querySelector('.bar > i').style.width = A.pct + '%';
-    var elapsed = (A.now() - A.t0) / 1000;
+    var elapsed = (A.now() - A.t0) / 1000;                // processing time → ETA math
+    var clockElapsed = (A.now() - A.clockT0) / 1000;      // upload→now → the displayed clock
     var clock = A.el.querySelector('.clock');
-    // Freeze the clock once finished; keep the final elapsed.
-    var shown = A.frozen != null ? A.frozen : elapsed;
+    // Freeze the clock once finished; keep the final elapsed (from upload, matches the queue card).
+    var shown = A.frozen != null ? A.frozen : clockElapsed;
     clock.firstChild.nodeValue = mmss(shown);
     var etaEl = clock.querySelector('.eta');
     if (A.state === 'run') {
@@ -232,8 +233,13 @@
       // now() is injectable for tests; default wall clock.
       var now = cfg.now || function () { return Date.now(); };
       if (A && A.timer) clearInterval(A.timer);
+      // t0 = processing start (drives the ETA/percent projection). clockT0 = the
+      // upload/enqueue time when the caller passes cfg.t0, so the displayed clock
+      // counts the true upload→done span (matching the queue-card timer) instead of
+      // the moment this widget happened to start tracking the job.
       A = { el: el, kind: cfg.kind, est: cfg.estSec || EST[cfg.kind] || 120,
-            t0: now(), now: now, pct: 0, floor: 0, state: 'run', stageHe: '', frozen: null, timer: null,
+            t0: now(), clockT0: (typeof cfg.t0 === 'number' && cfg.t0 <= now()) ? cfg.t0 : now(),
+            now: now, pct: 0, floor: 0, state: 'run', stageHe: '', frozen: null, timer: null,
             trailCount: 0, winDone: 0, winTotal: 0, pageA: 0, pageB: 0, pageTotal: 0, model: '', lastLi: null };
       render();
       if (!cfg.now) A.timer = setInterval(tick, 1000);   // live clock; tests drive tick() manually
@@ -275,7 +281,7 @@
     end: function (ok, msg) {
       if (!A) return;
       if (A.timer) { clearInterval(A.timer); A.timer = null; }
-      A.frozen = (A.now() - A.t0) / 1000;
+      A.frozen = (A.now() - A.clockT0) / 1000;
       A.state = ok ? 'done' : 'err';
       A.pct = ok ? 100 : A.pct;
       if (A.el) {

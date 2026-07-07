@@ -1429,6 +1429,7 @@ async function catalogViaUnified(base, file, context, onStatus) {
     fd.append('kind', 'film');
     fd.append('context', context || '');
     if (window.yvFlow) fd.append('flow', yvFlow.current('films'));   // עם/בלי גיבוי Qwen
+    if (window.yvFlow && yvFlow.backend) fd.append('backend', yvFlow.backend('films'));   // Claude: מנוי / API
 
     let res = null;
     if (window.yvChunk && file.size > yvChunk.THRESHOLD) {
@@ -2927,9 +2928,10 @@ refreshButtons();
 <script src="yv-misid.js"></script>
 <script>yvMisid.init({ screen: 'films', roots: ['#results'] });</script>
 <script src="yv-flow.js"></script>
-<script>yvFlow.init({ screen: 'films', label: 'זרימת עיבוד:', options: [
+<script>yvFlow.init({ screen: 'films', backend: true, label: 'זרימת עיבוד:', options: [
   { value: 'auto', label: 'אוטומטי (מומלץ)', hint: 'Gemini לפריימים + גיבוי Qwen' },
   { value: 'nofallback', label: 'Gemini בלבד', hint: 'ללא גיבוי Qwen' },
+  { value: 'consensus', label: 'אימות דו-מודלי', hint: 'Gemini + Claude קוראים כיתובים ומפייסים (איטי/יקר יותר)' },
 ] });</script>
 <script src="yv-progress.js"></script>
 <script src="yv-chunk.js"></script>
