@@ -1,7 +1,9 @@
-// yv-misid.js — "זיהוי שגוי" ליד כל שדה תוצאה (משוב ארכיונאית → זרם misid → דוקטור-הזיהויים).
-// נטען בכל מסכי הקטלוג. סורק את מכולות התוצאות בלבד (roots) ומצמיד לכל שדה כפתור
-// דגל קטן; לחיצה שולחת מסך/פריט/שדה/ערך ל-POST /api/feedback/misid ונרשמת בזרם
-// misid בלוגים. עמיד לרינדור-מחדש (MutationObserver), לא נוגע בשדות קלט שלפני
+// yv-misid.js — משוב ארכיונאית פר-שדה, שני ערוצים:
+//   ✗ "זיהוי שגוי"  — לחיצה אחת → זרם misid → דוקטור-הזיהויים (אבחון).
+//   💡 "שיפור"      — הערה חופשית על התוצאה/אופן ההצגה → זרם improve →
+//                      improve-doctor שמאמת את הטענה ומכין תיקון קוד/פרומפט.
+// נטען בכל מסכי הקטלוג. סורק את מכולות התוצאות בלבד (roots) ומצמיד לכל שדה
+// זוג כפתורים; עמיד לרינדור-מחדש (MutationObserver), לא נוגע בשדות קלט שלפני
 // ההרצה, ולעולם לא מפיל את המסך (שליחה fail-soft עם אפשרות ניסיון חוזר).
 (function () {
   'use strict';
@@ -14,7 +16,21 @@
     vertical-align:middle;user-select:none;unicode-bidi:isolate;font-family:inherit}
   .yvm-btn:hover{background:#fdeaea;border-color:#b66}
   .yvm-btn.yvm-sent{color:#1a7f37;border-color:#9c9;background:#effaf1;cursor:default}
-  .yvm-btn.yvm-err{border-color:#e60;color:#e60}`;
+  .yvm-btn.yvm-err{border-color:#e60;color:#e60}
+  .yvm-btn.yvm-imp{border-color:#c9b458;color:#7a6a10}
+  .yvm-btn.yvm-imp:hover{background:#fdf7dd;border-color:#b09a2e}
+  .yvm-btn.yvm-imp.yvm-sent{color:#1a7f37;border-color:#9c9;background:#effaf1}
+  .yvm-pop{position:fixed;z-index:99999;background:#fffdf3;border:1px solid #c9b458;border-radius:8px;
+    box-shadow:0 4px 14px rgba(0,0,0,.18);padding:10px;width:min(340px,92vw);
+    direction:rtl;text-align:right;font-family:inherit}
+  .yvm-pop textarea{width:100%;box-sizing:border-box;min-height:64px;resize:vertical;font-family:inherit;
+    font-size:13px;direction:rtl;text-align:right;border:1px solid #ccc;border-radius:6px;padding:6px}
+  .yvm-pop .yvm-pop-title{font-size:12px;color:#7a6a10;margin-bottom:6px;font-weight:bold}
+  .yvm-pop .yvm-pop-actions{margin-top:8px;display:flex;gap:8px;justify-content:flex-start}
+  .yvm-pop button{padding:3px 14px;font-size:12px;border-radius:6px;border:1px solid #b09a2e;
+    background:#f7edc0;color:#5c4f0a;cursor:pointer;font-family:inherit}
+  .yvm-pop button.yvm-cancel{background:#fff;border-color:#bbb;color:#666}
+  .yvm-pop .yvm-pop-err{color:#c00;font-size:12px;margin-top:6px;display:none}`;
 
   function ensureStyle() {
     if (document.getElementById('yvm-style')) return;
@@ -103,6 +119,87 @@
     return b;
   }
 
+  // ---- 💡 שיפור: הערה חופשית → POST /api/feedback/improve --------------------
+  let openPop = null;
+  function closePop() {
+    if (openPop) { openPop.remove(); openPop = null; }
+  }
+  document.addEventListener('click', function (ev) {
+    if (openPop && !openPop.contains(ev.target) && !(ev.target.classList && ev.target.classList.contains('yvm-imp'))) closePop();
+  }, true);
+
+  function sendImprove(pop, btn, payload) {
+    const err = pop.querySelector('.yvm-pop-err');
+    const sendBtn = pop.querySelector('.yvm-send');
+    sendBtn.disabled = true;
+    sendBtn.textContent = '…';
+    fetch(serverBase() + '/api/feedback/improve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function () {
+        closePop();
+        btn.classList.add('yvm-sent');
+        btn.textContent = '✓ נשלח';
+        btn.title = 'הערת השיפור נרשמה — תיבדק ותטופל על-ידי סוכן השיפורים';
+      })
+      .catch(function (e) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'שלח';
+        err.textContent = 'השליחה נכשלה (' + e.message + ') — נסה שוב';
+        err.style.display = 'block';
+      });
+  }
+
+  function openImprovePop(btn, field, label, getValue) {
+    closePop();
+    const pop = document.createElement('div');
+    pop.className = 'yvm-pop';
+    pop.innerHTML =
+      '<div class="yvm-pop-title">💡 הערת שיפור — מה כדאי לשפר בתוצאה או באופן ההצגה?</div>' +
+      '<textarea placeholder="למשל: הכותר ארוך מדי; התאריך צריך להופיע לפני המקום; הטבלה נחתכת במסך"></textarea>' +
+      '<div class="yvm-pop-err"></div>' +
+      '<div class="yvm-pop-actions"><button type="button" class="yvm-send">שלח</button>' +
+      '<button type="button" class="yvm-cancel">ביטול</button></div>';
+    document.body.appendChild(pop);
+    const r = btn.getBoundingClientRect();
+    pop.style.top = Math.min(r.bottom + 6, window.innerHeight - pop.offsetHeight - 10) + 'px';
+    pop.style.left = Math.max(8, Math.min(r.left - 150, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+    openPop = pop;
+    const ta = pop.querySelector('textarea');
+    ta.focus();
+    pop.querySelector('.yvm-cancel').addEventListener('click', closePop);
+    pop.querySelector('.yvm-send').addEventListener('click', function () {
+      const note = ta.value.trim();
+      if (!note) { ta.focus(); return; }
+      sendImprove(pop, btn, {
+        screen: CFG.screen,
+        item: itemId(),
+        source: sourceName(),
+        field: field,
+        label: label,
+        value: String(getValue() == null ? '' : getValue()).slice(0, 4000),
+        note: note.slice(0, 4000),
+      });
+    });
+  }
+
+  function makeImproveBtn(field, label, getValue) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'yvm-btn yvm-imp';
+    b.textContent = '💡 שיפור';
+    b.title = 'כתוב הערת שיפור על התוצאה או אופן ההצגה — תיבדק ותטופל אוטומטית';
+    b.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (openPop) { closePop(); return; }
+      openImprovePop(b, field, label, getValue);
+    });
+    return b;
+  }
+
   function labelFor(el) {
     const p = el.parentElement;
     if (!p) return null;
@@ -121,9 +218,12 @@
     if (t === 'file' || t === 'checkbox' || t === 'radio' || t === 'hidden' || t === 'button') return;
     seen.add(el);
     const lab = labelFor(el);
-    const btn = makeBtn(el.id, lab ? lab.textContent.trim().slice(0, 120) : el.id, function () { return el.value; });
-    if (lab) lab.appendChild(btn);
-    else el.insertAdjacentElement('beforebegin', btn);
+    const labelText = lab ? lab.textContent.trim().slice(0, 120) : el.id;
+    const getVal = function () { return el.value; };
+    const btn = makeBtn(el.id, labelText, getVal);
+    const imp = makeImproveBtn(el.id, labelText, getVal);
+    if (lab) { lab.appendChild(btn); lab.appendChild(imp); }
+    else { el.insertAdjacentElement('beforebegin', btn); btn.insertAdjacentElement('afterend', imp); }
   }
 
   // דפוס ב' (documents-tik): שדות נבנים דינמית — .field > .head (label+copy) + .body[id].
@@ -133,9 +233,10 @@
     if (!body || seen.has(head)) return;
     seen.add(head);
     const labEl = head.querySelector('.label');
-    const btn = makeBtn(body.id, labEl ? labEl.textContent.trim().slice(0, 120) : body.id,
-      function () { return (body.innerText || body.textContent || '').slice(0, 4000); });
-    head.appendChild(btn);
+    const labelText = labEl ? labEl.textContent.trim().slice(0, 120) : body.id;
+    const getVal = function () { return (body.innerText || body.textContent || '').slice(0, 4000); };
+    head.appendChild(makeBtn(body.id, labelText, getVal));
+    head.appendChild(makeImproveBtn(body.id, labelText, getVal));
   }
 
   let pending = null;
