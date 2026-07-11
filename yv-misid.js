@@ -31,6 +31,9 @@
   .yvm-pop textarea{width:100%;box-sizing:border-box;min-height:64px;resize:vertical;font-family:inherit;
     font-size:13px;direction:rtl;text-align:right;border:1px solid #ccc;border-radius:6px;padding:6px}
   .yvm-pop .yvm-pop-title{font-size:12px;color:#7a6a10;margin-bottom:6px;font-weight:bold}
+  .yvm-pop .yvm-pop-val{background:#f6f2df;border:1px dashed #c9b458;border-radius:6px;padding:6px 8px;
+    font-size:12px;color:#444;max-height:96px;overflow:auto;margin-bottom:6px;white-space:pre-wrap;
+    direction:rtl;text-align:right;unicode-bidi:plaintext}
   .yvm-pop .yvm-pop-actions{margin-top:8px;display:flex;gap:8px;justify-content:flex-start}
   .yvm-pop button{padding:3px 14px;font-size:12px;border-radius:6px;border:1px solid #b09a2e;
     background:#f7edc0;color:#5c4f0a;cursor:pointer;font-family:inherit}
@@ -163,14 +166,34 @@
     pop.className = 'yvm-pop';
     pop.innerHTML =
       '<div class="yvm-pop-title">💡 הערת שיפור — מה כדאי לשפר בתוצאה או באופן ההצגה?</div>' +
+      '<div class="yvm-pop-val"></div>' +
       '<textarea placeholder="למשל: הכותר ארוך מדי; התאריך צריך להופיע לפני המקום; הטבלה נחתכת במסך"></textarea>' +
       '<div class="yvm-pop-err"></div>' +
       '<div class="yvm-pop-actions"><button type="button" class="yvm-send">שלח</button>' +
       '<button type="button" class="yvm-cancel">ביטול</button></div>';
+    // הערך הנוכחי מוצג בתוך החלונית — כך ההערה נכתבת מול התוכן גם אם
+    // החלונית מכסה את השדה עצמו.
+    const curVal = String(getValue() == null ? '' : getValue());
+    const valBox = pop.querySelector('.yvm-pop-val');
+    valBox.textContent = curVal ? (curVal.length > 400 ? curVal.slice(0, 400) + '…' : curVal) : '(השדה ריק)';
     document.body.appendChild(pop);
+    // מיקום: קודם כל בצד הפנוי של השדה (במסכים RTL — משמאל), כדי לא להסתיר
+    // את השדה; אין מקום בצדדים → מתחת לכפתור כמו קודם.
     const r = btn.getBoundingClientRect();
-    pop.style.top = Math.min(r.bottom + 6, window.innerHeight - pop.offsetHeight - 10) + 'px';
-    pop.style.left = Math.max(8, Math.min(r.left - 150, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    let top, left;
+    if (r.left - w - 16 > 0) {                    // מקום פנוי משמאל
+      left = r.left - w - 12;
+      top = Math.max(8, Math.min(r.top - 10, window.innerHeight - h - 10));
+    } else if (r.right + w + 16 < window.innerWidth) {   // מקום פנוי מימין
+      left = r.right + 12;
+      top = Math.max(8, Math.min(r.top - 10, window.innerHeight - h - 10));
+    } else {                                      // fallback: מתחת לכפתור
+      top = Math.min(r.bottom + 6, window.innerHeight - h - 10);
+      left = Math.max(8, Math.min(r.left - 150, window.innerWidth - w - 8));
+    }
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
     openPop = pop;
     const ta = pop.querySelector('textarea');
     ta.focus();
