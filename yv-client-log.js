@@ -3,8 +3,9 @@
 // the local server; the server writes them to the `client` JSONL stream.
 //
 // Captures: page loads, button/link clicks, JS errors, unhandled rejections,
-// UI freezes (event-loop watchdog), failed API calls — plus a floating
-// "דווח בעיה" button that flushes the recent buffer with the user's description.
+// caught errors reported by dashboards (window.yvLogError), UI freezes
+// (event-loop watchdog), failed API calls — plus a floating "דווח בעיה"
+// button that flushes the recent buffer with the user's description.
 // Also tags every same-server fetch with an x-yv-session header so server-side
 // activity lines correlate to this browser session.
 //
@@ -104,6 +105,29 @@
       push({ type: 'js-rejection', text: String((r && r.message) || r || '').slice(0, 500) });
     } catch (err) {}
   });
+
+  // --- explicit hook for caught errors ---------------------------------------
+  // The dashboards catch most operational failures (e.g. the doc queue wraps
+  // every item in try/catch), so the window-level handlers above never see them
+  // — the 2026-07-11 parseJson failure was invisible in the server logs. Call
+  // sites report caught errors here: yvLogError(err, 'doc-queue:00004.jpg').
+  // Sends the message + a frames-only stack head: V8's first stack line repeats
+  // the message, and parse errors carry the raw model output on err.rawText —
+  // neither is forwarded, so transcription content (PII) never enters the
+  // client stream regardless of YV_LOG_REDACT_PII. Batched like every event.
+  window.yvLogError = function (err, ctx) {
+    try {
+      var frames = String((err && err.stack) || '').split('\n').filter(function (l) {
+        return /^\s*at\s|^\s*[^\s@]*@\S/.test(l); // V8 "  at fn (url:1:2)" / FF+Safari "fn@url:1:2"
+      });
+      push({
+        type: 'js-error',
+        text: String((err && err.message) || err || 'unknown').slice(0, 500),
+        ctx: ctx ? String(ctx).slice(0, 120) : undefined,
+        stack: frames.slice(0, 4).join(' | ').replace(/\s+/g, ' ').slice(0, 400) || undefined,
+      });
+    } catch (e) { /* never break the page */ }
+  };
 
   // --- freeze watchdog -------------------------------------------------------
   // A 1s heartbeat that arrives >3s late means the main thread was blocked

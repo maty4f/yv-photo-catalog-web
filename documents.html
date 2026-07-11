@@ -114,6 +114,12 @@
   @media (max-width: 720px) { .download-bar { padding: 8px 10px; flex-wrap: wrap; } }
 
   .footer-hint { margin-top: 24px; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-inline-start: 3px solid var(--brand); border-radius: var(--radius-sm); font-size: 12.5px; color: var(--ink); }
+  /* batch progress strip (doc queue): one segment per document, width ∝ duration */
+  .dqp-seg { min-width: 3px; border-inline-end: 1px solid rgba(0,0,0,.25); }
+  .dqp-seg:last-child { border-inline-end: none; }
+  .dqp-seg.run { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.28) 0 6px, transparent 6px 12px); background-size: 17px 17px; animation: dqpStripe 1s linear infinite; }
+  @keyframes dqpStripe { to { background-position: 17px 0; } }
+
   footer.bottom { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
   footer.bottom a { color: var(--brand); }
 </style>
@@ -296,8 +302,22 @@
             <button type="button" id="doc-queue-clear-btn" class="ghost" style="padding:3px 9px; font-size:11.5px; color:var(--error); border-color:var(--error);">🗑 נקה תור</button>
           </div>
         </div>
+        <div id="doc-queue-progress" style="display:none; margin:2px 0 9px;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:6px; font-size:12px; color:var(--muted); margin-bottom:4px;">
+            <div><span id="dqp-pct" style="font-size:20px; font-weight:800; color:var(--accent); unicode-bidi:isolate;">0%</span>
+                 <span id="dqp-docs" style="margin-inline-start:8px;"></span></div>
+            <div><span>⏱ עבר: <b id="dqp-elapsed" style="unicode-bidi:isolate;">—</b></span>
+                 <span id="dqp-eta-wrap" style="margin-inline-start:10px;"></span></div>
+          </div>
+          <div id="dqp-bar" title="" style="display:flex; height:14px; border-radius:7px; overflow:hidden; border:1px solid var(--line-strong); background:var(--tint); direction:rtl;"></div>
+        </div>
         <div id="doc-queue-list" style="display:flex; gap:8px; overflow-x:auto; padding:4px; align-items:stretch;"></div>
+        <div id="tik-record-bar" style="display:none; margin-top:10px; padding-top:9px; border-top:1px dashed color-mix(in srgb, var(--accent) 40%, transparent); direction:rtl; text-align:right;">
+          <button type="button" id="tik-record-btn" style="border:1px solid var(--accent); background:var(--accent); color:#04160c; border-radius:7px; padding:6px 14px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;">🗂 צור רשומת תיק מכל המסמכים</button>
+          <span style="font-size:12px; color:var(--muted); margin-inline-start:8px;">מסכם את כל המסמכים שפוענחו לרשומה אחת ברמת התיק (ללא ריצה חוזרת על הסריקות)</span>
+        </div>
       </div>
+      <div id="tik-record-panel" style="display:none; margin-bottom:14px; padding:12px 14px; background:var(--card); border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:8px; direction:rtl; text-align:right;"></div>
 
       <label id="doc-drop" class="doc-drop" for="doc-file-input">
         <button type="button" class="delete-doc-btn" id="delete-doc-btn" title="הסר מסמך">✕</button>
@@ -613,7 +633,7 @@
 
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
-<script src="yv-providers.js"></script>
+<script src="yv-providers.js?v=20260711"></script>
 <script type="module">
 const state = {
   document: null, docMeta: null, identification: null,
@@ -1053,12 +1073,23 @@ function renderDocQueuePanel() {
   }
   const counts = { pending: 0, analyzing: 0, ready: 0, reviewing: 0, done: 0, error: 0 };
   state.doc_queue.forEach(it => counts[it.status]++);
-  // Expected time for the remaining docs: ~2.5 min (printed/typed) to ~4.5 min
-  // (handwritten/HTR) per unit — measured baselines from smoke-e2e. Shown as a range
-  // since per-doc type varies. Only while items remain.
-  const remaining = state.doc_queue.length - counts.done - counts.error;
-  const loMin = Math.round(remaining * 150 / 60), hiMin = Math.round(remaining * 270 / 60);
+  // Expected time for the remaining docs: ~3 min (printed/typed) to ~10 min
+  // (dense handwritten/HTR) per unit — live-measured range 2026-07-11 (123–608s
+  // per doc on a real dossier); the old smoke-e2e baseline (2.5–4.5) undershot.
+  // Shown as a range since per-doc type varies. Only model work still ahead
+  // counts: 'ready' items await human review, not compute — the old formula
+  // (len-done-error) showed "~min left" on a fully-restored batch with nothing
+  // running.
+  const remaining = counts.pending + counts.analyzing;
+  const loMin = Math.round(remaining * 180 / 60), hiMin = Math.round(remaining * 600 / 60);
   summary.textContent = `(${state.doc_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}${remaining > 0 ? ` · ⏱ ~${loMin}–${hiMin} דק׳ נותרו` : ''}`;
+  // Tik-level record: offered once every deciphered doc is in (≥2 records, nothing
+  // still running) — synthesizes ONE dossier record from the per-document records.
+  const tikBar = document.getElementById('tik-record-bar');
+  if (tikBar) {
+    const identified = state.doc_queue.filter(it => it.identification).length;
+    tikBar.style.display = (identified >= 2 && counts.pending + counts.analyzing === 0) ? 'block' : 'none';
+  }
   list.innerHTML = state.doc_queue.map((it, idx) => {
     const s = DOC_QUEUE_STATUSES[it.status] || DOC_QUEUE_STATUSES.pending;
     const isActive = idx === state.current_doc_queue_index;
@@ -1071,11 +1102,115 @@ function renderDocQueuePanel() {
         <div style="position:absolute; bottom:0; right:0; left:0; background:rgba(0,0,0,.7); color:#fff; font-size:9px; text-align:center; padding:1px 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(it.file.name)}</div>
       </div>
       <div style="text-align:center; margin-top:3px; font-size:10.5px; color:${s.color}; font-weight:600;">${s.icon} ${s.label}</div>
+      ${it.status === 'error' && !it.restored ? `<button type="button" class="dq-retry" data-idx="${idx}"
+        style="display:block; margin:4px auto 0; border:1px solid var(--error); background:transparent; color:var(--error); border-radius:6px; padding:2px 8px; font-size:10.5px; cursor:pointer; font-family:inherit;">↻ פיענוח חוזר</button>` : ''}
     </div>`;
   }).join('');
   list.querySelectorAll('.doc-queue-item').forEach(el =>
     el.addEventListener('click', () => jumpToDocQueueItem(parseInt(el.dataset.idx))));
+  list.querySelectorAll('.dq-retry').forEach(el =>
+    el.addEventListener('click', e => { e.stopPropagation(); retryDocQueueItem(parseInt(el.dataset.idx)); }));
+  renderDocQueueProgress();
   persistDocQueue();
+}
+
+// Retry a failed queue item without re-uploading: the File bytes are still in the
+// tab's memory (unless the batch was restored after a refresh — then the blobs are
+// gone and only re-upload can retry). Requeues as 'pending' and pokes the processor.
+function retryDocQueueItem(idx) {
+  const item = state.doc_queue[idx];
+  if (!item || item.status !== 'error') return;
+  if (item.restored || !(item.file instanceof File)) {
+    showStatus('הקובץ המקורי אינו שמור בדפדפן אחרי רענון — העלה את המסמך מחדש לפיענוח חוזר.', 'err');
+    return;
+  }
+  item.status = 'pending'; item.error = null;
+  item.startedAt = null; item.finishedAt = null;
+  renderDocQueuePanel();
+  startDocQueueProcessor();
+}
+
+// =====================================================================
+//  BATCH PROGRESS STRIP — true, time-weighted progress for the queue
+//  (user request 2026-07-11). Percentage is weighted by per-doc DURATION,
+//  not doc count: finished docs contribute their measured time, the running
+//  doc its live elapsed time, and the rest an estimate calibrated from the
+//  docs already measured IN THIS BATCH (fallback: 390s — the live-measured
+//  median). So 3/7 short pages ≠ 43%: the bar reflects real work.
+// =====================================================================
+const DQP_FALLBACK_SEC = 390;
+let dqpTimer = null;
+
+function fmtDur(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0');
+}
+
+function renderDocQueueProgress() {
+  const wrap = document.getElementById('doc-queue-progress');
+  if (!wrap) return;
+  const items = state.doc_queue;
+  if (!items.length) { wrap.style.display = 'none'; return; }
+  const now = Date.now();
+  const measured = items.filter(it => it.startedAt && it.finishedAt);
+  const avgMs = measured.length
+    ? measured.reduce((s, it) => s + (it.finishedAt - it.startedAt), 0) / measured.length
+    : DQP_FALLBACK_SEC * 1000;
+  let doneMs = 0, runMs = 0, remainMs = 0, runningItem = null;
+  const segs = [];
+  for (const it of items) {
+    const dur = (it.startedAt && it.finishedAt) ? (it.finishedAt - it.startedAt) : null;
+    if (it.status === 'analyzing') {
+      runningItem = it;
+      const el = it.startedAt ? now - it.startedAt : 0;
+      runMs += Math.min(el, avgMs * 3);               // a stuck doc can't pin the bar at 99
+      remainMs += Math.max(avgMs - el, avgMs * 0.08); // never claim done while running
+      segs.push({ it, w: Math.max(el, avgMs), cls: ' run', color: 'var(--accent)' });
+    } else if (it.status === 'pending') {
+      remainMs += avgMs;
+      segs.push({ it, w: avgMs, cls: '', color: 'color-mix(in srgb, var(--muted) 30%, transparent)' });
+    } else if (it.status === 'error') {
+      doneMs += dur ?? avgMs;                          // settled — nothing left to run
+      segs.push({ it, w: dur ?? avgMs, cls: '', color: 'var(--error)' });
+    } else {                                           // ready / reviewing / done
+      doneMs += dur ?? avgMs;
+      segs.push({ it, w: dur ?? avgMs, cls: '', color: 'var(--good)' });
+    }
+  }
+  const total = doneMs + runMs + remainMs;
+  const allSettled = !runningItem && !items.some(it => it.status === 'pending');
+  const pct = allSettled ? 100 : (total > 0 ? Math.min(99, Math.round(100 * (doneMs + runMs) / total)) : 0);
+  const starts = items.map(it => it.startedAt).filter(Boolean);
+  const ends = items.map(it => it.finishedAt).filter(Boolean);
+  const batchStart = starts.length ? Math.min(...starts) : null;
+  const elapsed = batchStart ? ((allSettled && ends.length ? Math.max(...ends) : now) - batchStart) : null;
+  wrap.style.display = 'block';
+  document.getElementById('dqp-pct').textContent = pct + '%';
+  const settledCount = items.filter(it => it.status !== 'pending' && it.status !== 'analyzing').length;
+  document.getElementById('dqp-docs').textContent =
+    (runningItem ? 'מסמך ' + (settledCount + 1) + '/' + items.length +
+      ((runningItem.file && runningItem.file.name) ? ' · ' + runningItem.file.name : '')
+      : settledCount + '/' + items.length + ' מסמכים');
+  document.getElementById('dqp-elapsed').textContent = elapsed != null ? fmtDur(elapsed) : '—';
+  const etaWrap = document.getElementById('dqp-eta-wrap');
+  if (allSettled) {
+    etaWrap.innerHTML = '<b style="color:var(--good);">✓ הסתיים</b>';
+  } else {
+    etaWrap.innerHTML = 'נותר: ~<b style="unicode-bidi:isolate;">' + fmtDur(remainMs) + '</b> ' +
+      '<span style="opacity:.75;">(ממוצע ' + fmtDur(avgMs) + ' למסמך' +
+      (measured.length ? ', נמדד באצווה זו' : ', אומדן התחלתי') + ')</span>';
+  }
+  document.getElementById('dqp-bar').innerHTML = segs.map(s => {
+    const nm = (s.it.file && s.it.file.name) || '';
+    const st = s.it.status;
+    const tip = s.it.startedAt && s.it.finishedAt ? nm + ' · ' + fmtDur(s.it.finishedAt - s.it.startedAt)
+      : st === 'analyzing' ? nm + ' · רץ ' + fmtDur(now - (s.it.startedAt || now))
+      : st === 'pending'   ? nm + ' · ממתין'
+      : st === 'error'     ? nm + ' · שגיאה'
+      : nm + ' · מוכן (משך לא נמדד)';
+    return `<div class="dqp-seg${s.cls}" title="${esc(tip)}" style="flex-grow:${Math.max(1, Math.round(s.w / 1000))}; background:${s.color};"></div>`;
+  }).join('');
 }
 
 function jumpToDocQueueItem(idx) {
@@ -1126,30 +1261,41 @@ function loadDocQueueItemIntoUI(item) {
 async function startDocQueueProcessor() {
   if (state.doc_queue_processor_running) return;
   state.doc_queue_processor_running = true;
+  if (dqpTimer) clearInterval(dqpTimer);
+  dqpTimer = setInterval(renderDocQueueProgress, 1000);
   try {
     while (true) {
       const next = state.doc_queue.find(it => it.status === 'pending');
       if (!next) break;
       next.status = 'analyzing';
+      next.startedAt = Date.now(); next.finishedAt = null;
       renderDocQueuePanel();
       try {
         const result = await identifyDocQueueItem(next);
         next.identification = result;
+        next.finishedAt = Date.now();
         next.status = 'ready';
         if (state.current_doc_queue_index < 0) {
           state.current_doc_queue_index = state.doc_queue.indexOf(next);
           loadDocQueueItemIntoUI(next);
         }
       } catch (err) {
+        next.finishedAt = Date.now();
         next.status = 'error';
         next.error = err.message;
         console.error(`Doc queue item ${next.id} failed:`, err);
+        // Caught here → never reaches window.onerror; report explicitly so the
+        // failure shows in the server's client-log dashboard (the 2026-07-11
+        // parseJson failure was invisible). The hook drops err.rawText.
+        if (window.yvLogError) window.yvLogError(err, 'doc-queue:' + ((next.file && next.file.name) || next.id));
       }
       renderDocQueuePanel();
       await new Promise(r => setTimeout(r, state.provider === 'gemini' ? 7000 : 2000));
     }
   } finally {
     state.doc_queue_processor_running = false;
+    if (dqpTimer) { clearInterval(dqpTimer); dqpTimer = null; }
+    renderDocQueueProgress();
   }
 }
 
@@ -1188,6 +1334,7 @@ function persistDocQueue() {
       .filter(it => it.identification || it.error)
       .map(it => ({ name: it.file.name, type: it.file.type || '', size: it.file.size || 0,
                     status: it.status === 'reviewing' ? 'ready' : it.status,
+                    startedAt: it.startedAt || null, finishedAt: it.finishedAt || null,
                     identification: it.identification, error: it.error }));
     if (items.length) localStorage.setItem('yv_doc_queue_results', JSON.stringify({ savedAt: Date.now(), items }));
     else localStorage.removeItem('yv_doc_queue_results');
@@ -1213,6 +1360,7 @@ function persistDocQueue() {
   rb.addEventListener('click', () => {
     state.doc_queue = items.map((x, i) => ({ id: 'dqr' + Date.now() + '_' + i, restored: true,
       file: { name: x.name, type: x.type, size: x.size }, status: x.status,
+      startedAt: x.startedAt || null, finishedAt: x.finishedAt || null,
       identification: x.identification, error: x.error, thumb: null }));
     state.current_doc_queue_index = -1;
     document.getElementById('doc-queue-panel').style.display = 'block';
@@ -1222,6 +1370,152 @@ function persistDocQueue() {
   xb.addEventListener('click', () => { try { localStorage.removeItem('yv_doc_queue_results'); } catch (e) {} bar.remove(); });
   bar.appendChild(rb); bar.appendChild(xb);
   panel.parentNode.insertBefore(bar, panel);
+})();
+
+// =====================================================================
+//  TIK-LEVEL RECORD — synthesize ONE dossier record from the per-document
+//  records after the whole queue is deciphered (user request 2026-07-11).
+//  Text-only Claude call (the scans are NOT re-read): cheap and fast
+//  relative to the per-page runs. Result is rendered with per-field copy
+//  buttons, downloadable as HTML/JSON, and persisted to localStorage.
+// =====================================================================
+const TIK_FIELD_LABELS = [
+  ['title_he', 'כותר התיק (עברית)'], ['title_en', 'כותר התיק (אנגלית)'],
+  ['summary_he', 'תקציר (עברית)'], ['summary_en', 'תקציר (אנגלית)'],
+  ['scope_he', 'תוכן עיקרי (פסקת תיאור התיק)'],
+  ['related_places', 'מקומות'], ['languages', 'שפות'], ['doc_types', 'סוגי מסמכים'],
+  ['date_start', 'תאריך התחלה'], ['date_end', 'תאריך סיום'],
+  ['content_note', 'הערת תוכן'], ['admin_note', 'הערת אדמיניסטרציה'],
+  ['related_items', 'פריטים קשורים'],
+];
+
+function buildTikRecordPrompt(records) {
+  const docs = records.map((r, i) => {
+    const d = r.identification || {};
+    const pick = {};
+    for (const k of ['title_he', 'title_en', 'doc_type', 'doc_date', 'languages', 'archive_id',
+                     'sender_he', 'recipient_he', 'place_he', 'summary_he', 'summary_en',
+                     'persons_he', 'context_he', 'info_main', 'content_note', 'related_items']) {
+      if (d[k]) pick[k] = d[k];
+    }
+    return `--- מסמך ${i + 1}: ${r.name} ---\n` + JSON.stringify(pick);
+  }).join('\n\n');
+  return `אתה רשם ארכיוני בכיר. לפניך רשומות הקטלוג של ${records.length} מסמכים בודדים שפוענחו מתוך תיק ארכיוני אחד. צור מהן רשומת קטלוג אחת ברמת התיק.
+
+חוקים מחייבים:
+1. אל תמציא דבר — כל עובדה חייבת להופיע באחת מרשומות המסמכים. שדה שאין לו מקור נשאר ריק ("").
+2. ספקות מסומנים [?] ברשומות המקור נשארים מסומנים כך גם ברשומת התיק.
+3. תאריכים — רק אם מפורשים ברשומות; טווח התיק = המוקדם והמאוחר שבין המסמכים.
+4. names_index: אחד את מופעי אותו אדם מכמה מסמכים לשורה אחת (שמור סימוני [?]), וציין באילו מסמכים הוא מופיע.
+5. עברית ארכיונית ניטרלית; אל תעתיק רשומת מסמך אחת כלשונה — סנתז.
+
+רשומות המסמכים:
+${docs}
+
+החזר JSON תקין בלבד, ללא code-fence וללא טקסט נוסף, בסכימה הזו בדיוק:
+{"title_he":"","title_en":"","summary_he":"עד 5 שורות","summary_en":"up to 5 lines","scope_he":"פסקת תיאור התיק — קבוצות המסמכים ותוכנם","related_places":[],"languages":[],"doc_types":[],"date_start":"","date_end":"","names_index":[{"name_he":"","name_orig":"","role":"","place":"","docs":""}],"content_note":"","admin_note":"","related_items":""}`;
+}
+
+function renderTikRecord(rec, savedAt) {
+  const panel = document.getElementById('tik-record-panel');
+  if (!panel) return;
+  const val = v => Array.isArray(v) ? v.filter(Boolean).join(' · ') : String(v ?? '');
+  const fieldRows = TIK_FIELD_LABELS
+    .filter(([k]) => val(rec[k]).trim() !== '')
+    .map(([k, lab]) => `
+      <div style="background:var(--tint); border:1px solid var(--line); border-radius:7px; padding:8px 12px; margin:7px 0; direction:rtl; text-align:right;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <span style="font-weight:700; font-size:12.5px; color:var(--accent);">${esc(lab)}</span>
+          <button type="button" class="tik-copy" data-k="${esc(k)}" style="border:1px solid var(--line-strong); background:var(--card); color:var(--muted); border-radius:6px; padding:2px 9px; font-size:11.5px; cursor:pointer; font-family:inherit;">📋 העתק</button>
+        </div>
+        <div id="tik-v-${esc(k)}" style="margin-top:5px; white-space:pre-wrap; font-size:13.5px; unicode-bidi:isolate;">${esc(val(rec[k]))}</div>
+      </div>`).join('');
+  const names = Array.isArray(rec.names_index) ? rec.names_index.filter(n => n && (n.name_he || n.name_orig)) : [];
+  const namesTable = names.length ? `
+    <div style="font-weight:700; font-size:12.5px; color:var(--accent); margin-top:12px;">מפתח שמות (${names.length})</div>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse; width:100%; font-size:12.5px; margin-top:5px; direction:rtl;">
+      <thead><tr>${['שם', 'שם במקור', 'תפקיד/הקשר', 'מקום', 'מסמכים'].map(h => `<th style="border:1px solid var(--line-strong); padding:4px 8px; text-align:right; background:var(--tint);">${h}</th>`).join('')}</tr></thead>
+      <tbody>${names.map(n => `<tr>${[n.name_he, n.name_orig, n.role, n.place, n.docs].map(c => `<td style="border:1px solid var(--line); padding:4px 8px; text-align:right; unicode-bidi:isolate;">${esc(c || '')}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>` : '';
+  panel.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div style="font-weight:700; color:var(--accent); font-size:14px;">🗂 רשומת התיק המסכמת <span style="font-weight:400; font-size:11.5px; color:var(--muted);">(${new Date(savedAt).toLocaleString('he-IL')})</span></div>
+      <div style="display:flex; gap:6px;">
+        <button type="button" id="tik-record-dl-html" class="ghost" style="padding:3px 10px; font-size:11.5px;">⬇ הורד HTML</button>
+        <button type="button" id="tik-record-dl-json" class="ghost" style="padding:3px 10px; font-size:11.5px;">⬇ הורד JSON</button>
+      </div>
+    </div>
+    ${fieldRows}${namesTable}`;
+  panel.style.display = 'block';
+  panel.querySelectorAll('.tik-copy').forEach(b => b.addEventListener('click', async () => {
+    const t = document.getElementById('tik-v-' + b.dataset.k).textContent;
+    try { await navigator.clipboard.writeText(t); b.textContent = '✓ הועתק'; setTimeout(() => { b.textContent = '📋 העתק'; }, 1400); } catch (e) {}
+  }));
+  const dl = (content, mime, fname) => {
+    const url = URL.createObjectURL(new Blob([content], { type: mime }));
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  document.getElementById('tik-record-dl-json').addEventListener('click', () =>
+    dl(JSON.stringify(rec, null, 2), 'application/json;charset=utf-8', `tik_record_${today}.json`));
+  document.getElementById('tik-record-dl-html').addEventListener('click', () =>
+    dl(buildTikRecordHTML(rec), 'text/html;charset=utf-8', `tik_record_${today}.html`));
+}
+
+function buildTikRecordHTML(rec) {
+  const val = v => Array.isArray(v) ? v.filter(Boolean).join(' · ') : String(v ?? '');
+  const rows = TIK_FIELD_LABELS.filter(([k]) => val(rec[k]).trim() !== '')
+    .map(([k, lab]) => `<div class="f"><div class="l">${esc(lab)}</div><div class="v">${esc(val(rec[k]))}</div></div>`).join('\n');
+  const names = Array.isArray(rec.names_index) ? rec.names_index.filter(n => n && (n.name_he || n.name_orig)) : [];
+  const namesHtml = names.length ? `<h2>מפתח שמות</h2><table><thead><tr><th>שם</th><th>שם במקור</th><th>תפקיד/הקשר</th><th>מקום</th><th>מסמכים</th></tr></thead><tbody>${
+    names.map(n => `<tr><td>${esc(n.name_he || '')}</td><td>${esc(n.name_orig || '')}</td><td>${esc(n.role || '')}</td><td>${esc(n.place || '')}</td><td>${esc(n.docs || '')}</td></tr>`).join('')}</tbody></table>` : '';
+  return `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="utf-8"><title>${esc(rec.title_he || 'רשומת תיק')}</title>
+<style>
+  body{font-family:-apple-system,"Segoe UI",Arial,sans-serif;background:#f6f3ed;color:#222;direction:rtl;text-align:right;max-width:880px;margin:24px auto;padding:0 16px;line-height:1.6}
+  h1{font-size:20px;color:#5a4632} h2{font-size:15px;color:#5a4632;margin-top:20px}
+  .f{background:#fff;border:1px solid #ddd;border-radius:8px;padding:9px 13px;margin:8px 0;direction:rtl;text-align:right}
+  .l{font-weight:700;font-size:12.5px;color:#5a4632} .v{margin-top:4px;white-space:pre-wrap;font-size:14px;unicode-bidi:isolate}
+  table{border-collapse:collapse;width:100%;font-size:13px;direction:rtl} th,td{border:1px solid #d8cfc0;padding:5px 9px;text-align:right;unicode-bidi:isolate} th{background:#efe8db}
+</style></head>
+<body><h1>🗂 ${esc(rec.title_he || 'רשומת תיק')}</h1>${rows}${namesHtml}</body></html>`;
+}
+
+async function generateTikRecord() {
+  const btn = document.getElementById('tik-record-btn');
+  const records = state.doc_queue
+    .filter(it => it.identification)
+    .map(it => ({ name: it.file.name, identification: it.identification }));
+  if (records.length < 2) { showStatus('נדרשות לפחות 2 רשומות מסמכים מפוענחות', 'err'); return; }
+  if (localStorage.getItem('yv_tik_record') &&
+      !confirm('כבר קיימת רשומת תיק. ליצור מחדש ולדרוס אותה?')) return;
+  btn.disabled = true; btn.textContent = '⏳ מסנתז רשומת תיק…';
+  try {
+    let text = await runClaudeJobDocs(buildTikRecordPrompt(records), []);
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const rec = parseJson(text, 'Claude (רשומת תיק)');
+    const savedAt = Date.now();
+    try { localStorage.setItem('yv_tik_record', JSON.stringify({ savedAt, rec })); } catch (e) {}
+    renderTikRecord(rec, savedAt);
+    showStatus('✓ רשומת התיק נוצרה מ-' + records.length + ' מסמכים', 'ok');
+    document.getElementById('tik-record-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    showStatus('יצירת רשומת התיק נכשלה: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '🗂 צור רשומת תיק מכל המסמכים';
+  }
+}
+document.getElementById('tik-record-btn').addEventListener('click', generateTikRecord);
+
+// Restore a previously-generated tik record after a refresh.
+(function restoreTikRecord() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('yv_tik_record') || 'null'); } catch (e) {}
+  if (saved && saved.rec) renderTikRecord(saved.rec, saved.savedAt || Date.now());
 })();
 
 // =====================================================================
@@ -1629,7 +1923,12 @@ async function runClaudeJobDocs(prompt, images) {
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('שרת HTTP ' + res.status + ': ' + (e.error || '').slice(0, 400)); }
   const { jobId } = await res.json();
   if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
-  const started = Date.now(), maxMs = 15 * 60 * 1000;
+  // 30 min wall-clock: dense handwritten pages measured 2–10.1 min live (2026-07-11,
+  // trend rising with page density) — the old 15-min cap was one long page away from
+  // aborting a healthy run. The server has its own idle watchdog, so a hung job
+  // still dies server-side; on cap-hit the result usually EXISTS in the server's
+  // jobs list — say so instead of implying the work is lost.
+  const started = Date.now(), maxMs = 30 * 60 * 1000;
   while (Date.now() - started < maxMs) {
     await new Promise(r => setTimeout(r, 3000));
     let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
@@ -1639,7 +1938,7 @@ async function runClaudeJobDocs(prompt, images) {
     if (j.status === 'done') return (j.text || '').trim();
     if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
   }
-  throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. נסה מסמך קצר יותר או חלק אותו.');
+  throw new Error('הריצה נמשכה מעל 30 דקות ולא הסתיימה. ייתכן שהשרת עוד מסיים אותה ברקע — התוצאה תישמר ברשימת הג׳ובים של השרת (jobId ' + jobId + '); אפשר גם לנסות מסמך קצר יותר.');
 }
 
 async function callClaudeCliDirect() {
@@ -2480,6 +2779,12 @@ async function callGemini() {
 
 async function callAnthropic() {
   if (!state.document) throw new Error('אין מסמך');
+  // Remote access rides Cloudflare, which cuts a single HTTP response at ~100s —
+  // a full Sapir decipher measures 2–10 min, so this path 502s mid-run (live
+  // 2026-07-11, 120s abort). The job-polling path (Claude CLI/שרת) is immune.
+  if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+    showStatus('⚠ פענוח מלא דרך Anthropic API בגישה מרחוק עלול להיקטע אחרי ~100 שנ׳ (מגבלת Cloudflare) — מומלץ לבחור "Claude CLI (שרת)" שרץ ברקע ולא נקטע', 'info');
+  }
   const sizeMB = state.document.size / 1024 / 1024;
   if (sizeMB > 30) throw new Error(`מסמך גדול מ-30MB (${sizeMB.toFixed(1)}MB).`);
   const docB64 = await fileToBase64(state.document);
@@ -2601,6 +2906,25 @@ function stripConfidenceMarkup(v) {
     .trim();
 }
 
+// Content-direction for transcription/translation fields: a Cyrillic/Latin page
+// must read left-to-right even on this RTL screen (user request 2026-07-11, after
+// a Russian transcription rendered right-aligned). dir="auto" (first strong char)
+// is not enough — the model often opens with a Hebrew note like "[רוסית — עמוד 2]"
+// — so the MAJORITY of strong characters decides.
+const CONTENT_DIR_FIELDS = ['r-title-en', 'r-sender-en', 'r-recipient-en', 'r-place-en',
+  'r-summary-en', 'r-original-text', 'r-transliteration', 'r-translation-he',
+  'r-translation-en', 'r-persons-en', 'r-context-en'];
+function applyContentDir(el) {
+  const v = el.value || '';
+  const rtl = (v.match(/[֐-׿؀-ۿ]/g) || []).length;
+  const ltr = (v.match(/[A-Za-zЀ-ӿ]/g) || []).length;
+  el.dir = ltr > rtl ? 'ltr' : 'rtl';
+}
+CONTENT_DIR_FIELDS.forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => applyContentDir(el));
+});
+
 function fillResults(d) {
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = stripConfidenceMarkup(v); };
   setVal('r-title-he', d.title_he); setVal('r-title-en', d.title_en);
@@ -2618,6 +2942,7 @@ function fillResults(d) {
   setVal('r-persons-he', d.persons_he); setVal('r-persons-en', d.persons_en);
   setVal('r-context-he', d.context_he); setVal('r-context-en', d.context_en);
   setVal('r-notes', d.decipher_notes);
+  CONTENT_DIR_FIELDS.forEach(id => { const el = document.getElementById(id); if (el) applyContentDir(el); });
 
   // Private-only fields
   if (state.doc_mode === 'private') {
@@ -3394,7 +3719,7 @@ refreshButtons();
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js"></script>
+<script src="yv-client-log.js?v=20260711"></script>
 <script src="yv-autosave.js"></script>
 <script src="yv-misid.js"></script>
 <script>yvMisid.init({ screen: 'documents', roots: ['#results'] });</script>

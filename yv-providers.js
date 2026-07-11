@@ -77,7 +77,8 @@
 
   // ── Response JSON extraction + repair ─────────────────────────────────
   // Pull a JSON object out of a model's text reply: strip ``` fences, isolate the
-  // outermost { … }, parse; on failure repair (drop trailing commas, balance
+  // outermost { … }, parse; on failure repair (drop trailing commas, strip invalid
+  // \-escapes like \' that models emit inside long transcriptions, balance
   // brackets from truncation) and retry. On total failure throw an Error carrying
   // the raw text for the UI. opts.detail === true appends the parser message to
   // the error (films' variant); default appends the "even after auto-repair" note
@@ -90,6 +91,12 @@
     if (!s.startsWith('{')) { const m = s.match(/\{[\s\S]*\}/); if (m) s = m[0]; }
     try { return JSON.parse(s); } catch (e1) {
       let repaired = s.replace(/,(\s*[}\]])/g, '$1');
+      // Invalid escape sequences (e.g. וכו\' inside a quoted transcription — live
+      // doc-queue failure 2026-07-11): JSON allows only \" \\ \/ \b \f \n \r \t
+      // \uXXXX. Consume valid escapes atomically (so the 2nd char of \\ is never
+      // re-examined) and drop the backslash of anything else.
+      repaired = repaired.replace(/\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4})|\\/g,
+        m => (m.length > 1 ? m : ''));
       const openB = (repaired.match(/\{/g) || []).length;
       const closB = (repaired.match(/\}/g) || []).length;
       const openS = (repaired.match(/\[/g) || []).length;
