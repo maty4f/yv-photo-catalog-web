@@ -1,7 +1,10 @@
-// yv-misid.js — משוב ארכיונאית פר-שדה, שני ערוצים:
+// yv-misid.js — משוב ארכיונאית פר-שדה, שלושה ערוצים:
 //   ✗ "זיהוי שגוי"  — לחיצה אחת → זרם misid → דוקטור-הזיהויים (אבחון).
 //   💡 "שיפור"      — הערה חופשית על התוצאה/אופן ההצגה → זרם improve →
 //                      improve-doctor שמאמת את הטענה ומכין תיקון קוד/פרומפט.
+//   ✓ "נכון"        — אישור חיובי בלחיצה אחת → זרם confirm → מונה מצטבר;
+//                      שדה שאושר שוב ושוב הופך לכלל "שמור על הסגנון" והסוכן
+//                      יודע לא "לתקן" חלק שהמקטלגת אישרה שעובד.
 // נטען בכל מסכי הקטלוג. סורק את מכולות התוצאות בלבד (roots) ומצמיד לכל שדה
 // זוג כפתורים; עמיד לרינדור-מחדש (MutationObserver), לא נוגע בשדות קלט שלפני
 // ההרצה, ולעולם לא מפיל את המסך (שליחה fail-soft עם אפשרות ניסיון חוזר).
@@ -20,6 +23,8 @@
   .yvm-btn.yvm-imp{border-color:#c9b458;color:#7a6a10}
   .yvm-btn.yvm-imp:hover{background:#fdf7dd;border-color:#b09a2e}
   .yvm-btn.yvm-imp.yvm-sent{color:#1a7f37;border-color:#9c9;background:#effaf1}
+  .yvm-btn.yvm-ok{border-color:#8bc79b;color:#1a7f37}
+  .yvm-btn.yvm-ok:hover{background:#effaf1;border-color:#5aa96e}
   .yvm-pop{position:fixed;z-index:99999;background:#fffdf3;border:1px solid #c9b458;border-radius:8px;
     box-shadow:0 4px 14px rgba(0,0,0,.18);padding:10px;width:min(340px,92vw);
     direction:rtl;text-align:right;font-family:inherit}
@@ -185,6 +190,48 @@
     });
   }
 
+  // ---- ✓ נכון: אישור חיובי בלחיצה אחת → POST /api/feedback/confirm ----------
+  function makeConfirmBtn(field, label, getValue) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'yvm-btn yvm-ok';
+    b.textContent = '✓ נכון';
+    b.title = 'אשר שהשדה קוטלג נכון — המערכת לומדת מה עובד ושומרת על הסגנון';
+    b.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (b.classList.contains('yvm-sent')) return;
+      b.disabled = true;
+      b.textContent = '…';
+      fetch(serverBase() + '/api/feedback/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          screen: CFG.screen,
+          item: itemId(),
+          source: sourceName(),
+          field: field,
+          label: label,
+          value: String(getValue() == null ? '' : getValue()).slice(0, 4000),
+        }),
+      }).then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+        .then(function () {
+          b.classList.remove('yvm-err');
+          b.classList.add('yvm-sent');
+          b.textContent = '✓ אושר';
+          b.title = 'האישור נרשם — המערכת יודעת שהחלק הזה עובד';
+          b.disabled = false;
+        })
+        .catch(function (err) {
+          b.disabled = false;
+          b.classList.add('yvm-err');
+          b.textContent = '✓ נכון';
+          b.title = 'השליחה נכשלה (' + err.message + ') — לחץ לניסיון חוזר';
+        });
+    });
+    return b;
+  }
+
   function makeImproveBtn(field, label, getValue) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -222,8 +269,9 @@
     const getVal = function () { return el.value; };
     const btn = makeBtn(el.id, labelText, getVal);
     const imp = makeImproveBtn(el.id, labelText, getVal);
-    if (lab) { lab.appendChild(btn); lab.appendChild(imp); }
-    else { el.insertAdjacentElement('beforebegin', btn); btn.insertAdjacentElement('afterend', imp); }
+    const ok = makeConfirmBtn(el.id, labelText, getVal);
+    if (lab) { lab.appendChild(btn); lab.appendChild(imp); lab.appendChild(ok); }
+    else { el.insertAdjacentElement('beforebegin', btn); btn.insertAdjacentElement('afterend', imp); imp.insertAdjacentElement('afterend', ok); }
   }
 
   // דפוס ב' (documents-tik): שדות נבנים דינמית — .field > .head (label+copy) + .body[id].
@@ -237,6 +285,7 @@
     const getVal = function () { return (body.innerText || body.textContent || '').slice(0, 4000); };
     head.appendChild(makeBtn(body.id, labelText, getVal));
     head.appendChild(makeImproveBtn(body.id, labelText, getVal));
+    head.appendChild(makeConfirmBtn(body.id, labelText, getVal));
   }
 
   let pending = null;
