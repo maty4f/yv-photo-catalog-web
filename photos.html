@@ -79,6 +79,12 @@
   #img-viewer .iv-stage { flex: 1; overflow: hidden; cursor: grab; touch-action: none; position: relative; }
   #img-viewer .iv-stage.dragging { cursor: grabbing; }
   #img-viewer .iv-stage img { position: absolute; top: 50%; left: 50%; max-width: none; user-select: none; -webkit-user-drag: none; transform-origin: center center; }
+  /* חיווי ודאות פר-שדה: הגהה ממוקדת במקום עיוורת. low=אדום, medium=כתום; high שקט. */
+  .results .conf-low { border-color: var(--error) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 45%, transparent); }
+  .results .conf-medium { border-color: var(--warn) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 35%, transparent); }
+  .conf-badge { display: inline-block; font-size: 10.5px; font-weight: 700; border-radius: 5px; padding: 1px 7px; margin-inline-start: 6px; vertical-align: middle; direction: rtl; unicode-bidi: isolate; }
+  .conf-badge.low { background: color-mix(in srgb, var(--error) 18%, var(--card)); color: var(--error); border: 1px solid color-mix(in srgb, var(--error) 50%, transparent); }
+  .conf-badge.medium { background: color-mix(in srgb, var(--warn) 16%, var(--card)); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); }
   .drop.has-file { background: var(--card); border-style: solid; padding: 12px; }
 
   .label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -711,7 +717,8 @@
           <div class="compact-row"><label>בעל הזכויות / Rights</label><input type="text" id="r-rights" value="הארכיון"></div>
           <div class="compact-row"><label>סיווג / Classification</label><input type="text" id="r-class" value="בלתי מסווג"></div>
           <div class="compact-row"><label>נגטיב / Negative</label><input type="text" id="r-negative" value="ל"></div>
-          <div class="compact-row"><label>צלם / Photographer</label><input type="text" id="r-photographer"></div>
+          <div class="compact-row"><label>צלם / Photographer</label><input type="text" id="r-photographer" list="studios-datalist"></div>
+          <datalist id="studios-datalist"></datalist>
           <div class="compact-row"><label>תאריך יצירה / Creation date</label><input type="text" id="r-creation-date"></div>
           <div class="compact-row"><label>ת.ת. משוחזר / Recon. date</label><input type="text" id="r-recon-date"></div>
           <div class="compact-row"><label>גודל / Size</label><input type="text" id="r-size" value="רגיל"></div>
@@ -806,7 +813,8 @@
         <div class="field-group">
           <h4>נושאים מהתזאורוס / Subjects (HE / EN זוגות)</h4>
           <div class="subject-chips" id="r-subjects-chips"></div>
-          <input type="text" id="r-subjects-add" placeholder="הקלד נושא בעברית (לדוגמה: גטו) ולחץ Enter" style="margin-top:6px;">
+          <input type="text" id="r-subjects-add" list="thesaurus-datalist" placeholder="הקלד נושא בעברית (לדוגמה: גטו) ולחץ Enter" style="margin-top:6px;">
+          <datalist id="thesaurus-datalist"></datalist>
         </div>
 
         <!-- Studio identification result -->
@@ -2053,6 +2061,9 @@ function persistPhotoQueue() {
   if (!items.length || state.photo_queue.length) return;
   const panel = document.getElementById('queue-panel');
   if (!panel || !panel.parentNode) return;
+  // העוגן: ראש הדף (מעל אשף האוסף) — לא ליד queue-panel, שיושב בתוך
+  // photo-workflow.locked ואחרי קריסה היה מוצג אפור ולא-לחיץ.
+  const anchor = document.getElementById('step-collection');
   const bar = document.createElement('div');
   bar.style.cssText = 'direction:rtl;text-align:right;background:color-mix(in srgb, var(--warn) 12%, var(--card));border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--ink)';
   const when = new Date(saved.savedAt || Date.now()).toLocaleString('he-IL');
@@ -2074,13 +2085,16 @@ function persistPhotoQueue() {
       addedAt: x.addedAt || null, finishedAt: x.finishedAt || null,
     }));
     state.current_queue_index = -1;
+    // פתיחת אזור העבודה (הוא נעול עד סיום אשף האוסף) כדי שהתור המשוחזר יהיה לחיץ.
+    try { showPhotoWorkflow(); } catch (e) { /* best-effort */ }
     panel.style.display = 'block';
     renderQueuePanel();
     bar.remove();
   });
   xb.addEventListener('click', () => { try { localStorage.removeItem(PHOTO_QUEUE_KEY); } catch (e) {} bar.remove(); });
   bar.appendChild(rb); bar.appendChild(xb);
-  panel.parentNode.insertBefore(bar, panel);
+  if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(bar, anchor);
+  else panel.parentNode.insertBefore(bar, panel);
 })();
 
 // =====================================================================
@@ -2321,8 +2335,22 @@ async function loadStudios() {
   state.studios = [...(seed.studios || []), ...userAdds];
   state.studioById = Object.fromEntries(state.studios.map(s => [s.id, s]));
   document.getElementById('studios-count').textContent = `· ${state.studios.length} רשומות`;
+  refreshStudiosDatalist();
 }
 loadStudios();
+
+// השלמה אוטומטית לשדה הצלם: מאגר הסטודיוז (seed + הוספות ארכיונאי) → datalist.
+// כולל שמות חלופיים (name_alt) — חותמת "L. Forbert" מובילה ל-Foto Forbert.
+function refreshStudiosDatalist() {
+  const dl = document.getElementById('studios-datalist');
+  if (!dl) return;
+  dl.innerHTML = (state.studios || []).map(s => {
+    const where = [s.city_he || s.city, s.country_he || s.country].filter(Boolean).join(', ');
+    const main = `<option value="${esc(s.name)}" label="${esc(where)}"></option>`;
+    const alts = (s.name_alt || []).map(a => `<option value="${esc(a)}" label="= ${esc(s.name)}"></option>`).join('');
+    return main + alts;
+  }).join('');
+}
 
 // Load thesaurus (top-300 most-used + full)
 state.thesaurus_top = [];   // top 300 condensed: [{he, en}]
@@ -2336,6 +2364,14 @@ async function loadThesaurus() {
     const r2 = await fetch('data/thesaurus_photo_archive.json');
     if (r2.ok) state.thesaurus_full = await r2.json();
   } catch (e) { console.warn('thesaurus_full fetch failed', e); }
+  // השלמה אוטומטית לשדה הוספת-נושא: כל 1,070 מונחי התזאורוס, בסדר השכיחות
+  // (הקובץ כבר ממוין לפי photo_count). value=עברית, label=אנגלית — Chrome מסנן
+  // לפי שניהם, כך שגם הקלדה באנגלית מוצאת את המונח.
+  const dl = document.getElementById('thesaurus-datalist');
+  if (dl && state.thesaurus_full.length) {
+    dl.innerHTML = state.thesaurus_full
+      .map(t => `<option value="${esc(t.he || '')}" label="${esc(t.en || '')}"></option>`).join('');
+  }
 }
 loadThesaurus();
 
@@ -2413,6 +2449,7 @@ document.getElementById('sm-save').addEventListener('click', () => {
   state.studioById[entry.id] = entry;
   saveUserStudios();
   document.getElementById('studios-count').textContent = `· ${state.studios.length} רשומות`;
+  refreshStudiosDatalist();   // הסטודיו החדש זמין מיד בהשלמת שדה הצלם
   renderStudiosList();
   studioModal.classList.remove('show');
 });
@@ -2973,8 +3010,8 @@ ${itemBlock}
 - **H (Historical)** = עד כמה הקביעה תואמת היסטוריה מתועדת: ✓ / ~ / ?.
 
 **חוקים:**
-1. ב-JSON: השדה הקיים \`confidence\` מחזיק את ציר ה-H. הוסף גם \`v_confidence\` עם "high" | "medium" | "low".
-2. שדות הטקסט (תיאור ויזואלי, אישים, אובייקטים, כיתובים וכו') הם **פרוזה נקייה בלבד** — אסור להזריק לתוכם תגיות HTML (כמו \`<span>\`). הוודאות מתבטאת אך ורק בשדות ה-JSON (\`confidence\` / \`v_confidence\`).
+1. ב-JSON: מלא את \`field_confidence\` — לכל אשכול שדות (title, places_en, creation_date, visual, context, persons, objects, inscriptions, studio) אובייקט \`{"v": ..., "h": ...}\` עם "high" | "medium" | "low". v=הציר הוויזואלי, h=הציר ההיסטורי. הערך משקף את הקביעה החלשה ביותר בשדה.
+2. שדות הטקסט (תיאור ויזואלי, אישים, אובייקטים, כיתובים וכו') הם **פרוזה נקייה בלבד** — אסור להזריק לתוכם תגיות HTML (כמו \`<span>\`). הוודאות מתבטאת אך ורק ב-JSON (\`field_confidence\`).
 3. V וגם H "low" → אל תכתוב את הקביעה (השאר ריק או "—").
 4. דוגמאות (לשיקול דעת פנימי בלבד — אל תכתוב את הסימונים האלה בטקסט): שלט "Litzmannstadt-Getto" קריא → V✓ H✓ | אדריכלות שמזכירה לודז׳ ללא שלט → V~ H✓ | המוסר ציין "אבא" אך הפנים מטושטשות → V? H✓.
 
@@ -3140,6 +3177,18 @@ ${ctxText || '(אין מידע מוקדם)'}
   "subjects_he": ["תקופה שלפני המלחמה", "ילדים"],
   "subjects_en": ["Prewar period", "Children"],
   // עד 10 נושאים מהתזאורוס בלבד. מערכים תואמים-זוגות (HE[i] = EN[i]).
+  "field_confidence": {
+    // חובה: ודאות דו-צירית לכל אשכול שדות — v=ציר ויזואלי, h=ציר היסטורי, ערכים "high"|"medium"|"low".
+    "title": {"v": "high", "h": "medium"},
+    "places_en": {"v": "high", "h": "high"},
+    "creation_date": {"v": "low", "h": "medium"},
+    "visual": {"v": "high", "h": "high"},
+    "context": {"v": "medium", "h": "high"},
+    "persons": {"v": "medium", "h": "medium"},
+    "objects": {"v": "high", "h": "high"},
+    "inscriptions": {"v": "medium", "h": "high"},
+    "studio": {"v": "high", "h": "high"}
+  },
   "studio_id": {
     "found": true,
     "studio_db_id": "foto-forbert-warsaw",
@@ -3247,6 +3296,84 @@ function fillResultsForm(d) {
 
   // Studio result panel
   renderStudioResult(d.studio_id);
+
+  // חיווי ודאות פר-שדה — הגהה ממוקדת (השדות החלשים מסומנים, לא רק במקרא).
+  applyFieldConfidence(d);
+}
+
+// =====================================================================
+//  חיווי ודאות פר-שדה. מקור ראשי: d.field_confidence מה-JSON (דו-צירי, V/H).
+//  Fallback (מסלול המנוע-בשרת, שאין בו field_confidence): הסימנים הארכיוניים
+//  ✓/~/? שכבר מוטבעים בטקסט השדה — הסימן החלש ביותר קובע. high נשאר שקט
+//  (בלי רעש); low/medium מקבלים מסגרת צבועה + תג ליד תווית השדה.
+// =====================================================================
+const CONF_FIELD_MAP = [
+  { key: 'title',         ids: ['r-title-he', 'r-title-en'] },
+  { key: 'places_en',     ids: ['r-places'] },
+  { key: 'creation_date', ids: ['r-creation-date', 'r-recon-date'] },
+  { key: 'visual',        ids: ['r-visual-he', 'r-visual-en'] },
+  { key: 'context',       ids: ['r-context-he', 'r-context-en'] },
+  { key: 'persons',       ids: ['r-persons-he', 'r-persons-en'] },
+  { key: 'objects',       ids: ['r-objects-he', 'r-objects-en'] },
+  { key: 'inscriptions',  ids: ['r-inscriptions-he', 'r-inscriptions-en'] },
+  { key: 'studio',        ids: ['r-studio-he', 'r-studio-en', 'r-photographer'] },
+];
+const CONF_ORDER = { low: 0, medium: 1, high: 2 };
+
+function confMarkerLevel(text) {
+  const t = String(text || '');
+  if (!t.trim()) return null;
+  if (/(^|[\s(])\?([\s).,;]|$)/.test(t)) return 'low';    // סימן ? עצמאי — לא סוף שאלה רגיל
+  if (t.includes('~')) return 'medium';
+  if (t.includes('✓')) return 'high';
+  return null;
+}
+
+function applyFieldConfidence(d) {
+  // idempotent: נקה סימונים קודמים לפני החלה מחדש
+  document.querySelectorAll('#results .conf-badge').forEach(b => b.remove());
+  document.querySelectorAll('#results .conf-low, #results .conf-medium')
+    .forEach(el => el.classList.remove('conf-low', 'conf-medium'));
+  const fc = (d && d.field_confidence) || {};
+  CONF_FIELD_MAP.forEach(({ key, ids }) => {
+    let level = null, axes = '';
+    const ex = fc[key];
+    if (ex && (ex.v || ex.h)) {
+      const v = CONF_ORDER[ex.v] != null ? ex.v : 'high';
+      const h = CONF_ORDER[ex.h] != null ? ex.h : 'high';
+      level = CONF_ORDER[v] <= CONF_ORDER[h] ? v : h;   // הציר החלש קובע
+      const glyph = x => x === 'low' ? '?' : (x === 'medium' ? '~' : '✓');
+      axes = ` V${glyph(v)} H${glyph(h)}`;
+    } else {
+      // fallback: הסימן החלש ביותר שמופיע בטקסט אחד השדות
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        const m = el && confMarkerLevel(el.value);
+        if (m && (level == null || CONF_ORDER[m] < CONF_ORDER[level])) level = m;
+      });
+    }
+    if (!level || level === 'high') return;   // high = שקט; רק החלשים מסומנים
+    const label = level === 'low' ? 'ודאות נמוכה — לבדוק' : 'ודאות בינונית';
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el || !String(el.value || '').trim()) return;
+      el.classList.add(level === 'low' ? 'conf-low' : 'conf-medium');
+    });
+    // תג אחד לאשכול — ליד תווית השדה הראשון שיש בו תוכן
+    const first = ids.map(id => document.getElementById(id)).find(el => el && String(el.value || '').trim());
+    if (!first) return;
+    const badge = document.createElement('span');
+    badge.className = 'conf-badge ' + level;
+    badge.textContent = (level === 'low' ? '⚠ ' : '') + label + axes;
+    badge.title = 'ודאות הזיהוי בשדה זה (V=ויזואלי, H=היסטורי) — מומלץ לאמת מול התצלום לפני העתקה לספיר';
+    const row = first.closest('.field-row, .compact-row, .field-group');
+    const tag = row && (row.querySelector('.lang-tag') || row.querySelector('label'));
+    const anchor = tag
+      || (row && row.previousElementSibling && row.previousElementSibling.querySelector && row.previousElementSibling.querySelector('.lang-tag'))
+      || (row && row.querySelector('h4'));
+    if (anchor) anchor.appendChild(badge);
+    else first.parentNode.insertBefore(badge, first);
+  });
 }
 
 // Strip dual-axis confidence markup that the model sometimes injects into prose
@@ -3312,11 +3439,26 @@ subjectsAdd.addEventListener('keydown', e => {
   if (e.key === 'Enter') {
     e.preventDefault();
     const v = subjectsAdd.value.trim();
-    if (v) {
+    if (!v) return;
+    // התאמה לתזאורוס (הרשימה הסגורה): קודם עברית, אחר-כך אנגלית — כך המונח
+    // נוסף כזוג דו-לשוני מלא ובאיות הקנוני, לא כטקסט חופשי.
+    const norm = s => String(s || '').trim().toLowerCase();
+    const t = (state.thesaurus_full || []).find(x => norm(x.he) === norm(v))
+           || (state.thesaurus_full || []).find(x => norm(x.en) === norm(v));
+    if (t) {
+      if (activeSubjects.some(s => s.he === t.he)) {
+        showStatus(`"${t.he}" כבר ברשימת הנושאים`, 'info');
+      } else {
+        activeSubjects.push({ he: t.he, en: t.en || '' });
+        renderSubjects(activeSubjects);
+      }
+    } else {
+      // לא בתזאורוס — מותר, אבל מסומן: חוקי הקטלוג דורשים מונחים מהרשימה הסגורה.
       activeSubjects.push({ he: v, en: '' });
       renderSubjects(activeSubjects);
-      subjectsAdd.value = '';
+      showStatus(`⚠ "${v}" אינו מונח תזאורוס — נוסף כמונח חופשי. עדיף לבחור מהשלמת הרשימה.`, 'info');
     }
+    subjectsAdd.value = '';
   }
 });
 
@@ -3351,6 +3493,7 @@ function renderStudioResult(s) {
       state.studioById[ne.id] = ne;
       saveUserStudios();
       document.getElementById('studios-count').textContent = `· ${state.studios.length} רשומות`;
+      refreshStudiosDatalist();   // הסטודיו החדש זמין מיד בהשלמת שדה הצלם
       box.innerHTML = `<div class="studio-result"><span class="known">✓ נוסף למאגר: ${esc(ne.name)}</span></div>`;
     });
   } else {
