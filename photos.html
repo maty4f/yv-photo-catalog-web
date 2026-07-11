@@ -65,6 +65,20 @@
   .photo-slot .delete-btn { position: absolute; top: 8px; left: 8px; background: color-mix(in srgb, var(--error) 85%, black); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; display: none; z-index: 2; }
   .photo-slot.has-file .delete-btn { display: block; }
   .photo-slot .delete-btn:hover { background: var(--error); }
+  /* מגדיל תצלום: כפתור 🔍 ליד ה-✕ (מחוץ ל-label — לא פותח דיאלוג קבצים) */
+  .photo-slot .zoom-btn { position: absolute; top: 8px; left: 40px; background: color-mix(in srgb, var(--accent) 30%, black); color: #fff; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: zoom-in; font-size: 13px; line-height: 1; display: none; z-index: 2; }
+  .photo-slot.has-file .zoom-btn { display: block; }
+  .photo-slot .zoom-btn:hover { background: var(--accent); color: #1a1206; }
+  /* שכבת המגדיל — זום/פאן/סיבוב/בהירות/ניגודיות (וורסו דהוי) */
+  #img-viewer { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,.93); display: flex; flex-direction: column; }
+  #img-viewer .iv-bar { direction: rtl; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 14px; background: rgba(20,20,20,.95); border-bottom: 1px solid #333; color: #ddd; font-size: 13px; }
+  #img-viewer .iv-bar button { background: #2a2a2a; color: #eee; border: 1px solid #444; border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+  #img-viewer .iv-bar button:hover { background: #3a3a3a; }
+  #img-viewer .iv-bar label { display: flex; gap: 5px; align-items: center; color: #aaa; font-size: 12px; }
+  #img-viewer .iv-bar input[type=range] { width: 90px; }
+  #img-viewer .iv-stage { flex: 1; overflow: hidden; cursor: grab; touch-action: none; position: relative; }
+  #img-viewer .iv-stage.dragging { cursor: grabbing; }
+  #img-viewer .iv-stage img { position: absolute; top: 50%; left: 50%; max-width: none; user-select: none; -webkit-user-drag: none; transform-origin: center center; }
   .drop.has-file { background: var(--card); border-style: solid; padding: 12px; }
 
   .label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -596,6 +610,7 @@
         <div class="photo-slot" id="slot-front">
           <span class="label-tag">חזית / Front</span>
           <button type="button" class="delete-btn" data-side="front" title="הסר תצלום">✕</button>
+          <button type="button" class="zoom-btn" data-side="front" title="הגדל תצלום — זום, סיבוב, ניגודיות">🔍</button>
           <label class="drop" data-side="front" for="front-input">
             <img class="preview-mini" alt="">
             <span class="placeholder">
@@ -610,6 +625,7 @@
         <div class="photo-slot" id="slot-back">
           <span class="label-tag">גב / Back</span>
           <button type="button" class="delete-btn" data-side="back" title="הסר גב">✕</button>
+          <button type="button" class="zoom-btn" data-side="back" title="הגדל גב — זום, סיבוב, ניגודיות (לכתב דהוי)">🔍</button>
           <label class="drop" data-side="back" for="back-input">
             <img class="preview-mini" alt="">
             <span class="placeholder">
@@ -977,6 +993,103 @@ function clearPhoto(side) {
 }
 
 // =====================================================================
+//  מגדיל תצלום — צפייה בהגדלה בלי לצאת מהמערכת: זום לעבר הסמן (גלגלת),
+//  גרירה, סיבוב 90°, בהירות/ניגודיות (וורסו דהוי), דאבל-קליק 1x↔2.5x, Esc.
+//  משתמש ב-dataURL שכבר נטען לתצוגה המקדימה — בלי קריאת קובץ נוספת.
+// =====================================================================
+function openImageViewer(src, title) {
+  if (!src) return;
+  const old = document.getElementById('img-viewer');
+  if (old) old.remove();
+  const v = { scale: 1, x: 0, y: 0, rot: 0, bri: 100, con: 100 };
+  const el = document.createElement('div');
+  el.id = 'img-viewer';
+  el.innerHTML =
+    '<div class="iv-bar">' +
+      '<b style="margin-inline-end:6px">🔍 ' + esc(title || 'תצלום') + '</b>' +
+      '<button data-act="zin" title="הגדל (או גלגלת)">➕</button>' +
+      '<button data-act="zout" title="הקטן">➖</button>' +
+      '<button data-act="rot" title="סובב 90°">↻ סיבוב</button>' +
+      '<label>בהירות <input type="range" data-f="bri" min="40" max="220" value="100"></label>' +
+      '<label>ניגודיות <input type="range" data-f="con" min="40" max="260" value="100"></label>' +
+      '<button data-act="reset">איפוס</button>' +
+      '<span style="color:#777;font-size:11.5px">גלגלת=זום · גרירה=הזזה · דאבל-קליק=2.5x · Esc=סגירה</span>' +
+      '<button data-act="close" style="margin-inline-start:auto;border-color:var(--error);color:#f88">✕ סגור</button>' +
+    '</div>' +
+    '<div class="iv-stage"><img alt=""></div>';
+  document.body.appendChild(el);
+  const stage = el.querySelector('.iv-stage');
+  const img = el.querySelector('img');
+  img.src = src;
+  const apply = () => {
+    img.style.transform = `translate(calc(-50% + ${v.x}px), calc(-50% + ${v.y}px)) scale(${v.scale}) rotate(${v.rot}deg)`;
+    img.style.filter = `brightness(${v.bri}%) contrast(${v.con}%)`;
+  };
+  // פתיחה: fit-to-stage (התמונה כולה נראית), משם מגדילים
+  img.onload = () => {
+    const fit = Math.min(stage.clientWidth / img.naturalWidth, stage.clientHeight / img.naturalHeight, 1);
+    v.scale = fit || 1;
+    apply();
+  };
+  const zoomAt = (factor, cx, cy) => {
+    const ns = Math.min(Math.max(v.scale * factor, 0.05), 40);
+    const r = stage.getBoundingClientRect();
+    // הנקודה שמתחת לסמן נשארת במקומה: מזיזים את מרכז התמונה ביחס הזום
+    const px = (cx ?? (r.left + r.width / 2)) - (r.left + r.width / 2) - v.x;
+    const py = (cy ?? (r.top + r.height / 2)) - (r.top + r.height / 2) - v.y;
+    v.x -= px * (ns / v.scale - 1);
+    v.y -= py * (ns / v.scale - 1);
+    v.scale = ns;
+    apply();
+  };
+  stage.addEventListener('wheel', e => {
+    e.preventDefault();
+    zoomAt(e.deltaY < 0 ? 1.18 : 1 / 1.18, e.clientX, e.clientY);
+  }, { passive: false });
+  stage.addEventListener('dblclick', e => {
+    if (v.scale > 1.6) { v.scale = 1; v.x = 0; v.y = 0; apply(); }
+    else zoomAt(2.5 / v.scale, e.clientX, e.clientY);
+  });
+  let drag = null;
+  stage.addEventListener('pointerdown', e => {
+    drag = { x: e.clientX - v.x, y: e.clientY - v.y };
+    stage.classList.add('dragging');
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!drag) return;
+    v.x = e.clientX - drag.x; v.y = e.clientY - drag.y; apply();
+  });
+  stage.addEventListener('pointerup', () => { drag = null; stage.classList.remove('dragging'); });
+  const close = () => { document.removeEventListener('keydown', onKey); el.remove(); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  el.querySelectorAll('.iv-bar button').forEach(b => b.addEventListener('click', () => {
+    const a = b.dataset.act;
+    if (a === 'close') return close();
+    if (a === 'zin') zoomAt(1.35);
+    if (a === 'zout') zoomAt(1 / 1.35);
+    if (a === 'rot') { v.rot = (v.rot + 90) % 360; apply(); }
+    if (a === 'reset') {
+      v.rot = 0; v.x = 0; v.y = 0; v.bri = 100; v.con = 100;
+      el.querySelectorAll('.iv-bar input[type=range]').forEach(r => { r.value = 100; });
+      v.scale = Math.min(stage.clientWidth / (img.naturalWidth || 1), stage.clientHeight / (img.naturalHeight || 1), 1) || 1;
+      apply();
+    }
+  }));
+  el.querySelectorAll('.iv-bar input[type=range]').forEach(r => r.addEventListener('input', () => {
+    v[r.dataset.f] = +r.value; apply();
+  }));
+}
+
+document.querySelectorAll('.zoom-btn').forEach(btn =>
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const side = btn.dataset.side;
+    openImageViewer(state.thumbnails[side], side === 'back' ? 'גב התצלום' : 'חזית התצלום');
+  }));
+
+// =====================================================================
 //  BATCH QUEUE — multi-photo upload with pre-fetch identification
 //  - User drops up to 20 photos (fronts + backs marked by '#' in name)
 //  - System pairs fronts with backs by basename (e.g. IMG_001.jpg ↔ IMG_001#.jpg)
@@ -1107,13 +1220,20 @@ async function runFaceCluster(opts = {}) {
   setS(`מעלה ${items.length} תצלומים לזיהוי פנים…`);
   try {
     const fd = new FormData();
+    let gatedCount = 0;
     items.forEach((it, i) => {
       const seq = it.photo_seq != null ? it.photo_seq : (i + 1);
-      const names = ((it.identification && it.identification.id_table) || []).map(e => (e && e.name || '').trim()).filter(Boolean);
+      // שער וורסו: תצלום שגבו נושא כתב-יד עברי/יידי לא-מאומת אינו מקור להפצת שם —
+      // שמותיו עלולים להיות קריאת-ניחוש (יידיש: ~47% שגיאת תווים). האשכול יוצג
+      // ללא שם והארכיונאי ינקוב ידנית (הכפתור "החל" ממילא דורש קליק אנושי).
+      const gated = !!(it.identification && (it.identification.VERSO_GATE || it.identification.verso_gate));
+      if (gated) gatedCount++;
+      const names = gated ? [] : ((it.identification && it.identification.id_table) || []).map(e => (e && e.name || '').trim()).filter(Boolean);
       fd.append('file', it.front, (it.front && it.front.name) || `photo_${seq}.jpg`);
       fd.append('seq', String(seq));
       fd.append('name', JSON.stringify(names));   // this photo's catalog names → propagation source
     });
+    if (gatedCount) setS(`⚠ ${gatedCount} תצלום(ים) עם וורסו לא-מאומת — שמותיהם לא ישמשו כמקור הפצה. מעלה…`);
     const res = await fetch(base + '/api/faces', { method: 'POST', body: fd });
     const j = await res.json().catch(() => ({}));
     if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
@@ -1552,6 +1672,8 @@ async function addPairsToQueue(pairs) {
   // uploading, then auto-identify all photos at once.
   await Promise.all(newItems.map(async item => {
     item.thumb = await fileToDataUrl(item.front);
+    // tiny copy for the refresh-survival snapshot (localStorage-safe)
+    item.thumb_small = await shrinkThumb(item.thumb);
     renderQueuePanel();
   }));
   // All uploads done → kick off the processor (no-op if already running).
@@ -1579,6 +1701,9 @@ function tickQueueTimers() {
 }
 
 function renderQueuePanel() {
+  // Every queue transition passes through here — one persist point covers all.
+  // Best-effort by design: a snapshot failure must never break the live queue.
+  try { persistPhotoQueue(); } catch (e) { /* non-fatal */ }
   const list = document.getElementById('queue-list');
   const summary = document.getElementById('queue-summary');
   if (!state.photo_queue.length) {
@@ -1602,7 +1727,7 @@ function renderQueuePanel() {
     const s = QUEUE_STATUSES[it.status] || QUEUE_STATUSES.pending;
     const isActive = idx === state.current_queue_index;
     const photoNum = it.photo_seq || (idx + 1);
-    const hasBackBadge = it.back ? '<span title="כולל גב" style="position:absolute; top:-3px; inset-inline-start:-3px; background:var(--accent); color:#1a1206; border-radius:50%; width:14px; height:14px; font-size:9px; display:flex; align-items:center; justify-content:center;">#</span>' : '';
+    const hasBackBadge = (it.back || it.backName) ? '<span title="כולל גב" style="position:absolute; top:-3px; inset-inline-start:-3px; background:var(--accent); color:#1a1206; border-radius:50%; width:14px; height:14px; font-size:9px; display:flex; align-items:center; justify-content:center;">#</span>' : '';
     const errTooltip = it.error ? ` title="${esc(it.error)}"` : '';
     return `<div class="queue-item" data-idx="${idx}"${errTooltip}
       style="position:relative; flex:0 0 auto; width:92px; cursor:pointer; padding:5px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'}; transition:all .15s;">
@@ -1680,6 +1805,9 @@ function loadQueueItemIntoUI(item) {
   clearPhoto('back');
   if (item.front) loadPhoto('front', item.front);
   if (item.back) loadPhoto('back', item.back);
+  if (item.restored && !item.front) {
+    showStatus('פריט משוחזר (' + (item.frontName || 'ללא שם') + ') — הקובץ אינו נשמר בדפדפן; התוצאות זמינות לעריכה, העתקה ושמירה.', 'info');
+  }
   if (item.status === 'ready' || item.status === 'reviewing') {
     item.status = 'reviewing';
     // Auto-fill the form with the identification result
@@ -1743,7 +1871,8 @@ async function maybeRunCollectionAutopasses() {
 // JS's single thread guarantees two workers never claim the same item.
 async function queueWorker() {
   while (true) {
-    const item = state.photo_queue.find(it => it.status === 'pending');
+    // it.front guard: restored items (refresh-survival) have no File to analyze
+    const item = state.photo_queue.find(it => it.status === 'pending' && it.front);
     if (!item) break;
     item.status = 'analyzing';
     // Assign photo_seq if not set (sequential from the collection's start index)
@@ -1836,11 +1965,16 @@ function collectionContextFor(item) {
 
 // "Retry all failed" button — re-queue every errored item and wake the processor
 document.getElementById('queue-retry-btn').addEventListener('click', () => {
-  const failed = state.photo_queue.filter(it => it.status === 'error');
-  if (!failed.length) return;
+  // restored items have no File — they can't be re-analyzed, only re-uploaded
+  const failed = state.photo_queue.filter(it => it.status === 'error' && it.front);
+  const restoredFailed = state.photo_queue.filter(it => it.status === 'error' && !it.front).length;
+  if (!failed.length) {
+    if (restoredFailed) showStatus('פריטים משוחזרים שנכשלו דורשים העלאת הקובץ מחדש (הקובץ אינו נשמר בדפדפן).', 'info');
+    return;
+  }
   failed.forEach(it => { it.status = 'pending'; it.error = null; });
   renderQueuePanel();
-  showStatus(`🔄 מנסה מחדש ${failed.length} תצלומים שנכשלו…`, 'info');
+  showStatus(`🔄 מנסה מחדש ${failed.length} תצלומים שנכשלו…` + (restoredFailed ? ` (${restoredFailed} משוחזרים דורשים העלאה מחדש)` : ''), 'info');
   startQueueProcessor();
 });
 
@@ -1854,9 +1988,100 @@ document.getElementById('queue-clear-btn').addEventListener('click', () => {
   if (!confirm(msg)) return;
   state.photo_queue = [];
   state.current_queue_index = -1;
+  try { localStorage.removeItem('yv_photo_queue_results'); } catch (e) { /* non-fatal */ }
   renderQueuePanel();
   showStatus('התור נוקה.', 'info');
 });
+
+// ---------------------------------------------------------------------
+// Refresh-survival for the photo queue (the documents.html pattern): the
+// File blobs can't be persisted, but each finished identification is real
+// model work — persist name+status+identification (+tiny thumb) so a crash
+// or refresh mid-batch doesn't discard finished items. Restored items show
+// their results for review/copy/save; re-analysis needs the file again.
+// persistPhotoQueue() runs at the top of renderQueuePanel(), which every
+// status transition (ready/error/done/remove/retry) already goes through.
+// ---------------------------------------------------------------------
+const PHOTO_QUEUE_KEY = 'yv_photo_queue_results';
+
+// 80px JPEG ≈ 2–4KB — the full-size preview dataURL would blow the quota.
+async function shrinkThumb(dataUrl) {
+  try {
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
+    const s = 80 / Math.max(img.naturalWidth, img.naturalHeight, 1);
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * s));
+    c.height = Math.max(1, Math.round(img.naturalHeight * s));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.6);
+  } catch (e) { return null; }
+}
+
+function persistPhotoQueue() {
+  const snapshot = withThumbs => state.photo_queue
+    .filter(it => it.identification || it.error)
+    .map(it => ({
+      name: (it.front && it.front.name) || it.frontName || '',
+      backName: (it.back && it.back.name) || it.backName || null,
+      photo_seq: it.photo_seq,
+      status: it.status === 'reviewing' ? 'ready' : it.status,
+      identification: it.identification, error: it.error,
+      thumb: withThumbs ? (it.thumb_small || null) : null,
+      addedAt: it.addedAt || null, finishedAt: it.finishedAt || null,
+    }));
+  try {
+    const items = snapshot(true);
+    if (items.length) {
+      localStorage.setItem(PHOTO_QUEUE_KEY, JSON.stringify({
+        savedAt: Date.now(),
+        collection_id: (state.collection && state.collection.id) || null,
+        items,
+      }));
+    } else localStorage.removeItem(PHOTO_QUEUE_KEY);
+  } catch (e) {
+    // quota — retry once without thumbs; never break the live queue
+    try { localStorage.setItem(PHOTO_QUEUE_KEY, JSON.stringify({ savedAt: Date.now(), items: snapshot(false) })); }
+    catch (e2) { /* non-fatal */ }
+  }
+}
+
+(function restorePhotoQueue() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(PHOTO_QUEUE_KEY) || 'null'); } catch (e) {}
+  const items = ((saved && saved.items) || []).filter(x => x.identification || x.error);
+  if (!items.length || state.photo_queue.length) return;
+  const panel = document.getElementById('queue-panel');
+  if (!panel || !panel.parentNode) return;
+  const bar = document.createElement('div');
+  bar.style.cssText = 'direction:rtl;text-align:right;background:color-mix(in srgb, var(--warn) 12%, var(--card));border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--ink)';
+  const when = new Date(saved.savedAt || Date.now()).toLocaleString('he-IL');
+  const done = items.filter(x => x.identification).length;
+  const sp = document.createElement('span');
+  sp.innerHTML = '💾 נמצאו תוצאות של <b>' + done + '</b> תצלומים מאצווה קודמת (' + esc(when) + '). הקבצים עצמם אינם נשמרים בדפדפן — התוצאות זמינות לסקירה, העתקה ושמירה; זיהוי מחדש דורש העלאת הקובץ שוב.';
+  bar.appendChild(sp);
+  const mkBtn = (t, primary) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+    b.style.cssText = 'border-radius:6px;padding:4px 12px;cursor:pointer;font-family:inherit;font-size:12.5px;border:1px solid ' + (primary ? 'var(--accent);background:var(--accent);color:#04160c' : 'var(--line-strong);background:var(--card);color:var(--muted)'); return b; };
+  const rb = mkBtn('שחזר תוצאות', true), xb = mkBtn('מחק', false);
+  rb.addEventListener('click', () => {
+    state.photo_queue = items.map((x, i) => ({
+      id: 'pqr' + Date.now() + '_' + i, restored: true,
+      photo_seq: x.photo_seq != null ? x.photo_seq : (i + 1),
+      front: null, back: null, frontName: x.name || '', backName: x.backName || null,
+      status: x.status === 'done' ? 'done' : (x.error ? 'error' : 'ready'),
+      identification: x.identification, error: x.error,
+      thumb: x.thumb || null, thumb_small: x.thumb || null,
+      addedAt: x.addedAt || null, finishedAt: x.finishedAt || null,
+    }));
+    state.current_queue_index = -1;
+    panel.style.display = 'block';
+    renderQueuePanel();
+    bar.remove();
+  });
+  xb.addEventListener('click', () => { try { localStorage.removeItem(PHOTO_QUEUE_KEY); } catch (e) {} bar.remove(); });
+  bar.appendChild(rb); bar.appendChild(xb);
+  panel.parentNode.insertBefore(bar, panel);
+})();
 
 // =====================================================================
 //  CONTEXT: text + file extraction (PDF / DOCX / XLSX / CSV / TXT)
@@ -2468,6 +2693,8 @@ function mapUnifiedPhotoFields(f) {
     })),
     subjects_he: chips(f.SUBJECTS_HE_CHIPS),
     subjects_en: chips(f.SUBJECTS_EN_CHIPS),
+    // שער וורסו עובר עם הרשומה — חוסם הפצת-שם ומדליק את הבאנר (fail-soft כשאין).
+    VERSO_GATE: f.VERSO_GATE || (f.verso_gate ? 'handwriting_unverified' : undefined),
   };
 }
 
@@ -2481,7 +2708,16 @@ function renderVersoBox(fields, base) {
   const box = document.createElement('div');
   box.id = 'verso-box';
   box.style.cssText = 'direction:rtl;text-align:right;background:color-mix(in srgb, var(--warn) 10%, var(--card));border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);border-radius:10px;padding:14px 16px;margin:14px 0;';
+  // שער וורסו: כתב-יד עברי/יידי בלי אימות דו-מודלי → באנר אדום "דורש קריאה אנושית".
+  const gated = !!((fields && (fields.VERSO_GATE || fields.verso_gate)) || /🛑 שער וורסו/.test(original));
   box.innerHTML =
+    (gated
+      ? '<div style="direction:rtl;text-align:right;background:color-mix(in srgb, var(--error) 14%, var(--card));border:1px solid var(--error);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px">' +
+        '<b style="color:var(--error)">🛑 שער וורסו — דורש קריאה אנושית.</b> ' +
+        'כתב-היד בגב הוא בכתב עברי/יידי ולא עבר אימות דו-מודלי מלא — התעתיק למטה הוא שחזור בלבד. ' +
+        'אל תעתיקו שם/תאריך/מקום מהגב לספיר לפני קריאה בעין; שמות מהגב לא ישמשו להפצת פנים באוסף. ' +
+        'תיקון התעתיק כאן שווה כפליים — הוא נאסף כחומר אימון למודל כתב-יד עברי.</div>'
+      : '') +
     '<div style="font-weight:700;margin-bottom:6px">📝 תעתיק גב התצלום (ניתן לתיקון)</div>' +
     '<div style="font-size:12.5px;color:var(--warn);margin-bottom:8px">תקנו שגיאות בתעתיק ולחצו שמירה — כל תיקון נאסף כ-ground truth לשיפור קריאת כתב היד.</div>' +
     '<textarea id="verso-text" style="width:100%;min-height:150px;direction:rtl;text-align:right;font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;unicode-bidi:plaintext"></textarea>' +
@@ -2497,13 +2733,21 @@ function renderVersoBox(fields, base) {
     if (!corrected) { status.textContent = 'התעתיק ריק'; return; }
     status.textContent = 'שומר…';
     try {
+      // תמונת הגב מצורפת לתיקון: זוג [תמונה ← תעתיק מתוקן] הוא יחידת האימון של
+      // מודל כתב-היד; תיקון בלי התמונה חסר ערך כ-ground truth. fail-soft בלי תמונה.
+      let imageB64 = null;
+      try {
+        const back = state.photos && state.photos.back;
+        if (back && back.size && back.size <= 12 * 1024 * 1024) imageB64 = await fileToBase64(back);
+      } catch { /* image attach is best-effort */ }
       const r = await fetch(base + '/api/verso-correction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photoId: (fields && fields.PHOTO_ID) || '', original, corrected }),
+        body: JSON.stringify({ photoId: (fields && fields.PHOTO_ID) || '', original, corrected,
+                               gate: gated || undefined, imageB64: imageB64 || undefined }),
       });
       const j = await r.json().catch(() => ({}));
-      status.textContent = j.ok ? '✓ נשמר — התיקון נוסף למאגר האימון' : 'שגיאה בשמירה';
+      status.textContent = j.ok ? '✓ נשמר — התיקון נוסף למאגר האימון' + (j.imageSaved ? ' (כולל תמונת הגב)' : '') : 'שגיאה בשמירה';
     } catch { status.textContent = 'שגיאה בשמירה (אין חיבור לשרת?)'; }
   };
 }
@@ -2719,6 +2963,8 @@ ${itemBlock}
 אם בכלל לא רואים פנים — אל תוסיף תיאור מפורט של אנשים. אם אין כיתוב — אל תוסיף שם.
 
 🔙 **מידע מגב התצלום (verso) — חובה לשלב בזיהוי**: אם בגב התצלום יש מידע רלוונטי לזיהוי — כיתוב בכתב יד, תאריך, שמות, מקום, הקדשה, חותמת סטודיו, מספר ארכיון — **שלב אותו בשדות הזיהוי עצמם** (כותר, תאריך/recon_date, places_en, טבלת אישים), ולא רק בשדה הכיתובים. כיתוב בכתב יד בגב נחשב מקור סמכותי (כמו קונטקסט מהמוסר): אם הוא תואם את הויזואלי → סמן את הפרט הנובע ממנו כ-✓ Confirmed; אם הוא סותר את הויזואלי → התרע ב-notes_he/notes_en בנוסח "סתירה: גב התצלום מציין X, אך הויזואלי מצביע על Y. נדרש בירור". תמיד תעתק גם את המקור (שפה + תעתיק + תרגום) בשדה הכיתובים, בנוסף לשילובו בזיהוי.
+
+🛑 **חריג מחייב — כתב-יד בכתב עברי/יידי בגב**: קריאת כתב-יד בעברית/יידיש בקריאת מודל יחיד היא שחזור לא מאומת (נמדד: ~47% שגיאת תווים בכתב-יד יידי). במקרה כזה: אל תסמן ✓ שום שם/תאריך/מקום שמקורו **בלעדית** בכתב-יד כזה — סמן ? בלבד בתוספת "קריאת כתב-יד לא מאומתת — דורש קריאה אנושית"; אל תכניס שם כזה לטבלת הזיהוי כעובדה; והוסף ל-JSON שדה עליון \`verso_gate: true\`. חותמות סטודיו ודפוס בגב אינם בחריג הזה.
 
 📊 **מערכת ודאות Dual-Axis (חובה)** — ראה \`reference/confidence_dual_axis.md\`
 

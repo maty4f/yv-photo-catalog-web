@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מאגר שמות — חיפוש</title>
+<link rel="stylesheet" href="yv-theme.css">
+<style>
+  :root { --accent:var(--tik); --accent-2:#c9a6ff; }
+  body { padding:20px; }
+  .wrap { max-width:1180px; margin:0 auto; padding-bottom:60px; }
+  h1 { font-size:21px; margin:0 0 2px; font-weight:800; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:16px; }
+
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:16px; box-shadow:0 10px 28px -18px rgba(0,0,0,.7); }
+
+  /* server-url row — same convention/localStorage key as photos/films/documents */
+  .srow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); margin-bottom:14px; }
+  .srow input { direction:ltr; text-align:left; padding:5px 9px; border:1px solid var(--line); border-radius:var(--radius-sm);
+                background:var(--tint); color:var(--ink); font-family:inherit; font-size:12.5px; min-width:260px; }
+  .srow input:focus { outline:none; border-color:var(--accent); }
+
+  .counters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .tile { flex:1; min-width:150px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 14px; text-align:center; }
+  .tn { font-size:22px; font-weight:800; color:var(--accent); unicode-bidi:isolate; font-variant-numeric:tabular-nums; }
+  .tl { font-size:11.5px; color:var(--muted); margin-top:2px; }
+
+  .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:4px; }
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field label { font-size:11.5px; color:var(--muted); font-weight:600; }
+  #q { min-width:260px; flex:1; padding:9px 12px; border:1px solid var(--line); border-radius:var(--radius-sm);
+       background:var(--tint); color:var(--ink); font-family:inherit; font-size:14.5px; direction:rtl; text-align:right; }
+  #q:focus { outline:none; border-color:var(--accent); background:var(--card); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  select { padding:8px 10px; border:1px solid var(--line); border-radius:var(--radius-sm);
+           background:var(--tint); color:var(--ink); font-family:inherit; font-size:13.5px; min-width:150px; }
+  select:focus { outline:none; border-color:var(--accent); }
+  .clear-btn { background:var(--card-hover); color:var(--ink); border:1px solid var(--line-strong); border-radius:var(--radius-sm);
+               padding:8px 14px; font-family:inherit; font-size:13px; cursor:pointer; }
+  .clear-btn:hover { background:#232a3a; }
+  .dl { background:var(--accent); color:#150a22; text-decoration:none; border-radius:var(--radius-sm); padding:8px 16px;
+        font-size:13px; font-weight:700; display:inline-block; }
+  .dl:hover { background:var(--accent-2); }
+  .dl.disabled { pointer-events:none; opacity:.45; }
+
+  .count-line { font-size:12.5px; color:var(--muted); margin:10px 0 6px; }
+
+  table.tbl { width:100%; border-collapse:collapse; font-size:13px; direction:rtl; text-align:right; }
+  .tbl th, .tbl td { border-bottom:1px solid var(--line); padding:7px 9px; text-align:right; vertical-align:top; unicode-bidi:isolate; color:var(--ink); }
+  .tbl th { color:var(--muted); font-weight:700; font-size:11.5px; text-transform:uppercase; letter-spacing:.02em; border-bottom:2px solid var(--line-strong); white-space:nowrap; position:sticky; top:0; background:var(--card); }
+  .tbl tr:hover td { background:var(--card-hover); }
+  .tbl td.nm { font-weight:700; }
+  .tbl td.nm small { font-weight:400; color:var(--muted); }
+  .tbl td.tik a { color:var(--accent); text-decoration:none; }
+  .tbl td.tik a:hover { text-decoration:underline; }
+  .tbl-wrap { max-height:70vh; overflow:auto; border:1px solid var(--line); border-radius:var(--radius-sm); }
+
+  .empty-state { text-align:center; padding:40px 20px; color:var(--muted); }
+  .empty-state code { display:block; direction:ltr; text-align:center; background:var(--tint); border:1px solid var(--line);
+                       border-radius:var(--radius-sm); padding:10px 14px; margin:14px auto; max-width:560px; font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:13px; color:var(--ink); unicode-bidi:isolate; }
+  .empty-state .big { font-size:15px; color:var(--ink); margin-bottom:6px; }
+
+  .none { color:var(--muted); text-align:center; padding:24px; }
+  @media(max-width:640px){ .toolbar { flex-direction:column; align-items:stretch; } select { min-width:0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="index.html" style="text-decoration:none;display:inline-block;margin-bottom:10px">
+    <button type="button" class="gear" style="border-radius:7px;padding:8px 16px;font-size:14px;">← דף הבית</button>
+  </a>
+  <h1>מאגר שמות — חיפוש</h1>
+  <div class="sub">כל השמות שחולצו מתיאורי-תיק (מפתחות השמות של כל תיק) — מאוחדים למאגר אחד לחיפוש. עדכון: <code id="server-url-fetch">python3 cli/yv.py doc names</code></div>
+
+  <div class="srow">
+    <span>כתובת שרת מקומי / tunnel:</span>
+    <input type="text" id="server-url" placeholder="ריק = אותו שרת שמגיש דף זה" autocomplete="off">
+    <span id="server-hint"></span>
+  </div>
+
+  <div id="app">
+    <div class="none">טוען…</div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------- server base — same convention as photos/films/documents ----------
+   The dashboard is normally served BY the API server (localhost in dev,
+   films.mf-sr.com via the tunnel), so same-origin is the default. Off a static
+   host (GitHub Pages) there is no backend at all, so the field stays empty and
+   the user pastes a tunnel URL. Persisted under the SAME localStorage key the
+   other screens use, so a URL typed there already fills in here. */
+function computeDefaultServerUrl(){
+  if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(location.hostname)) {
+    return location.origin;
+  }
+  return '';
+}
+const serverUrlInput = $('server-url');
+serverUrlInput.value = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '') || computeDefaultServerUrl();
+serverUrlInput.addEventListener('input', () => {
+  localStorage.setItem('yv_local_server_url', serverUrlInput.value.trim().replace(/\/$/, ''));
+  load();
+});
+function serverBase(){ return (serverUrlInput.value || '').trim().replace(/\/$/, ''); }
+
+/* ---------- state ---------- */
+const state = { all: [], filtered: [], generated: null, tiks: 0, csvName: null };
+
+function fillSelect(sel, values, label){
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${esc(label)} — הכול</option>` +
+    values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  if (values.includes(cur)) sel.value = cur;
+}
+
+function normalize(s){
+  // Case/nikud-insensitive-ish substring match: strip Hebrew niqqud + lowercase.
+  return String(s || '').replace(/[֑-ׇ]/g, '').toLowerCase();
+}
+
+function applyFilters(){
+  const q = normalize($('q').value.trim());
+  const role = $('f-role').value, place = $('f-place').value, fate = $('f-fate').value;
+  state.filtered = state.all.filter(r => {
+    if (role && r.role !== role) return false;
+    if (place && r.place !== place) return false;
+    if (fate && r.fate !== fate) return false;
+    if (q) {
+      const hay = normalize([r.name, r.name_original, r.role, r.place, r.tik_title].join(' '));
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  render();
+}
+
+function outputUrl(name){
+  const base = serverBase();
+  const path = '/api/output/' + encodeURIComponent(name);
+  return base ? base + path : path;
+}
+
+function render(){
+  const tbody = $('rows');
+  const rows = state.filtered;
+  $('count-line').textContent = rows.length === state.all.length
+    ? `${rows.length} שמות מ-${state.tiks} תיקים`
+    : `${rows.length} מתוך ${state.all.length} שמות (מסונן)`;
+  if (!rows.length) {
+    $('table-area').innerHTML = '<div class="none">לא נמצאו שמות התואמים את החיפוש/הסינון</div>';
+    return;
+  }
+  const trs = rows.map(r => {
+    const nameCell = esc(r.name) + (r.name_original && r.name_original !== r.name ? ` <small>(${esc(r.name_original)})</small>` : '');
+    const tikCell = r.tik_output
+      ? `<a href="${esc(outputUrl(r.tik_output))}" target="_blank" rel="noopener">${esc(r.tik_title || r.tik || r.tik_output)}</a>`
+      : esc(r.tik_title || r.tik || '—');
+    return `<tr>
+      <td class="nm">${nameCell}</td>
+      <td>${esc(r.role) || '—'}</td>
+      <td>${esc(r.birth) || '—'}</td>
+      <td>${esc(r.death) || '—'}</td>
+      <td>${esc(r.place) || '—'}</td>
+      <td>${esc(r.fate) || '—'}</td>
+      <td>${esc(r.pages) || '—'}</td>
+      <td class="tik">${tikCell}</td>
+    </tr>`;
+  }).join('');
+  $('table-area').innerHTML = `<div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>שם</th><th>תפקיד</th><th>לידה</th><th>פטירה</th><th>מקום</th><th>גורל</th><th>עמודים</th><th>תיק</th></tr></thead>
+    <tbody id="rows-body">${trs}</tbody>
+  </table></div>`;
+}
+
+function uniqSorted(values){
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, 'he'));
+}
+
+function renderApp(){
+  $('app').innerHTML = `
+    <div class="counters">
+      <div class="tile"><div class="tn" id="c-names">—</div><div class="tl">שמות</div></div>
+      <div class="tile"><div class="tn" id="c-tiks">—</div><div class="tl">תיקים</div></div>
+      <div class="tile"><div class="tn" id="c-updated" style="font-size:13px">—</div><div class="tl">עודכן</div></div>
+    </div>
+    <div class="card">
+      <div class="toolbar">
+        <div class="field" style="flex:1"><label for="q">חיפוש (שם, כתיב מקורי, תפקיד, מקום, תיק)</label>
+          <input type="text" id="q" placeholder="הקלד לחיפוש מיידי…" autocomplete="off"></div>
+        <div class="field"><label for="f-role">תפקיד/קרבה</label><select id="f-role"></select></div>
+        <div class="field"><label for="f-place">מקום</label><select id="f-place"></select></div>
+        <div class="field"><label for="f-fate">גורל</label><select id="f-fate"></select></div>
+        <button type="button" class="clear-btn" id="clear-filters">נקה סינון</button>
+        <a class="dl disabled" id="csv-link" href="#" download>⇩ הורדת CSV</a>
+      </div>
+      <div class="count-line" id="count-line"></div>
+      <div id="table-area"></div>
+    </div>`;
+  $('q').addEventListener('input', applyFilters);
+  $('f-role').addEventListener('change', applyFilters);
+  $('f-place').addEventListener('change', applyFilters);
+  $('f-fate').addEventListener('change', applyFilters);
+  $('clear-filters').addEventListener('click', () => {
+    $('q').value = ''; $('f-role').value = ''; $('f-place').value = ''; $('f-fate').value = '';
+    applyFilters();
+  });
+}
+
+function renderEmptyState(reason){
+  $('app').innerHTML = `<div class="card empty-state">
+    <div class="big">⚠ מאגר השמות עדיין לא נבנה${reason ? ' (' + esc(reason) + ')' : ''}</div>
+    <div>הרץ את פקודת האיסוף בשרת (קורא את כל תיאורי-התיק וכותב <code style="display:inline">names_index.json</code>):</div>
+    <code>python3 cli/yv.py doc names</code>
+    <div>לחלופין — דרך לוח הבקרה: קטלג תיקים במסך <a href="documents-tik.html" style="color:var(--accent)">קטלוג תיק</a>, ואז הרץ את הפקודה למעלה כדי לבנות/לרענן את המאגר.</div>
+  </div>`;
+}
+
+async function load(){
+  const base = serverBase();
+  const url = (base || '') + '/api/output/names_index.json';
+  let res;
+  try {
+    res = await fetch(url, { cache: 'no-store' });
+  } catch (e) {
+    renderEmptyState('לא ניתן להגיע לשרת — בדוק כתובת שרת/tunnel');
+    return;
+  }
+  if (res.status === 404) { renderEmptyState('הקובץ לא נמצא'); return; }
+  if (!res.ok) { renderEmptyState('שגיאת שרת ' + res.status); return; }
+  let data;
+  try { data = await res.json(); } catch (e) { renderEmptyState('JSON לא תקין'); return; }
+  const names = Array.isArray(data.names) ? data.names : [];
+  state.all = names;
+  state.filtered = names;
+  state.tiks = data.tiks || 0;
+  state.generated = data.generated || null;
+
+  renderApp();
+  $('c-names').textContent = names.length;
+  $('c-tiks').textContent = state.tiks;
+  $('c-updated').textContent = state.generated ? new Date(state.generated).toLocaleString('he-IL') : '—';
+
+  fillSelect($('f-role'), uniqSorted(names.map(n => n.role)), 'תפקיד');
+  fillSelect($('f-place'), uniqSorted(names.map(n => n.place)), 'מקום');
+  fillSelect($('f-fate'), uniqSorted(names.map(n => n.fate)), 'גורל');
+
+  // CSV — the dated filename is stamped the moment `yv doc names` runs, same
+  // moment as `generated` in the JSON, so derive it from there rather than
+  // guessing today's date (the JSON can be older than "now"). /api/output only
+  // lists .html files, so existence is checked with a direct HEAD on the name.
+  const csvLink = document.querySelector('#csv-link');
+  if (csvLink && state.generated) {
+    const d = new Date(state.generated);
+    if (!isNaN(d)) {
+      const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+      const guess = `names_index_${ymd}.csv`;
+      try {
+        const head = await fetch(outputUrl(guess), { method: 'HEAD', cache: 'no-store' });
+        if (head.ok) {
+          csvLink.href = outputUrl(guess);
+          csvLink.classList.remove('disabled');
+        }
+      } catch (e) { /* CSV link stays disabled — not fatal */ }
+    }
+  }
+
+  applyFilters();
+}
+
+load();
+</script>
+</body>
+</html>

@@ -59,6 +59,7 @@
          repo) — hidden until we confirm a real server is answering, so the public
          marketing/demo deploy of this page never shows a dead (or exposed) link. -->
     <a href="logs.html" id="nav-logs" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">📜 לוגים · Logs</a>
+    <a href="logs.html#trends" id="nav-trends" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">📈 מגמות משוב · Trends</a>
     <a href="users.html" id="nav-users" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">👥 מורשי גישה · Users</a>
   </div>
 
@@ -140,6 +141,24 @@
       </div>
     </a>
 
+    <a href="names.html" class="card names">
+      <span class="tagcode">NM · 05</span>
+      <div class="badge">🗂️</div>
+      <h2>מסד השמות — חיפוש חוצה-תיקים</h2>
+      <div class="desc">
+        חיפוש שמות של אנשים ומקומות על פני כל התיקים שתוארו — מי מופיע היכן, עם הפניה לרשומות המקור.
+      </div>
+      <div class="features">
+        <ul>
+          <li>אינדקס שמות מצטבר מכל התיאורים</li>
+          <li>חיפוש אדם / מקום חוצה-אוספים</li>
+          <li>הפניה ישירה לרשומת התיק</li>
+          <li>ייצוא CSV ידידותי ל-Excel</li>
+          <li>הזנה למסד השמות של הארכיון</li>
+        </ul>
+      </div>
+    </a>
+
   </div>
 
   <div class="info-block">
@@ -180,7 +199,7 @@
     // is no server and nothing fires.
     fetch(base + '/api/admin/users').then(function (r) {
       if (!r.ok) return;
-      var showAdmin = function () { ['nav-logs', 'nav-users'].forEach(function (id) { var lk = document.getElementById(id); if (lk) lk.style.display = 'inline-block'; }); };
+      var showAdmin = function () { ['nav-logs', 'nav-trends', 'nav-users'].forEach(function (id) { var lk = document.getElementById(id); if (lk) lk.style.display = 'inline-block'; }); };
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showAdmin);
       else showAdmin();
     }).catch(function () {});
