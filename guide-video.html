@@ -195,8 +195,13 @@
 
       <!-- 4: context -->
       <div class="scene" data-scene="4">
-        <h2>📝 ממלאים "מידע מוקדם"</h2>
-        <div class="lead" style="margin-bottom:2%">כל מה שידוע מהמוסר — המערכת בונה על זה ומסמנת התאמות וסתירות:</div>
+        <h2>📝 מידע מוקדם — להקליד או לחלץ מקובץ</h2>
+        <div class="lead" style="margin-bottom:2%">אפשר להקליד ידנית — או להעלות מסמך מלווה (טופס מסירה / פריט מהאוסף) והמערכת תחלץ ממנו את המידע:</div>
+        <div style="display:flex; gap:9px; align-items:center; margin-bottom:2.4%; flex-wrap:wrap">
+          <span class="btnghost" id="ctxUploadBtn">📎 חלץ מידע מקובץ</span>
+          <span class="filechip" id="ctxFileChip">📄 טופס מסירה.pdf</span>
+          <span id="ctxExtractStatus" class="lead" style="unicode-bidi:isolate"></span>
+        </div>
         <div class="ta" id="ctxBox"></div>
       </div>
 
@@ -316,8 +321,9 @@
     { dur:6500, cap:"מעלים את החזית — ואם יש, גם את גב התצלום. הגב הוא לרוב מקור המידע הכי חשוב: שמות, תאריכים וחותמות.",
       cursor:[{sel:'#dropFront',at:900,click:true},{sel:'#dropBack',at:3400,click:true}],
       onEnter:function(){ show('#fcFront',900); show('#fcBack',3200); } },
-    { dur:7000, cap:"בתיבת המידע המוקדם כותבים כל מה שידוע מהמוסר. המערכת בונה על זה, מאשרת מול התצלום, ומדגלת סתירות.",
-      onEnter:typeContext },
+    { dur:7000, cap:"את המידע המוקדם אפשר להקליד — או פשוט להעלות את מסמכי המסירה, או מסמך מפריט האוסף, והמערכת תחלץ מהם את המידע הרלוונטי. תמיד אפשר לבדוק ולערוך.",
+      cursor:[{sel:'#ctxUploadBtn',at:900,click:true}],
+      onEnter:extractCtxDemo },
     { dur:7000, cap:"מתחילים — והמערכת קוראת את הפריט, מפענחת כיתובים ומצליבה מול מאגר הידע. אפשר לעבוד על משהו אחר במקביל.",
       onEnter:runProcessing },
     { dur:7500, cap:"מתקבלת רשומה דו-לשונית: כותר, מקומות, מידע נוסף ועוד. עברית מימין, אנגלית משמאל — קוראים את הכל, לא רק את הכותר." },
@@ -331,7 +337,7 @@
   ];
   // Each scene lasts its neural-narration clip + a short tail (measured from the
   // generated Gemini-TTS audio in audio/guide/). Keeps visuals synced to speech.
-  var NARR_MS=[8970,13570,8810,9490,10010,9210,9690,10010,12850,10370,8650];
+  var NARR_MS=[8970,13570,8810,9490,11770,9210,9690,10010,12850,10370,8650];
   SCENES.forEach(function(s,n){ s.dur = NARR_MS[n] + 650; });
 
   var stage=document.getElementById('stage'), cursor=document.getElementById('cursor'),
@@ -369,9 +375,9 @@
 
   function resetScene(n){
     // reset transient states so replays look right
-    ['#fcFront','#fcBack','#copyToast','#kbRow'].forEach(function(s){var e=stage.querySelector(s);if(e)e.classList.remove('show');});
+    ['#fcFront','#fcBack','#copyToast','#kbRow','#ctxFileChip'].forEach(function(s){var e=stage.querySelector(s);if(e)e.classList.remove('show');});
     stage.querySelectorAll('.hi').forEach(function(e){e.classList.remove('hi');});
-    if(n===4){ var c=stage.querySelector('#ctxBox'); if(c)c.innerHTML='<span class="caret"></span>'; }
+    if(n===4){ var c=stage.querySelector('#ctxBox'); if(c)c.innerHTML='<span class="caret"></span>'; var st=stage.querySelector('#ctxExtractStatus'); if(st)st.textContent=''; }
     if(n===5){ setRing(0); document.getElementById('stageTxt').textContent='קריאת התצלום…'; document.getElementById('clock').textContent='00:07'; }
   }
 
@@ -421,9 +427,27 @@
   document.addEventListener('keydown',function(e){ if(e.code==='Space'){e.preventDefault();document.getElementById('btnPlay').click();} if(e.code==='ArrowLeft')go(i+1); if(e.code==='ArrowRight')go(i-1); });
 
   // scene-specific animations
-  function typeContext(){ var box=stage.querySelector('#ctxBox'); if(!box)return; var g=gen;
-    var txt="מקור: מסירת משפחת לוין, 2024.\nהמוסרת מזהה: האישה במרכז — סבתה, רחל לוין (1912–1943).\nמקום משוער: גטו לודז'.\nתקופה: כנראה חורף 1941–42.";
-    box.innerHTML=''; var j=0; (function step(){ if(!playing||g!==gen){return;} box.textContent=txt.slice(0,j); var c=document.createElement('span'); c.className='caret'; box.appendChild(c); j++; if(j<=txt.length) at(step,55); })(); }
+  // Scene 5: demonstrate that "מידע מוקדם" can be EXTRACTED from an uploaded
+  // accompanying document (delivery form / a page from the collection item) — the
+  // archivist clicks "חלץ מידע מקובץ", a file appears, and the box fills with the
+  // AI-extracted facts. (You can also just type; the caption says so.)
+  function extractCtxDemo(){
+    var g=gen, box=stage.querySelector('#ctxBox'),
+        chip=stage.querySelector('#ctxFileChip'), status=stage.querySelector('#ctxExtractStatus');
+    if(!box)return;
+    box.innerHTML='<span class="caret"></span>';
+    if(chip)chip.classList.remove('show');
+    if(status){ status.textContent=''; status.style.color='var(--muted)'; }
+    cls('#ctxUploadBtn','hi',1300);
+    at(function(){ if(g!==gen)return; if(chip)chip.classList.add('show'); if(status)status.textContent='מחלץ מידע מהמסמך…'; }, 1500);
+    at(function(){ if(g!==gen)return; typeExtracted(g); }, 2700);
+  }
+  function typeExtracted(g){
+    var box=stage.querySelector('#ctxBox'), status=stage.querySelector('#ctxExtractStatus'); if(!box)return;
+    var txt="מוסר החומר: משפחת לוין (בעלים).\nאישים: רחל לוין לבית קפלן (1912–1943).\nמקום: גטו לודז'.\nתקופה: חורף 1941–42.\nסימול: P.5030/17.";
+    box.innerHTML=''; var j=0; (function step(){ if(!playing||g!==gen){return;} box.textContent=txt.slice(0,j); var c=document.createElement('span'); c.className='caret'; box.appendChild(c); j++;
+      if(j<=txt.length) at(step,40);
+      else if(status){ status.textContent='✓ חולץ מטופס המסירה'; status.style.color='var(--good)'; } })(); }
 
   var C=326.7;
   function setRing(p){ var arc=document.getElementById('ringArc'); if(arc)arc.style.strokeDashoffset=(C*(1-p/100)).toFixed(1); var n=document.getElementById('pctNum'); if(n)n.textContent=Math.round(p)+'%'; var b=document.getElementById('barFill'); if(b)b.style.width=p+'%'; }
