@@ -373,8 +373,8 @@
     <div class="body">
       <textarea id="context-input" placeholder="מה ידוע על הסרט: מקור, מוסר, תאריך, שפה, סוג סליל, אירועים…"></textarea>
       <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap: wrap;">
-        <label class="upload-btn" id="ctx-file-btn" for="ctx-file-input">📎 העלה מקובץ <small>PDF / Word / TXT</small></label>
-        <input type="file" id="ctx-file-input" accept=".pdf,.docx,.txt,.md,.rtf" class="visually-hidden-file">
+        <label class="upload-btn" id="ctx-file-btn" for="ctx-file-input">📎 חלץ מידע מקובץ <small>PDF (גם סרוק) / תמונה / Word / TXT</small></label>
+        <input type="file" id="ctx-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.docx,.txt,.md,.markdown,.rtf,.log" class="visually-hidden-file">
         <span id="ctx-file-status" class="mini-status"></span>
       </div>
     </div>
@@ -1031,32 +1031,39 @@ const ctxInput = document.getElementById('ctx-file-input');
 const ctxStatus = document.getElementById('ctx-file-status');
 ctxInput.addEventListener('change', () => { const f = ctxInput.files?.[0]; ctxInput.value = ''; if (f) extractContext(f); });
 
+// Upload an accompanying document (donor page, background doc) → the archive
+// server's AI pulls the archivally-relevant facts into the מידע-מוקדם box for
+// review. PDFs (incl. SCANNED) + images go straight to the server (Gemini reads
+// + OCRs); office/text is read in-browser then distilled by the same AI. Never
+// a raw dump — only the relevant context.
 async function extractContext(file) {
   const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
-  setMini(ctxStatus, '<span class="dot"></span>מחלץ ' + esc(file.name) + '…', 'working');
+  const isImg = /\.(jpe?g|png|webp|tiff?|gif)$/i.test(file.name);
+  setMini(ctxStatus, '<span class="dot"></span>מחלץ מידע מ־' + esc(file.name) + '… (עד דקה)', 'working');
   try {
-    let text = '', meta = {};
-    if (ext === '.pdf') ({ text, meta } = await extractPDF(file));
-    else if (ext === '.docx') ({ text, meta } = await extractDOCX(file));
-    else if (['.txt','.md','.markdown','.rtf','.log'].includes(ext)) { text = await file.text(); meta = { format: ext.slice(1) }; }
-    else throw new Error('סוג לא נתמך: ' + ext);
+    let payload, sendName;
+    if (ext === '.pdf' || isImg) { payload = file; sendName = file.name; }
+    else {
+      let text = '';
+      if (ext === '.docx') ({ text } = await extractDOCX(file));
+      else if (['.txt','.md','.markdown','.rtf','.log'].includes(ext)) text = await file.text();
+      else throw new Error('סוג לא נתמך: ' + ext);
+      if (!text.trim()) throw new Error('לא נמצא טקסט בקובץ');
+      payload = new Blob([text], { type: 'text/plain' }); sendName = 'extracted.txt';
+    }
+    let base = location.origin;
+    try { if (typeof serverBase === 'function' && serverBase()) base = serverBase(); } catch (e) {}
+    if (typeof state !== 'undefined' && state && state.localServerUrl) base = state.localServerUrl;
+    const fd = new FormData(); fd.append('file', payload, sendName);
+    const r = await fetch(base + '/api/context-extract', { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'חילוץ נכשל');
     const existing = contextEl.value.trim();
-    contextEl.value = (existing ? existing + '\n\n――――――――――――――――\n\nמקור: ' + file.name + '\n\n' : 'מקור: ' + file.name + '\n\n') + text;
-    setMini(ctxStatus, '<span class="dot"></span>✓ נטען <span class="meta">' + (meta.page_count ? meta.page_count + ' עמ׳ · ' : '') + text.length.toLocaleString() + ' תווים</span>', 'ok');
+    const sep = existing ? '\n\n――――――――――――――――\n\n' : '';
+    contextEl.value = existing + sep + (j.context || '').trim();
+    contextEl.dispatchEvent(new Event('input', { bubbles: true }));
+    setMini(ctxStatus, '<span class="dot"></span>✓ המידע חולץ מ־' + esc(file.name) + ' — בדקו וערכו לפי הצורך', 'ok');
   } catch (err) { setMini(ctxStatus, '<span class="dot"></span>שגיאה: ' + err.message, 'err'); }
-}
-async function extractPDF(file) {
-  const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs';
-  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-  const pages = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const tc = await page.getTextContent();
-    const txt = tc.items.map(it => it.str).join(' ').trim();
-    if (txt) pages.push(`━━ עמוד ${i} ━━\n${txt}`);
-  }
-  return { text: pages.join('\n\n') || '[לא ניתן לחלץ — ייתכן ש-PDF סרוק]', meta: { format: 'pdf', page_count: pdf.numPages } };
 }
 async function extractDOCX(file) {
   const r = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });

@@ -53,11 +53,13 @@
   </header>
 
   <div class="statusrow">
+    <a href="onboarding.html" class="statuschip" style="text-decoration:none; margin-inline-end:8px; background:color-mix(in srgb, var(--brand) 16%, transparent); border-color:color-mix(in srgb, var(--brand) 50%, transparent); font-weight:700;">🎬 איך עובדים? · מדריך + סרטון</a>
     <a href="status.html" class="statuschip" style="text-decoration:none;"><span class="status-dot live"></span>מצב המערכת · System Status</a>
     <!-- logs.html is an admin-only server route (not mirrored to the public Pages
          repo) — hidden until we confirm a real server is answering, so the public
          marketing/demo deploy of this page never shows a dead (or exposed) link. -->
     <a href="logs.html" id="nav-logs" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">📜 לוגים · Logs</a>
+    <a href="users.html" id="nav-users" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">👥 מורשי גישה · Users</a>
   </div>
 
   <p class="lead-p">
@@ -171,11 +173,17 @@
   var base = '';
   try { if (typeof serverBase === 'function') base = serverBase(); } catch (e) {}
   fetch(base + '/api/config').then(function (r) { return r.json(); }).then(function (c) {
-    // A real server answered — reveal the admin logs link (hidden by default;
-    // on the public Pages/demo deploy there is no server, so this never fires).
-    var showLogs = function () { var lk = document.getElementById('nav-logs'); if (lk) lk.style.display = 'inline-block'; };
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showLogs);
-    else showLogs();
+    // Admin-only chips (logs, users): revealed ONLY when an admin endpoint
+    // answers 200 — i.e. the operator's own session (local, or their Access
+    // email on the admin list). A worker's session gets 403 there, so workers
+    // never see the admin links at all; on the public Pages/demo deploy there
+    // is no server and nothing fires.
+    fetch(base + '/api/admin/users').then(function (r) {
+      if (!r.ok) return;
+      var showAdmin = function () { ['nav-logs', 'nav-users'].forEach(function (id) { var lk = document.getElementById(id); if (lk) lk.style.display = 'inline-block'; }); };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showAdmin);
+      else showAdmin();
+    }).catch(function () {});
     var n = c && c.archiveName; if (!n) return;
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { apply(n); });
     else apply(n);

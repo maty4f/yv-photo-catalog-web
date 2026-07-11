@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>סרטון הדרכה — מערכת הקטלוג הארכיוני</title>
+<link rel="stylesheet" href="yv-theme.css">
+<style>
+  body { padding:18px; direction:rtl; text-align:right; }
+  .wrap { max-width: 940px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 2px; font-weight:800; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:12px; }
+
+  /* ---- player ---- */
+  .player { background:var(--card); border:1px solid var(--line-strong); border-radius:14px; overflow:hidden; box-shadow:0 18px 50px -22px rgba(0,0,0,.65); }
+  .stage { position:relative; width:100%; aspect-ratio:16/9; background:var(--bg); overflow:hidden; }
+
+  /* browser chrome inside the stage */
+  .chrome { position:absolute; inset:0 0 auto 0; height:8.2%; background:var(--card); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:1.4%; padding:0 2%; z-index:5; }
+  .dots { display:flex; gap:5px; }
+  .dots i { width:9px; height:9px; border-radius:50%; background:var(--line-strong); display:block; }
+  .addr { flex:1; height:60%; background:var(--bg); border:1px solid var(--line); border-radius:20px; display:flex; align-items:center; padding:0 12px; font-size:11px; color:var(--muted); direction:ltr; unicode-bidi:isolate; font-family:ui-monospace,Menlo,monospace; }
+  .addr::before { content:"🔒"; margin-inline-end:6px; font-size:10px; }
+
+  /* scenes — inactive is INSTANTLY hidden (no transition → can never linger as a
+     ghost when the browser throttles transitions); only the active scene animates in. */
+  .scene { position:absolute; inset:8.2% 0 0 0; opacity:0; visibility:hidden; pointer-events:none; padding:3.2% 4%; overflow:hidden; }
+  .scene.active { opacity:1; visibility:visible; animation:sceneIn .45s ease both; }
+  @keyframes sceneIn { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+  .scene h2 { margin:0 0 2%; font-size:clamp(15px,2.4vw,23px); font-weight:800; }
+  .scene .lead { color:var(--muted); font-size:clamp(11px,1.5vw,14px); }
+
+  /* title card */
+  .title-card { position:absolute; inset:8.2% 0 0 0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; opacity:0; visibility:hidden; pointer-events:none; padding:4%; }
+  .title-card.active { opacity:1; visibility:visible; animation:sceneIn .45s ease both; }
+  .title-card .big { font-size:clamp(22px,4.4vw,42px); font-weight:800; letter-spacing:-.01em; }
+  .title-card .em { font-size:clamp(40px,8vw,72px); }
+  .title-card .tg { color:var(--brand); }
+
+  /* generic mock building blocks */
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:3%; }
+  .mockcard { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:3%; }
+  .chip { display:inline-block; background:var(--card-hover); border:1px solid var(--line); border-radius:16px; padding:4px 12px; font-size:clamp(10px,1.4vw,13px); margin:3px 3px 0 0; }
+  .chip.on { border-color:var(--brand); box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 35%,transparent); }
+  .btnm { display:inline-block; background:var(--brand); color:#fff; border-radius:8px; padding:5px 14px; font-size:clamp(10px,1.4vw,13px); font-weight:700; }
+  .btnghost { display:inline-block; background:transparent; color:var(--brand); border:1px solid var(--line-strong); border-radius:8px; padding:3px 10px; font-size:clamp(9px,1.2vw,12px); font-weight:600; }
+  .muted { color:var(--muted); }
+  .hi { outline:3px solid var(--warn); outline-offset:2px; border-radius:8px; transition:outline-color .3s; animation:hipulse 1.3s ease-in-out infinite; }
+  @keyframes hipulse { 0%,100%{outline-color:color-mix(in srgb,var(--warn) 90%,transparent)} 50%{outline-color:color-mix(in srgb,var(--warn) 25%,transparent)} }
+
+  /* login card */
+  .login { max-width:70%; margin:4% auto 0; }
+  .field { background:var(--bg); border:1px solid var(--line-strong); border-radius:8px; padding:9px 12px; font-size:clamp(11px,1.5vw,14px); direction:ltr; text-align:left; unicode-bidi:isolate; color:var(--ink); margin-bottom:2.5%; }
+
+  /* dashboard cards */
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:2.4%; margin-top:2%; }
+  .dcard { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:5% 4%; text-align:center; }
+  .dcard .ic { font-size:clamp(20px,4vw,34px); }
+  .dcard .t { font-weight:800; font-size:clamp(11px,1.6vw,15px); margin-top:6px; }
+  .dcard .d { color:var(--muted); font-size:clamp(9px,1.2vw,11px); margin-top:3px; line-height:1.4; }
+
+  /* dropzone */
+  .drop { border:2px dashed var(--line-strong); border-radius:12px; padding:5% 4%; text-align:center; color:var(--muted); font-size:clamp(11px,1.6vw,14px); }
+  .filechip { display:inline-flex; align-items:center; gap:6px; background:var(--card-hover); border:1px solid var(--line); border-radius:8px; padding:5px 12px; font-size:clamp(10px,1.4vw,13px); opacity:0; transform:translateY(6px); transition:.4s; }
+  .filechip.show { opacity:1; transform:none; }
+
+  /* textarea typing */
+  .ta { background:var(--bg); border:1px solid var(--line-strong); border-radius:10px; padding:3%; min-height:38%; font-size:clamp(10px,1.45vw,13.5px); line-height:1.7; white-space:pre-wrap; }
+  .caret { display:inline-block; width:2px; height:1.1em; background:var(--brand); vertical-align:-2px; animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50%{opacity:0} }
+
+  /* progress ring (faithful to yv-progress.js) */
+  .procwrap { display:flex; align-items:center; gap:5%; margin-top:3%; }
+  .ring { position:relative; width:clamp(96px,17vw,140px); aspect-ratio:1; flex:0 0 auto; }
+  .ring svg { transform:rotate(-90deg); width:100%; height:100%; }
+  .ring .pct { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .ring .pct b { font-size:clamp(20px,3.4vw,30px); color:var(--brand); line-height:1; font-variant-numeric:tabular-nums; }
+  .ring .pct small { font-size:clamp(9px,1.2vw,11px); color:var(--muted); margin-top:3px; }
+  .procinfo { flex:1; }
+  .clock { font-size:clamp(16px,2.6vw,24px); font-weight:700; unicode-bidi:isolate; font-variant-numeric:tabular-nums; }
+  .bar { height:8px; background:var(--card-hover); border-radius:5px; margin-top:10px; overflow:hidden; }
+  .bar > i { display:block; height:100%; width:0; border-radius:5px; background:linear-gradient(90deg,var(--brand),color-mix(in srgb,var(--brand) 60%,#fff)); transition:width .2s; }
+  .stagetxt { font-size:clamp(10px,1.4vw,13px); color:var(--muted); margin-top:8px; }
+
+  /* bilingual record — Hebrew RIGHT, English LEFT (non-negotiable) */
+  .rec { direction:rtl; }
+  .recfield { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:2.4% 3%; margin-bottom:2%; position:relative; }
+  .recfield .fl { font-size:clamp(9px,1.2vw,11px); color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.03em; margin-bottom:5px; }
+  .bilingual { display:grid; grid-template-columns:1fr 1fr; gap:4%; direction:rtl; }
+  .he-cell { direction:rtl; text-align:right; unicode-bidi:isolate; font-size:clamp(10px,1.45vw,13.5px); line-height:1.6; }
+  .en-cell { direction:ltr; text-align:left; unicode-bidi:isolate; color:var(--muted); font-size:clamp(9px,1.35vw,12.5px); line-height:1.6; }
+  .copybtn { position:absolute; left:3%; top:2.4%; background:transparent; color:var(--brand); border:1px solid var(--line-strong); border-radius:7px; padding:2px 9px; font-size:clamp(9px,1.2vw,12px); font-weight:700; }
+  .misidbtn { background:transparent; color:var(--error); border:1px solid color-mix(in srgb,var(--error) 40%,transparent); border-radius:7px; padding:1px 8px; font-size:clamp(8px,1.1vw,11px); }
+  .c-high{color:var(--good);font-weight:800} .c-mid{color:var(--warn);font-weight:800} .c-low{color:var(--error);font-weight:800}
+  .toast { position:absolute; left:3%; top:-2px; background:var(--good); color:#fff; border-radius:7px; padding:3px 10px; font-size:clamp(9px,1.2vw,12px); font-weight:700; opacity:0; transform:translateY(-6px); transition:.35s; }
+  .toast.show { opacity:1; transform:none; }
+
+  /* knowledge */
+  .krow { display:flex; align-items:center; gap:2%; background:var(--card); border:1px solid var(--line); border-radius:9px; padding:2.4% 3%; margin-top:2.4%; font-size:clamp(10px,1.4vw,13px); opacity:0; transform:translateY(6px); transition:.45s; }
+  .krow.show { opacity:1; transform:none; }
+
+  /* end checklist */
+  .endgrid { display:grid; grid-template-columns:1.3fr 1fr; gap:4%; }
+  .check li { list-style:none; font-size:clamp(10px,1.45vw,13.5px); margin-bottom:2.5%; }
+  .check li::before { content:'✓ '; color:var(--good); font-weight:800; }
+
+  /* animated cursor */
+  .cursor { position:absolute; z-index:20; width:22px; height:22px; left:0; top:0; transition:transform 1s cubic-bezier(.5,.05,.2,1); pointer-events:none; filter:drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+  .cursor svg { width:100%; height:100%; }
+  .cursor.click::after { content:''; position:absolute; inset:-10px; border:2px solid var(--brand); border-radius:50%; animation:clickpulse .5s ease-out; }
+  @keyframes clickpulse { from{transform:scale(.2);opacity:.9} to{transform:scale(1.4);opacity:0} }
+
+  /* caption / subtitle bar */
+  .caption { min-height:11%; background:linear-gradient(0deg,rgba(0,0,0,.06),transparent); position:absolute; inset:auto 0 0 0; z-index:15; padding:2% 4% 2.6%; display:flex; align-items:flex-end; }
+  .caption span { background:color-mix(in srgb, var(--bg) 86%, transparent); border:1px solid var(--line); border-radius:9px; padding:8px 14px; font-size:clamp(12px,1.85vw,17px); font-weight:600; line-height:1.5; box-shadow:0 6px 18px -10px rgba(0,0,0,.5); }
+
+  /* start overlay */
+  .overlay { position:absolute; inset:0; z-index:40; background:color-mix(in srgb,var(--bg) 82%, transparent); backdrop-filter:blur(2px); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; cursor:pointer; }
+  .overlay .play { width:clamp(64px,11vw,92px); aspect-ratio:1; border-radius:50%; background:var(--brand); color:#fff; display:flex; align-items:center; justify-content:center; font-size:clamp(26px,5vw,40px); box-shadow:0 12px 34px -10px color-mix(in srgb,var(--brand) 70%,transparent); }
+  .overlay .t { font-size:clamp(14px,2.2vw,19px); font-weight:800; }
+  .overlay .s { font-size:clamp(11px,1.5vw,13px); color:var(--muted); }
+  .overlay.hidden { display:none; }
+
+  /* controls */
+  .controls { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--card); border-top:1px solid var(--line); }
+  .controls button { background:transparent; border:1px solid var(--line-strong); color:var(--ink); border-radius:8px; padding:6px 12px; font-size:14px; cursor:pointer; font-weight:700; }
+  .controls button:hover { background:var(--card-hover); }
+  .controls .spacer { flex:1; }
+  .controls .count { font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .timeline { height:5px; background:var(--card-hover); cursor:pointer; }
+  .timeline > i { display:block; height:100%; width:0; background:var(--brand); transition:width .25s linear; }
+  .scenedots { display:flex; gap:5px; align-items:center; }
+  .scenedots i { width:8px; height:8px; border-radius:50%; background:var(--line-strong); display:block; cursor:pointer; }
+  .scenedots i.on { background:var(--brand); }
+
+  .note { color:var(--muted); font-size:12px; margin-top:10px; line-height:1.7; }
+  a { color:var(--brand); }
+  @media (max-width:560px){ .controls .lbl{display:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 סרטון הדרכה — איך עובדים עם מערכת הקטלוג</h1>
+  <div class="sub">כ-2 דקות · קריינות בעברית בקול נוירלי + כתוביות · אפשר לעצור, לדלג ולחזור בכל שלב</div>
+
+  <div class="player">
+    <div class="stage" id="stage">
+      <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="addr">films.mf-sr.com</span></div>
+
+      <!-- 0: title -->
+      <div class="title-card" data-scene="0">
+        <div class="em">📚🎞️📷</div>
+        <div class="big">מערכת הקטלוג הארכיוני<br><span class="tg">מדריך מהיר לעבודה</span></div>
+        <div class="muted">כל השלבים — מכניסה ועד רישום</div>
+      </div>
+
+      <!-- 1: login -->
+      <div class="scene" data-scene="1">
+        <h2>🔑 כניסה — מכל מחשב, בלי התקנה</h2>
+        <div class="login">
+          <div class="lead" style="margin-bottom:2%">נכנסים לכתובת <b>films.mf-sr.com</b> ומזינים אימייל:</div>
+          <div class="field" id="loginEmail">worker@example.org</div>
+          <div class="lead" style="margin:3% 0 2%">מגיע קוד חד-פעמי למייל:</div>
+          <div class="field" style="letter-spacing:8px;text-align:center" id="loginCode">4 8 2 9 1 5</div>
+          <div style="margin-top:2%"><span class="btnm" id="loginBtn">כניסה →</span></div>
+        </div>
+      </div>
+
+      <!-- 2: pick screen -->
+      <div class="scene" data-scene="2">
+        <h2>🗂 בוחרים מה לקטלג</h2>
+        <div class="cards">
+          <div class="dcard" id="cardPhoto"><div class="ic">📷</div><div class="t">קטלוג תצלומים</div><div class="d">תצלום בודד או אוסף · חזית + גב</div></div>
+          <div class="dcard"><div class="ic">🎞</div><div class="t">קטלוג סרטים</div><div class="d">טיימליין סצנה-אחר-סצנה</div></div>
+          <div class="dcard"><div class="ic">🗂</div><div class="t">תיאור-תיק</div><div class="d">רשומה אחת לתיק שלם</div></div>
+        </div>
+        <div class="lead" style="margin-top:3%">כאן בחרנו <b>תצלום</b> — הזרימה זהה בכל המסכים.</div>
+      </div>
+
+      <!-- 3: upload -->
+      <div class="scene" data-scene="3">
+        <h2>⬆️ מעלים את הקובץ</h2>
+        <div class="grid2">
+          <div>
+            <div class="lead" style="margin-bottom:2%">חזית התצלום:</div>
+            <div class="drop" id="dropFront">גררו קובץ או בחרו…<div style="margin-top:8px"><span class="filechip" id="fcFront">📷 photo_9317.jpg</span></div></div>
+          </div>
+          <div>
+            <div class="lead" style="margin-bottom:2%">גב התצלום (ורסו) — חשוב!</div>
+            <div class="drop" id="dropBack">גררו את הגב…<div style="margin-top:8px"><span class="filechip" id="fcBack">🔄 photo_9317_verso.jpg</span></div></div>
+          </div>
+        </div>
+        <div class="lead" style="margin-top:3%">הגב הוא לרוב מקור המידע הכי חשוב — שמות, תאריכים, חותמות.</div>
+      </div>
+
+      <!-- 4: context -->
+      <div class="scene" data-scene="4">
+        <h2>📝 ממלאים "מידע מוקדם"</h2>
+        <div class="lead" style="margin-bottom:2%">כל מה שידוע מהמוסר — המערכת בונה על זה ומסמנת התאמות וסתירות:</div>
+        <div class="ta" id="ctxBox"></div>
+      </div>
+
+      <!-- 5: processing -->
+      <div class="scene" data-scene="5">
+        <h2>⚙️ המערכת מקטלגת</h2>
+        <div class="procwrap">
+          <div class="ring" id="ring">
+            <svg viewBox="0 0 118 118"><circle cx="59" cy="59" r="52" fill="none" stroke="var(--card-hover)" stroke-width="11"></circle>
+            <circle id="ringArc" cx="59" cy="59" r="52" fill="none" stroke="var(--brand)" stroke-width="11" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"></circle></svg>
+            <div class="pct"><b id="pctNum">0%</b><small>מקטלג</small></div>
+          </div>
+          <div class="procinfo">
+            <div class="clock" id="clock">00:07</div>
+            <div class="bar"><i id="barFill"></i></div>
+            <div class="stagetxt" id="stageTxt">קריאת התצלום…</div>
+          </div>
+        </div>
+        <div class="lead" style="margin-top:3.5%">אפשר לעבוד על משהו אחר במקביל — התוצאה נשמרת אוטומטית.</div>
+      </div>
+
+      <!-- 6: record -->
+      <div class="scene" data-scene="6">
+        <h2>📄 קוראים את הרשומה (עברית + אנגלית)</h2>
+        <div class="rec">
+          <div class="recfield"><span class="copybtn">📋 העתק</span><div class="fl">כותר</div>
+            <div class="bilingual"><div class="he-cell">לודז', פולין, קבוצת נוער בחצר בית, <span class="c-mid">~</span>1941</div><div class="en-cell">Łódź, Poland, a youth group in a courtyard, ~1941</div></div></div>
+          <div class="recfield"><span class="copybtn">📋 העתק</span><div class="fl">מקומות</div>
+            <div class="bilingual"><div class="he-cell">גטו לודז' <span class="c-high">✓</span></div><div class="en-cell">Łódź Ghetto, Poland</div></div></div>
+          <div class="recfield"><span class="copybtn">📋 העתק</span><div class="fl">מידע נוסף</div>
+            <div class="bilingual"><div class="he-cell">כיתוב בגב (פולנית) פוענח <span class="c-high">✓</span>; אישה מרכזית — זוהתה ע"י המוסרת <span class="c-mid">~</span>.</div><div class="en-cell">Verso inscription (Polish) decoded; central woman — identified by the donor.</div></div></div>
+        </div>
+      </div>
+
+      <!-- 7: copy -->
+      <div class="scene" data-scene="7">
+        <h2>📤 מעתיקים למערכת הרישום — שדה אחר שדה</h2>
+        <div class="rec">
+          <div class="recfield"><span class="toast" id="copyToast">הועתק ✓</span><span class="copybtn" id="copyTarget">📋 העתק</span><div class="fl">כותר</div>
+            <div class="bilingual"><div class="he-cell">לודז', פולין, קבוצת נוער בחצר בית, ~1941</div><div class="en-cell">Łódź, Poland, a youth group in a courtyard, ~1941</div></div></div>
+        </div>
+        <div class="lead" style="margin-top:3%">לוחצים "העתק", עוברים למערכת הרישום, מדביקים. בלי הקלדה מחדש. יש גם ייצוא ל-Excel / PDF.</div>
+      </div>
+
+      <!-- 8: misid -->
+      <div class="scene" data-scene="8">
+        <h2>⚠️ זיהוי שגוי? לחיצה אחת</h2>
+        <div class="rec">
+          <div class="recfield"><div class="fl">מקומות &nbsp; <span class="misidbtn" id="misidBtn">⚠ זיהוי שגוי</span></div>
+            <div class="bilingual"><div class="he-cell">גטו לודז' <span class="c-mid">~</span></div><div class="en-cell">Łódź Ghetto, Poland</div></div></div>
+        </div>
+        <div class="lead" style="margin-top:3%">מסומן <span class="c-mid">~</span> או <span class="c-low">?</span> = לא ודאי. טעות? כפתור <b>זיהוי שגוי</b> ליד השדה — הדיווח נשמר והמערכת לומדת. <b>לא מעתיקים בעיוורון.</b></div>
+      </div>
+
+      <!-- 9: knowledge -->
+      <div class="scene" data-scene="9">
+        <h2>📚 מאגר ידע — חומר עזר חיצוני</h2>
+        <div class="lead" style="margin-bottom:2%">מעלים ספרי קהילה, מפתחות שמות ומחקרים — פעם אחת, והמערכת מצליבה מולם בכל קטלוג:</div>
+        <div class="field" id="kbName" style="direction:rtl;text-align:right">שם המקור: ספר קהילת לודז', כרך ב'</div>
+        <div><span class="btnm" id="kbUpload">⬆ העלאה</span></div>
+        <div class="krow" id="kbRow">✅ <b>ספר קהילת לודז', כרך ב'</b> — 214 עמ' נקלטו · יצליב אוטומטית בכל רשומה</div>
+      </div>
+
+      <!-- 10: end -->
+      <div class="title-card" data-scene="10">
+        <div class="em">✅</div>
+        <div class="big">זהו — אתם מוכנים לקטלג</div>
+        <div class="endgrid" style="width:82%;margin-top:2%;text-align:right">
+          <div class="mockcard"><div class="fl" style="font-weight:800;margin-bottom:6px">לפני רישום, בדקו:</div>
+            <ul class="check" style="padding:0;margin:0"><li>שמות ומקומות מסומני ~ / ?</li><li>הגב (ורסו) נבדק</li><li>תאריך תואם למוסר</li></ul></div>
+          <div class="mockcard" style="display:flex;flex-direction:column;justify-content:center;text-align:center">
+            <div style="font-size:26px">🛟</div><div class="muted" style="font-size:12px;margin-top:6px">שאלה או תקלה?<br>מנהל המערכת כאן בשבילכם</div></div>
+        </div>
+      </div>
+
+      <!-- animated cursor -->
+      <div class="cursor" id="cursor"><svg viewBox="0 0 24 24" fill="var(--ink)" stroke="#fff" stroke-width="1.2"><path d="M4 2 L4 20 L9 15 L12.5 22 L15 21 L11.5 14 L18 14 Z"/></svg></div>
+
+      <!-- caption -->
+      <div class="caption"><span id="caption"></span></div>
+
+      <!-- start overlay -->
+      <div class="overlay" id="overlay">
+        <div class="play">▶</div>
+        <div class="t">▶ הפעלת סרטון ההדרכה</div>
+        <div class="s">לחצו כדי להתחיל · עם קול וכתוביות בעברית</div>
+      </div>
+    </div>
+
+    <div class="timeline" id="timeline"><i id="timelineFill"></i></div>
+    <div class="controls">
+      <button id="btnPlay" title="נגן/עצור">⏯</button>
+      <button id="btnPrev" title="הקודם">⏮</button>
+      <button id="btnNext" title="הבא">⏭</button>
+      <button id="btnRestart" title="מהתחלה">↺</button>
+      <button id="btnSound" title="קול">🔊 <span class="lbl">קול</span></button>
+      <div class="scenedots" id="scenedots"></div>
+      <div class="spacer"></div>
+      <span class="count" id="count">1 / 11</span>
+    </div>
+  </div>
+
+  <div class="note">
+    💡 זהו סרטון מונפש שמתנגן בדפדפן — קל, נטען מיד, ותמיד מעודכן. רוצים קובץ וידאו לשליחה בוואטסאפ? אפשר להקליט מסך בזמן ההפעלה (⌘⇧5 במק) ולקבל MP4.
+    · מדריך הטקסט המלא: <a href="onboarding.html">onboarding.html</a>
+  </div>
+</div>
+
+<script>
+(function(){
+  var SCENES = [
+    { dur:4200, cap:"ברוכים הבאים למערכת הקטלוג הארכיוני. בסרטון הקצר הזה נראה את כל זרימת העבודה — מכניסה ועד רישום." },
+    { dur:6500, cap:"נכנסים מכל מחשב, בלי התקנה: לכתובת films.mf-sr.com, מזינים את האימייל שלכם, ומקבלים קוד חד-פעמי למייל. אין סיסמה לזכור.",
+      cursor:[{sel:'#loginEmail',at:800},{sel:'#loginCode',at:2600},{sel:'#loginBtn',at:4600,click:true}] },
+    { dur:5500, cap:"בוחרים מה לקטלג: תצלום, סרט, מסמך או תיק שלם. הזרימה זהה בכולם — כאן נדגים תצלום.",
+      cursor:[{sel:'#cardPhoto',at:1400,click:true}], onEnter:function(){cls('#cardPhoto','hi',1500);} },
+    { dur:6500, cap:"מעלים את החזית — ואם יש, גם את גב התצלום. הגב הוא לרוב מקור המידע הכי חשוב: שמות, תאריכים וחותמות.",
+      cursor:[{sel:'#dropFront',at:900,click:true},{sel:'#dropBack',at:3400,click:true}],
+      onEnter:function(){ show('#fcFront',900); show('#fcBack',3200); } },
+    { dur:7000, cap:"בתיבת המידע המוקדם כותבים כל מה שידוע מהמוסר. המערכת בונה על זה, מאשרת מול התצלום, ומדגלת סתירות.",
+      onEnter:typeContext },
+    { dur:7000, cap:"מתחילים — והמערכת קוראת את הפריט, מפענחת כיתובים ומצליבה מול מאגר הידע. אפשר לעבוד על משהו אחר במקביל.",
+      onEnter:runProcessing },
+    { dur:7500, cap:"מתקבלת רשומה דו-לשונית: כותר, מקומות, מידע נוסף ועוד. עברית מימין, אנגלית משמאל — קוראים את הכל, לא רק את הכותר." },
+    { dur:6200, cap:"מעתיקים למערכת הרישום שדה אחר שדה — לוחצים העתק, עוברים, מדביקים. בלי הקלדה מחדש. יש גם ייצוא לאקסל ו-PDF.",
+      cursor:[{sel:'#copyTarget',at:1200,click:true}], onEnter:function(){ cls('#copyTarget','hi',1400); show('#copyToast',1500); } },
+    { dur:7000, cap:"שימו לב לסימוני הוודאות: וי ירוק זה מאושר, טילדה וסימן שאלה — לא ודאי. מצאתם טעות? כפתור זיהוי שגוי ליד השדה. לא מעתיקים בעיוורון!",
+      cursor:[{sel:'#misidBtn',at:2600,click:true}], onEnter:function(){ cls('#misidBtn','hi',1800); } },
+    { dur:6800, cap:"אפשר להעלות חומר עזר חיצוני — ספרי קהילה, מפתחות שמות, מחקרים. פעם אחת, והמערכת מצליבה מולם בכל קטלוג עם ציון המקור.",
+      cursor:[{sel:'#kbUpload',at:2200,click:true}], onEnter:function(){ cls('#kbUpload','hi',1200); show('#kbRow',2500); } },
+    { dur:6000, cap:"זהו — אתם מוכנים. לפני כל רישום עברו על הבדיקות הקצרות, וכל שאלה — מנהל המערכת כאן בשבילכם. בהצלחה!" }
+  ];
+  // Each scene lasts its neural-narration clip + a short tail (measured from the
+  // generated Gemini-TTS audio in audio/guide/). Keeps visuals synced to speech.
+  var NARR_MS=[8970,13570,8810,9490,10010,9210,9690,10010,12850,10370,8650];
+  SCENES.forEach(function(s,n){ s.dur = NARR_MS[n] + 650; });
+
+  var stage=document.getElementById('stage'), cursor=document.getElementById('cursor'),
+      caption=document.getElementById('caption'), overlay=document.getElementById('overlay'),
+      tlFill=document.getElementById('timelineFill'), count=document.getElementById('count'),
+      dots=document.getElementById('scenedots');
+  var i=0, playing=false, sceneT0=0, raf=null, timers=[], soundOn=true, heVoice=null, started=false, gen=0, sceneTimer=null, tlTimer=null, sceneElapsed=0;
+
+  // Narration: pre-rendered NEURAL Hebrew audio (Gemini TTS, voice "Leda") is the
+  // primary voice — the SAME natural voice for every viewer, independent of their
+  // machine's installed voices. The browser's built-in speech is only a fallback
+  // if an audio file fails to load.
+  var narr = SCENES.map(function(_,n){ var a=new Audio('audio/guide/scene_'+String(n).padStart(2,'0')+'.mp3'); a.preload='auto'; return a; });
+  var curAudio=null;
+  function stopAudio(){ if(curAudio){ try{ curAudio.pause(); curAudio.currentTime=0; }catch(e){} } curAudio=null; if(window.speechSynthesis)speechSynthesis.cancel(); }
+  function narrate(n){ stopAudio(); if(!soundOn)return; var a=narr[n]; curAudio=a; try{a.currentTime=0;}catch(e){} a.play().catch(function(){ speakFallback(SCENES[n].cap); }); }
+
+  // Fallback path only: the browser's best available Hebrew voice.
+  function rankVoice(v){ var s=0,x=((v.name||'')+' '+(v.voiceURI||'')).toLowerCase(); if(/enhanced|premium|neural|natural|siri/.test(x))s+=4; if(v.localService===false)s+=1; return s; }
+  function pickVoice(){ var vs=window.speechSynthesis?speechSynthesis.getVoices():[]; heVoice=vs.filter(function(v){return /^he/i.test(v.lang);}).sort(function(a,b){return rankVoice(b)-rankVoice(a);})[0]||null; }
+  if(window.speechSynthesis){ speechSynthesis.onvoiceschanged=pickVoice; pickVoice(); }
+  function speakFallback(t){ if(!soundOn||!window.speechSynthesis)return; speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(t); u.lang='he-IL'; if(heVoice)u.voice=heVoice; u.rate=0.98; u.pitch=1.03; speechSynthesis.speak(u); }
+
+  // scene dots
+  SCENES.forEach(function(_,n){ var d=document.createElement('i'); d.onclick=function(){ go(n); }; dots.appendChild(d); });
+
+  function clearTimers(){ timers.forEach(clearTimeout); timers=[]; if(raf)cancelAnimationFrame(raf); raf=null; clearTimeout(sceneTimer); clearInterval(tlTimer); }
+  function at(fn,ms){ timers.push(setTimeout(fn,ms)); }
+  function show(sel,ms){ at(function(){ var e=stage.querySelector(sel); if(e)e.classList.add('show'); },ms); }
+  function cls(sel,c,ms){ var e=stage.querySelector(sel); if(!e)return; e.classList.add(c); at(function(){ e.classList.remove(c); },ms); }
+
+  function moveCursor(sel,click){ var el=stage.querySelector(sel); if(!el)return; var s=stage.getBoundingClientRect(), r=el.getBoundingClientRect();
+    var x=r.left-s.left+r.width/2-6, y=r.top-s.top+r.height/2-4; cursor.style.transform='translate('+x+'px,'+y+'px)';
+    if(click){ cursor.classList.remove('click'); void cursor.offsetWidth; cursor.classList.add('click'); } }
+
+  function resetScene(n){
+    // reset transient states so replays look right
+    ['#fcFront','#fcBack','#copyToast','#kbRow'].forEach(function(s){var e=stage.querySelector(s);if(e)e.classList.remove('show');});
+    stage.querySelectorAll('.hi').forEach(function(e){e.classList.remove('hi');});
+    if(n===4){ var c=stage.querySelector('#ctxBox'); if(c)c.innerHTML='<span class="caret"></span>'; }
+    if(n===5){ setRing(0); document.getElementById('stageTxt').textContent='קריאת התצלום…'; document.getElementById('clock').textContent='00:07'; }
+  }
+
+  function render(n){
+    stage.querySelectorAll('[data-scene]').forEach(function(el){ el.classList.toggle('active', +el.dataset.scene===n); });
+    Array.prototype.forEach.call(dots.children,function(d,k){ d.classList.toggle('on',k===n); });
+    count.textContent=(n+1)+' / '+SCENES.length;
+    caption.textContent=SCENES[n].cap;
+    cursor.style.opacity=(n===0||n===SCENES.length-1)?'0':'1';
+  }
+
+  function enterScene(n){
+    clearTimers(); gen++; sceneElapsed=0; resetScene(n); render(n);
+    var sc=SCENES[n];
+    if(sc.onEnter) at(sc.onEnter,60);
+    (sc.cursor||[]).forEach(function(c){ at(function(){ moveCursor(c.sel,c.click); }, c.at); });
+    narrate(n);
+    startClock();
+  }
+
+  // Scene ADVANCE is setTimeout-based so it fires even when a background/inactive
+  // tab throttles requestAnimationFrame. rAF stays only for the cosmetic ring +
+  // typing animations; the timeline bar is refreshed on a light interval.
+  function startClock(){
+    sceneT0=performance.now();
+    clearTimeout(sceneTimer); clearInterval(tlTimer);
+    sceneTimer=setTimeout(advance, Math.max(0, SCENES[i].dur - sceneElapsed));
+    tlTimer=setInterval(updateTl, 120); updateTl();
+  }
+  function updateTl(){ var el=sceneElapsed+(performance.now()-sceneT0); tlFill.style.width=Math.min(100,(el/SCENES[i].dur)*100)+'%'; }
+  function advance(){ if(i<SCENES.length-1){ i++; enterScene(i); } else { pause(); tlFill.style.width='100%'; } }
+  function setIcon(){ document.getElementById('btnPlay').textContent=playing?'⏸':'▶'; }
+
+  function play(){ if(!started){ started=true; overlay.classList.add('hidden'); } playing=true; setIcon(); enterScene(i); }
+  function resume(){ if(playing)return; if(sceneElapsed>=SCENES[i].dur-50){ sceneElapsed=0; playing=true; setIcon(); startClock(); narrate(i); return; }
+    playing=true; setIcon(); startClock(); if(soundOn){ if(curAudio && !curAudio.ended){ curAudio.play().catch(function(){}); } else { narrate(i); } } }
+  function pause(){ if(playing) sceneElapsed+=performance.now()-sceneT0; playing=false; setIcon(); clearTimeout(sceneTimer); clearInterval(tlTimer); if(raf)cancelAnimationFrame(raf); if(curAudio)curAudio.pause(); if(window.speechSynthesis)speechSynthesis.cancel(); }
+  function go(n){ i=Math.max(0,Math.min(SCENES.length-1,n)); if(!started){started=true;overlay.classList.add('hidden');} playing=true; setIcon(); enterScene(i); }
+
+  document.getElementById('btnPlay').onclick=function(){ if(!started){play();return;} playing?pause():resume(); };
+  document.getElementById('btnPrev').onclick=function(){ go(i-1); };
+  document.getElementById('btnNext').onclick=function(){ go(i+1); };
+  document.getElementById('btnRestart').onclick=function(){ go(0); };
+  document.getElementById('btnSound').onclick=function(){ soundOn=!soundOn; this.innerHTML=(soundOn?'🔊':'🔇')+' <span class="lbl">קול</span>'; if(!soundOn) stopAudio(); else if(playing) narrate(i); };
+  overlay.onclick=play;
+  document.getElementById('timeline').onclick=function(e){ var r=this.getBoundingClientRect(); var p=(e.clientX-r.left)/r.width; sceneT0=performance.now()-p*SCENES[i].dur; };
+  document.addEventListener('keydown',function(e){ if(e.code==='Space'){e.preventDefault();document.getElementById('btnPlay').click();} if(e.code==='ArrowLeft')go(i+1); if(e.code==='ArrowRight')go(i-1); });
+
+  // scene-specific animations
+  function typeContext(){ var box=stage.querySelector('#ctxBox'); if(!box)return; var g=gen;
+    var txt="מקור: מסירת משפחת לוין, 2024.\nהמוסרת מזהה: האישה במרכז — סבתה, רחל לוין (1912–1943).\nמקום משוער: גטו לודז'.\nתקופה: כנראה חורף 1941–42.";
+    box.innerHTML=''; var j=0; (function step(){ if(!playing||g!==gen){return;} box.textContent=txt.slice(0,j); var c=document.createElement('span'); c.className='caret'; box.appendChild(c); j++; if(j<=txt.length) at(step,55); })(); }
+
+  var C=326.7;
+  function setRing(p){ var arc=document.getElementById('ringArc'); if(arc)arc.style.strokeDashoffset=(C*(1-p/100)).toFixed(1); var n=document.getElementById('pctNum'); if(n)n.textContent=Math.round(p)+'%'; var b=document.getElementById('barFill'); if(b)b.style.width=p+'%'; }
+  function runProcessing(){ var t0=performance.now(), dur=6200, g=gen, stages=[[0,'קריאת התצלום…'],[25,'פענוח כיתוב הגב (פולנית)…'],[55,'הצלבה מול מאגר הידע…'],[80,'ניסוח הרשומה הדו-לשונית…'],[97,'כמעט מוכן…']];
+    (function frame(){ if(!playing||g!==gen){return;} var el=performance.now()-t0, p=Math.min(100,(el/dur)*100); setRing(p);
+      var sec=7+Math.round(el/1000); document.getElementById('clock').textContent='00:'+(sec<10?'0':'')+sec;
+      var st=stages[0][1]; stages.forEach(function(s){ if(p>=s[0])st=s[1]; }); document.getElementById('stageTxt').textContent= p>=100?'✓ הרשומה מוכנה':st;
+      if(p<100) raf=requestAnimationFrame(frame); })(); }
+
+  render(0);
+})();
+</script>
+<script src="yv-client-log.js"></script>
+</body>
+</html>

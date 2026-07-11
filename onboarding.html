@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מדריך לעובד — מערכת הקטלוג הארכיוני</title>
+<link rel="stylesheet" href="yv-theme.css">
+<style>
+  body { padding:20px; direction:rtl; text-align:right; }
+  .wrap { max-width: 840px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 2px; font-weight:800; }
+  .sub { color:var(--muted); font-size:13.5px; margin-bottom:6px; }
+  .toc { font-size:12.5px; color:var(--muted); margin-bottom:14px; line-height:1.9; }
+  .toc a { color:var(--brand); text-decoration:none; margin-inline-start:2px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); padding:16px 18px; margin-bottom:12px; }
+  .card h2 { margin:0 0 10px; font-size:15px; font-weight:800; }
+  .card h3 { margin:12px 0 4px; font-size:13.5px; font-weight:800; }
+  .card p, .card li { font-size:13.5px; line-height:1.75; }
+  .card p { margin:0 0 6px; }
+  ol, ul { margin:4px 0 0; padding-right:20px; }
+  li { margin-bottom:4px; }
+  .tbl { width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
+  .tbl th { text-align:right; color:var(--muted); font-weight:700; font-size:11.5px; padding:5px 8px; border-bottom:2px solid var(--line-strong); }
+  .tbl td { padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.6; }
+  .tbl td:first-child { white-space:nowrap; font-weight:700; }
+  .mark { display:inline-block; min-width:20px; text-align:center; font-weight:800; border-radius:5px; padding:0 6px; }
+  .m-ok { color:var(--good); background:color-mix(in srgb, var(--good) 15%, transparent); }
+  .m-mid { color:var(--warn); background:color-mix(in srgb, var(--warn) 15%, transparent); }
+  .m-low { color:var(--error); background:color-mix(in srgb, var(--error) 15%, transparent); }
+  .gold { border-right:4px solid var(--warn); background:color-mix(in srgb, var(--warn) 8%, transparent); padding:10px 14px; border-radius:var(--radius-sm); font-size:13.5px; line-height:1.7; }
+  .example { background:var(--bg); border:1px dashed var(--line-strong); border-radius:var(--radius-sm); padding:9px 13px; font-size:12.5px; line-height:1.7; margin:6px 0; }
+  .example b { color:var(--brand); }
+  .url { direction:ltr; unicode-bidi:isolate; font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:12.5px; background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:1px 7px; }
+  .kbd { background:var(--bg); border:1px solid var(--line-strong); border-radius:5px; padding:0 7px; font-size:12px; font-weight:700; unicode-bidi:isolate; }
+  .btn { background:var(--brand); color:#fff; border:none; border-radius:var(--radius-sm); padding:8px 16px; font-size:13px; font-weight:700; cursor:pointer; float:left; }
+  .check li { list-style:none; margin-bottom:6px; }
+  .check li::before { content:'☐ '; font-weight:700; }
+  .do li::before { content:'✓ '; color:var(--good); font-weight:800; }
+  .dont li::before { content:'✗ '; color:var(--error); font-weight:800; }
+  .do li, .dont li { list-style:none; }
+  .foot { color:var(--muted); font-size:12px; text-align:center; margin:16px 0 6px; }
+  @media print {
+    body { background:#fff !important; color:#000 !important; padding:0; }
+    .card { background:#fff !important; border-color:#bbb !important; break-inside:avoid; }
+    .card p, .card li, .card h2, .card h3, h1 { color:#000 !important; }
+    .sub, .foot, .tbl th, .toc { color:#444 !important; }
+    .tbl td { border-color:#ccc !important; color:#000 !important; }
+    .btn { display:none; }
+    .url, .kbd, .example { background:#f3f3f3 !important; color:#000 !important; border-color:#bbb !important; }
+    .gold { background:#fff8e6 !important; color:#000 !important; }
+    a { color:#000 !important; text-decoration:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <button class="btn" onclick="window.print()">🖨 הדפסה / שמירה כ-PDF</button>
+  <h1>📚 מדריך לעובד — מערכת הקטלוג הארכיוני</h1>
+  <div class="sub">כל מה שצריך כדי לעבוד נכון עם המערכת. שמרו את הדף — הוא זמין תמיד בכתובת <span class="url">films.mf-sr.com/onboarding.html</span></div>
+  <div style="background:color-mix(in srgb, var(--brand) 12%, transparent); border:1px solid color-mix(in srgb, var(--brand) 40%, transparent); border-radius:var(--radius-sm); padding:11px 15px; margin-bottom:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+    <span style="font-size:24px">🎬</span>
+    <div style="flex:1; min-width:200px; font-size:13.5px; line-height:1.6"><b>מעדיפים לראות במקום לקרוא?</b> יש סרטון הדרכה (כ-2 דקות, עם קריינות בעברית) שמדגים את כל זרימת העבודה.</div>
+    <a href="guide-video.html" class="btn" style="float:none; text-decoration:none; display:inline-block">▶ צפו בסרטון ההדרכה</a>
+  </div>
+  <div class="toc">
+    קפיצה מהירה:
+    <a href="#login">כניסה</a> · <a href="#screens">המסכים</a> · <a href="#howto">איך מקטלגים</a> · <a href="#context">מידע מוקדם</a> ·
+    <a href="#knowledge">מאגר ידע (חומר חיצוני)</a> · <a href="#confidence">סימוני ודאות</a> · <a href="#copy">העתקה וייצוא</a> ·
+    <a href="#advanced">אפשרויות מתקדמות</a> · <a href="#trouble">תקלות</a> · <a href="#checklist">צ'ק-ליסט</a>
+  </div>
+
+  <div class="card">
+    <h2>מה המערכת עושה?</h2>
+    <p>מעלים תצלום, סרט, מסמך או תיק שלם — והמערכת מפיקה <b>טיוטת רשומה קטלוגית דו-לשונית</b> (עברית + אנגלית): כותר, מקומות, תיאור מפורט, שמות ותפקידים, כיתובים מפוענחים ומתורגמים, ציר זמן, ונושאים. את הטיוטה בודקים, מתקנים במידת הצורך, ומעתיקים בלחיצת כפתור אל מערכת הרישום של הארכיון.</p>
+    <p>המערכת מצליבה את הפריט גם מול <b>מאגר הידע של הארכיון</b> (ספרים וחומרי עזר שאתם מעלים — ראו בהמשך) ומול מילוני מקומות ומחנות מבוססי-מקורות. היא חוסכת את רוב עבודת הניסוח — אבל <b>שיקול הדעת הארכיוני נשאר שלכם</b>.</p>
+  </div>
+
+  <div class="card" id="login">
+    <h2>🔑 כניסה למערכת (מכל מחשב, בלי התקנה)</h2>
+    <ol>
+      <li>פתחו דפדפן (רצוי Chrome מעודכן) בכתובת: <span class="url">https://films.mf-sr.com</span></li>
+      <li>הזינו את <b>כתובת האימייל שלכם</b> — זו שנרשמה אצל מנהל המערכת.</li>
+      <li>יגיע אליכם למייל <b>קוד חד-פעמי</b> — הקלידו אותו, ואתם בפנים. אין סיסמה לזכור.</li>
+    </ol>
+    <p style="margin-top:6px">קיבלתם הודעת <b>"המשתמש אינו מורשה"</b>? הכתובת שהקלדתם אינה ברשימת המורשים — פנו למנהל המערכת. הכניסה תקפה לזמן מוגבל; כשמתבקשים שוב — פשוט מזינים קוד חדש מהמייל.</p>
+  </div>
+
+  <div class="card" id="screens">
+    <h2>🗂 איזה מסך למה?</h2>
+    <table class="tbl">
+      <thead><tr><th>מסך</th><th>מתי משתמשים ומה מקבלים</th></tr></thead>
+      <tbody>
+        <tr><td>📷 קטלוג תצלומים</td><td><b>תצלום בודד או אוסף שלם.</b> מעלים את החזית, ואם קיים — גם את <b>גב התצלום</b> (ורסו): המערכת מפענחת כיתובים בכתב-יד, חותמות ומספרי ארכיון, ומצליבה אותם עם מה שנראה בחזית. באוסף אפשר להריץ גם <b>"זיהוי פנים באוסף"</b> — איתור אותו אדם לרוחב כמה תצלומים והפצת שם שזוהה לתצלומים לא-מכותבים.</td></tr>
+        <tr><td>🎞 קטלוג סרטים</td><td>סרטי ארכיון (אילמים ומדוברים). מתקבל <b>טיימליין סצנה-אחר-סצנה</b> עם תיאור דו-לשוני, כותרות ביניים מתועתקות ומתורגמות, ותקציר כולל. קיים גם <b>"זיהוי דמויות בסרט"</b> — דמויות חוזרות לאורך הסצנות.</td></tr>
+        <tr><td>📄 קטלוג מסמכים</td><td><b>תמלול ותיאור מלא</b> — רשומה נפרדת לכל עמוד. מתאים למסמכים בודדים או כשנדרש תוכן מלא וניתן-לחיפוש ברמת העמוד. איטי ויקר יותר מתיאור-תיק.</td></tr>
+        <tr><td>🗂 תיאור-תיק</td><td>רשומה מסכמת <b>אחת</b> לתיק שלם (PDF רב-עמודים): מפת מסמכים (מה יש בכל טווח דפים), <b>אינדקס שמות</b> עם דפים, וציר זמן מתועד. <b>ברירת המחדל לתיקים גדולים</b> — מהיר וזול פי כמה מתמלול מלא. אפשר תמיד להשלים תמלול מלא לתיק ספציפי אחר-כך.</td></tr>
+        <tr><td>📚 מאגר ידע</td><td>העלאת <b>חומרי עזר חיצוניים</b> שהמערכת מצליבה מולם בזמן קטלוג — פירוט בהמשך.</td></tr>
+        <tr><td>🌐 תרגום אקסל</td><td>קובץ אקסל עם עמודות כותר/תיאור בעברית → תרגום ארכיוני לאנגלית, עם ביקורת איכות אוטומטית.</td></tr>
+        <tr><td>📊 מצב המערכת</td><td>מה רץ עכשיו, מה הסתיים, שגיאות אחרונות, עומס. אם משהו "תקוע" — מתחילים כאן.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" id="howto">
+    <h2>▶️ איך מקטלגים — צעד אחר צעד (זהה בכל המסכים)</h2>
+    <ol>
+      <li><b>בחרו קובץ</b> להעלאה (או גררו אותו לחלון). קבצים גדולים — סרטים, תיקים כבדים — נשלחים <b>בחלקים אוטומטית</b>; אל תסגרו את הלשונית עד שההעלאה מסתיימת. העלאה שנקטעה ממשיכה מאותה נקודה בניסיון הבא.</li>
+      <li><b>תצלומים:</b> אם יש צילום של גב התצלום — העלו גם אותו בשדה הייעודי. הגב הוא לרוב מקור המידע הכי חשוב (שמות, תאריכים, מספרי אוסף).</li>
+      <li><b>מלאו "מידע מוקדם"</b> אם יש (ראו הסעיף הבא — זה הכלי החשוב ביותר לשיפור התוצאה).</li>
+      <li><b>אפשרויות עיבוד:</b> ברירות המחדל נכונות כמעט תמיד. שנו "זרימת עיבוד" רק אם הונחיתם (ראו "אפשרויות מתקדמות").</li>
+      <li><b>התחילו את הקטלוג.</b> ווידג'ט ההתקדמות מציג שלב, אחוזים וזמן. תצלום בודד — בדרך כלל דקה-שתיים; תיק גדול — עשרות דקות. אפשר לעבוד על דבר אחר במקביל; התוצאות נשמרות.</li>
+      <li><b>קראו את הרשומה כולה</b> — לא רק את הכותר. בדקו שמות, מקומות, תאריכים וכיתובים מול מה שידוע לכם ומול הפריט עצמו.</li>
+      <li><b>תקנו והעתיקו:</b> כפתור העתקה ליד כל שדה מעביר אותו למערכת הרישום בלי הקלדה מחדש. מצאתם זיהוי שגוי? דווחו בכפתור <span class="kbd">זיהוי שגוי</span> שליד השדה.</li>
+    </ol>
+  </div>
+
+  <div class="card" id="context">
+    <h2>📝 "מידע מוקדם" — הכלי החשוב ביותר שלכם</h2>
+    <p>כל מה שידוע על הפריט <b>לפני</b> הקטלוג — מהמוסר, מרשומת הקבלה, מהתיק — נכנס לתיבת "מידע מוקדם / הקשר" שליד ההעלאה. המערכת בונה על המידע הזה: מאשרת אותו מול מה שנראה בפריט, מסמנת התאמות, ומדגלת סתירות (למשל מוסר שציין 1942 אבל מדים מרמזים על מאוחר יותר).</p>
+    <h3>מה כותבים? כל מה שידוע, בשורות קצרות:</h3>
+    <div class="example">
+      מקור: מסירת משפחת לוין, 2024.<br>
+      המוסרת מזהה: האישה במרכז — סבתה, רחל לוין לבית קפלן (1912–1943).<br>
+      מקום משוער: גטו לודז', רחוב בז'זינסקה.<br>
+      תקופה: כנראה חורף 1941–42.<br>
+      הערה: הכיתוב מאחור בפולנית, לא פוענח במסירה.
+    </div>
+    <ul>
+      <li><b>ציינו את מקור המידע</b> ("המוסר זיהה…", "על-פי רשומת הקבלה…") — כך הרשומה תשקף נכון מה מגיע מהמוסר ומה מהתצלום.</li>
+      <li><b>אל תכתבו ניחושים כעובדות.</b> "כנראה", "משוער" — מילים לגיטימיות; המערכת יודעת לסמן בהתאם.</li>
+      <li>אין מידע? משאירים ריק. עדיף ריק מניחוש.</li>
+    </ul>
+  </div>
+
+  <div class="card" id="knowledge">
+    <h2>📚 מאגר ידע — העלאת חומר מידע חיצוני</h2>
+    <p>במסך <b>"מאגר ידע"</b> מעלים חומרי עזר של הארכיון: ספרי קהילה ופנקסים, מפתחות שמות, רשימות תושבים/נספים, מחקרים, נהלים פנימיים — קבצי PDF, Word או טקסט. מרגע ההעלאה, <b>בכל קטלוג</b> המערכת מחפשת במאגר קטעים רלוונטיים לפריט, ואם נמצאו — מוסיפה לרשומה הערת הצלבה קצרה <b>עם ציון המקור והעמוד</b> (בהערות המנהלה של הרשומה).</p>
+    <h3>איך מעלים נכון:</h3>
+    <ol>
+      <li>פתחו את מסך "מאגר ידע" מהעמוד הראשי.</li>
+      <li>בשדה <b>"שם המקור לציטוט"</b> תנו שם ברור — כך הוא יופיע בהצלבות. למשל: <span class="kbd">ספר קהילת לודז', כרך ב</span> ולא <span class="kbd">scan_final2.pdf</span>.</li>
+      <li>בחרו את הקובץ והעלו. ההטמעה רצה אוטומטית; המקור מופיע ברשימה עם מספר העמודים שנקלטו.</li>
+    </ol>
+    <h3>מה כדאי לדעת:</h3>
+    <ul class="do">
+      <li>מעלים פעם אחת — משרת את כל הקטלוגים מכאן והלאה, של כל הצוות.</li>
+      <li>אפשר להסיר מקור בכל רגע (כפתור מחיקה ליד המקור).</li>
+      <li>ההצלבה מנוסחת תמיד במילים של המערכת + הפניה למקור — היא לא מעתיקה טקסט מהספר לרשומה.</li>
+    </ul>
+    <ul class="dont">
+      <li>לא מעלים חומר שאינו של הארכיון או שאין אישור להשתמש בו.</li>
+      <li>לא מעלים סריקות באיכות ירודה מאוד — אם הטקסט לא קריא, ההצלבה לא תעבוד.</li>
+      <li>המאגר אינו תחליף ל"מידע מוקדם" על פריט ספציפי — מידע על הפריט שמולכם נכנס בתיבת המידע המוקדם.</li>
+    </ul>
+  </div>
+
+  <div class="card" id="confidence">
+    <h2>✓ סימוני ודאות — חובה להכיר</h2>
+    <p>כל זיהוי ברשומה (מקום, אדם, תאריך, אירוע) מסומן ברמת ודאות:</p>
+    <table class="tbl">
+      <tbody>
+        <tr><td><span class="mark m-ok">✓</span> מאושר</td><td>ראיה ברורה: כיתוב קריא, אתר מתועד, התאמה למידע המוסר או למאגר הידע.</td></tr>
+        <tr><td><span class="mark m-mid">~</span> סביר</td><td>מתיישב עם כמה סימנים חזותיים (לבוש, אדריכלות, תקופה) — אבל אין ראיה מכרעת אחת.</td></tr>
+        <tr><td><span class="mark m-low">?</span> משוער</td><td>דמיון חזותי או הקשר כללי בלבד.</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:8px">כלל אצבע: מה שמסומן <span class="mark m-mid">~</span> או <span class="mark m-low">?</span> <b>לא נכנס לרישום כעובדה</b> בלי בדיקה נוספת. המערכת מונחית שלא להמציא: מקום לא ידוע יישאר ריק, אדם לא מזוהה יתואר ("אישה מבוגרת עם טלאי צהוב") ולא יקבל שם.</p>
+  </div>
+
+  <div class="card">
+    <div class="gold"><b>🏅 כלל הזהב:</b> המערכת מכינה <b>טיוטה</b> — אתם הקטלוגים. היא מונחית לא להמציא פרטים, אבל היא יכולה לטעות: בפענוח כתב-יד, בזיהוי מקום דומה, בתעתיק שם. מצאתם זיהוי שגוי? לחצו <span class="kbd">זיהוי שגוי</span> ליד השדה, תארו בקצרה מה שגוי — הדיווח נבדק והמערכת משתפרת בזכותכם. אל תעתיקו בעיוורון.</div>
+  </div>
+
+  <div class="card" id="copy">
+    <h2>📤 העתקה וייצוא</h2>
+    <ul>
+      <li><b>כפתורי העתקה פר-שדה</b> — בכל רשומה, ליד כל שדה (כותר עברית, כותר אנגלית, מקומות, תיאור…): לוחצים, עוברים למערכת הרישום, מדביקים. זה סדר העבודה הרגיל.</li>
+      <li><b>ייצוא קבצים</b> — במסכי התיק ניתן להוריד את התוצאה גם כ-<b>Excel</b> או <b>PDF</b>, ובמקרים מיוחדים גם בפורמטים ארכיוניים (EAD/Dublin Core) — לפי הנחיית המנהל.</li>
+      <li><b>אינדקס שמות</b> — תיאורי-תיק מזינים אינדקס שמות מצטבר (שם, תפקיד, דפים, גורל אם כתוב) שמשמש את מאגר השמות של הארכיון.</li>
+      <li>התוצאות נשמרות גם בשרת — אפשר לחזור אליהן מ"מצב המערכת" או מהיסטוריית המסך.</li>
+    </ul>
+  </div>
+
+  <div class="card" id="advanced">
+    <h2>⚙️ אפשרויות מתקדמות (רק אם הונחיתם)</h2>
+    <ul>
+      <li><b>"זרימת עיבוד"</b> — בורר בראש כל מסך שקובע איזה מנוע AI מעבד את הפריט. <b>ברירת המחדל נכונה כמעט תמיד.</b> דוגמה לחריג: מסמך מודפס באיכות גבוהה — יש זרימה ייעודית מהירה; המנהל יגיד מתי.</li>
+      <li><b>סרטים ארוכים/כבדים מאוד</b> — אל תנסו להעלות דרך הדפדפן סרט של שעה; יש מסלול ייעודי שרץ ישירות על שרת הארכיון. תאמו עם המנהל.</li>
+      <li><b>אוסף תצלומים שלם</b> — אפשר להעלות תיקייה ולקטלג ברצף; מומלץ להתחיל בתצלומים המכותבים (עם גב) כדי שהזיהויים יזינו את השאר.</li>
+      <li><b>"זיהוי פנים באוסף" / "זיהוי דמויות בסרט"</b> — הזיהוי רץ מקומית על שרת הארכיון (התמונות לא נשלחות לשירות חיצוני) ומחזיר דף סקירה להחלטתכם — הוא מציע, אתם קובעים.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>💡 טוב לדעת</h2>
+    <ul>
+      <li>כל פעולה נרשמת תחת האימייל שלכם — כך אפשר לעזור כשמשהו משתבש, ולדעת מי קיטלג מה.</li>
+      <li>טיוטות ותוצאות נשמרות אוטומטית בדפדפן — ריענון עמוד לא מאבד עבודה.</li>
+      <li>יש מכסה יומית משותפת לפעולות קטלוג — הודעת "תקרת שימוש" אומרת שנגמרה להיום (מתאפסת בחצות).</li>
+      <li>חומרי הארכיון רגישים — לא משתפים קישורים, קבצים או תוצאות מחוץ לצוות, ולא מעבדים חומר במערכות חיצוניות.</li>
+      <li>המערכת עובדת מהדפדפן בלבד — שום דבר לא מותקן על המחשב שלכם.</li>
+    </ul>
+  </div>
+
+  <div class="card" id="trouble">
+    <h2>🛟 תקלות נפוצות</h2>
+    <table class="tbl">
+      <thead><tr><th>מה קרה</th><th>מה עושים</th></tr></thead>
+      <tbody>
+        <tr><td>"המשתמש אינו מורשה"</td><td>האימייל לא ברשימת המורשים — פנו למנהל המערכת.</td></tr>
+        <tr><td>"תקרת שימוש יומית"</td><td>המכסה המשותפת נגמרה להיום — מתאפסת בחצות. דחוף? מנהל.</td></tr>
+        <tr><td>העלאה נכשלה באמצע</td><td>נסו שוב — העלאות גדולות נשלחות בחלקים וממשיכות מאותה נקודה.</td></tr>
+        <tr><td>הקטלוג נעצר / שגיאה אדומה</td><td>בדקו במסך "מצב המערכת" ונסו שוב; חוזר על עצמו? צלמו מסך ושלחו למנהל.</td></tr>
+        <tr><td>תוצאה חלקית או מוזרה</td><td>ודאו שהקובץ קריא (סריקה טובה, לא חתוך); הוסיפו "מידע מוקדם" ונסו שוב. עדיין? דווחו.</td></tr>
+        <tr><td>האתר לא נטען בכלל</td><td>ייתכן שהשרת כבוי — דווחו למנהל המערכת.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" id="checklist">
+    <h2>📋 לפני שמעתיקים לרישום — צ'ק-ליסט של 30 שניות</h2>
+    <ul class="check">
+      <li>הכותר משקף את מה שרואים, במבנה המקובל (מקום, תיאור, תאריך)?</li>
+      <li>מקומות ושמות — בדקתם את אלה שמסומנים <span class="mark m-mid">~</span> / <span class="mark m-low">?</span>?</li>
+      <li>התאריך הגיוני ותואם את מידע המוסר?</li>
+      <li>כיתובים מפוענחים — התעתיק והתרגום סבירים? הגב (ורסו) נבדק?</li>
+      <li>הצלבות ממאגר הידע — קראתם את ההערה והמקור?</li>
+      <li>זיהוי שגוי שמצאתם — דיווחתם בכפתור <span class="kbd">זיהוי שגוי</span>?</li>
+    </ul>
+  </div>
+
+  <div class="foot">שאלות? הרשאות? תקלות? — מנהל המערכת עומד לרשותכם · המדריך זמין תמיד ב-<span class="url">films.mf-sr.com/onboarding.html</span></div>
+</div>
+<script src="yv-client-log.js"></script>
+</body>
+</html>

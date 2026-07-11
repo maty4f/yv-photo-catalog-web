@@ -633,12 +633,12 @@
     <div class="body">
       <textarea id="context-input" placeholder="מה ידוע על התצלום: מקור, תאריך משוער, מקום, אישים, אירוע, וכל מידע אחר רלוונטי…"></textarea>
       <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap: wrap;">
-        <label class="upload-btn" id="ctx-file-btn" for="ctx-file-input">📎 העלה מקובץ <small>PDF / Word / Excel / CSV / TXT</small></label>
-        <input type="file" id="ctx-file-input" accept=".pdf,.docx,.csv,.tsv,.xlsx,.xlsm,.txt,.md,.markdown,.rtf,.log,.json" class="visually-hidden-file">
+        <label class="upload-btn" id="ctx-file-btn" for="ctx-file-input">📎 חלץ מידע מקובץ <small>PDF (גם סרוק) / תמונה / Word / Excel / TXT</small></label>
+        <input type="file" id="ctx-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.docx,.csv,.tsv,.xlsx,.xlsm,.txt,.md,.markdown,.rtf,.log,.json" class="visually-hidden-file">
         <span id="ctx-file-status" class="mini-status"></span>
       </div>
       <div style="margin-top:8px; font-size:11.5px; color:var(--muted)">
-        הכל מתבצע בדפדפן — שום דבר לא נשלח עד שתלחץ "🔍 זהה תצלום" או "פתח Claude.ai".
+        התצלום עצמו נשלח רק כשתלחץ "🔍 זהה תצלום" או "פתח Claude.ai". מסמך מידע שתעלה כאן (📎) נשלח לשרת הארכיון לקריאה בלבד, על המפתח שלך.
       </div>
     </div>
   </section>
@@ -1879,34 +1879,48 @@ contextEl.addEventListener('drop', e => {
   if (f) extractContext(f);
 });
 
+// Upload an accompanying document (donor letter, intake form, background doc)
+// and let the archive server's AI pull the archivally-relevant facts into the
+// מידע-מוקדם box — the archivist reviews/edits, nothing is auto-submitted.
+// PDFs (incl. SCANNED) and images go straight to the server (Gemini reads +
+// OCRs them). Office/text files are read in the browser first, then their text
+// is distilled by the same AI. Never a raw dump — only the relevant context.
 async function extractContext(file) {
   const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
-  setMini(ctxStatus, '<span class="dot"></span>מחלץ ' + esc(file.name) + '…', 'working');
+  const isImg = /\.(jpe?g|png|webp|tiff?|gif)$/i.test(file.name);
+  setMini(ctxStatus, '<span class="dot"></span>מחלץ מידע מ־' + esc(file.name) + '… (עד דקה)', 'working');
   try {
-    let text = '', meta = {};
-    if (ext === '.pdf') ({ text, meta } = await extractPDF(file));
-    else if (ext === '.docx') ({ text, meta } = await extractDOCX(file));
-    else if (ext === '.xlsx' || ext === '.xlsm') ({ text, meta } = await extractXLSX(file));
-    else if (ext === '.csv' || ext === '.tsv') ({ text, meta } = await extractCSV(file, ext === '.tsv' ? '\t' : ','));
-    else if (['.txt','.md','.markdown','.rtf','.log','.json'].includes(ext)) {
-      text = await file.text();
-      meta = { format: ext.slice(1), char_count: text.length };
-    } else throw new Error('סוג לא נתמך: ' + ext);
-
+    let payload, sendName;
+    if (ext === '.pdf' || isImg) { payload = file; sendName = file.name; }
+    else {
+      let text = '';
+      if (ext === '.docx') ({ text } = await extractDOCX(file));
+      else if (ext === '.xlsx' || ext === '.xlsm') ({ text } = await extractXLSX(file));
+      else if (ext === '.csv' || ext === '.tsv') ({ text } = await extractCSV(file, ext === '.tsv' ? '\t' : ','));
+      else if (['.txt','.md','.markdown','.rtf','.log','.json'].includes(ext)) text = await file.text();
+      else throw new Error('סוג לא נתמך: ' + ext);
+      if (!text.trim()) throw new Error('לא נמצא טקסט בקובץ');
+      payload = new Blob([text], { type: 'text/plain' }); sendName = 'extracted.txt';
+    }
+    let base = location.origin;
+    try { if (typeof serverBase === 'function' && serverBase()) base = serverBase(); } catch (e) {}
+    if (state && state.localServerUrl) base = state.localServerUrl;
+    const fd = new FormData(); fd.append('file', payload, sendName);
+    const r = await fetch(base + '/api/context-extract', { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'חילוץ נכשל');
     const existing = contextEl.value.trim();
     const sep = existing ? '\n\n――――――――――――――――\n\n' : '';
-    contextEl.value = existing + sep + 'מקור: ' + file.name + '\n\n' + text;
-    const parts = [];
-    if (meta.page_count) parts.push(meta.page_count + ' עמ׳');
-    if (meta.row_count) parts.push(meta.row_count.toLocaleString() + ' שורות');
-    if (meta.sheet_count) parts.push(meta.sheet_count + ' גיליונות');
-    parts.push(text.length.toLocaleString() + ' תווים');
-    setMini(ctxStatus, '<span class="dot"></span>✓ נטען <span class="meta">' + parts.join(' · ') + '</span>', 'ok');
+    contextEl.value = existing + sep + (j.context || '').trim();
+    contextEl.dispatchEvent(new Event('input', { bubbles: true }));
+    setMini(ctxStatus, '<span class="dot"></span>✓ המידע חולץ מ־' + esc(file.name) + ' — בדקו וערכו לפי הצורך', 'ok');
   } catch (err) {
     setMini(ctxStatus, '<span class="dot"></span>שגיאה: ' + err.message, 'err');
   }
 }
-
+// Client-side PDF text layer — still used by the collection-document flow below
+// (which sends scanned PDFs to the model itself for OCR). The context-file
+// helper above no longer calls it (PDFs go straight to /api/context-extract).
 async function extractPDF(file) {
   const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs');
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs';
