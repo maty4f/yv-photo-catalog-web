@@ -25,6 +25,9 @@
   .yvm-btn.yvm-imp.yvm-sent{color:#1a7f37;border-color:#9c9;background:#effaf1}
   .yvm-btn.yvm-ok{border-color:#8bc79b;color:#1a7f37}
   .yvm-btn.yvm-ok:hover{background:#effaf1;border-color:#5aa96e}
+  .yvm-group{display:inline-flex;gap:4px;margin-inline-start:8px;vertical-align:middle;
+    white-space:nowrap;align-items:center}
+  .yvm-group .yvm-btn{margin-inline-start:0}
   .yvm-pop{position:fixed;z-index:99999;background:#fffdf3;border:1px solid #c9b458;border-radius:8px;
     box-shadow:0 4px 14px rgba(0,0,0,.18);padding:10px;width:min(340px,92vw);
     direction:rtl;text-align:right;font-family:inherit}
@@ -160,7 +163,7 @@
       });
   }
 
-  function openImprovePop(btn, field, label, getValue) {
+  function openImprovePop(btn, field, label, getValue, fieldEl) {
     closePop();
     const pop = document.createElement('div');
     pop.className = 'yvm-pop';
@@ -177,21 +180,15 @@
     const valBox = pop.querySelector('.yvm-pop-val');
     valBox.textContent = curVal ? (curVal.length > 400 ? curVal.slice(0, 400) + '…' : curVal) : '(השדה ריק)';
     document.body.appendChild(pop);
-    // מיקום: קודם כל בצד הפנוי של השדה (במסכים RTL — משמאל), כדי לא להסתיר
-    // את השדה; אין מקום בצדדים → מתחת לכפתור כמו קודם.
-    const r = btn.getBoundingClientRect();
+    // מיקום ביחס לשדה עצמו (לא לכפתור — השדה משתרע שמאלה מהכפתור במסכי RTL,
+    // אז "ליד הכפתור" נופל בדיוק על הטקסט): מתחת לגבול התחתון של השדה; אם אין
+    // מקום למטה — מעליו. לעולם לא על השדה.
+    const anchor = (fieldEl && fieldEl.getBoundingClientRect) ? fieldEl : btn;
+    const fr = anchor.getBoundingClientRect();
     const w = pop.offsetWidth, h = pop.offsetHeight;
-    let top, left;
-    if (r.left - w - 16 > 0) {                    // מקום פנוי משמאל
-      left = r.left - w - 12;
-      top = Math.max(8, Math.min(r.top - 10, window.innerHeight - h - 10));
-    } else if (r.right + w + 16 < window.innerWidth) {   // מקום פנוי מימין
-      left = r.right + 12;
-      top = Math.max(8, Math.min(r.top - 10, window.innerHeight - h - 10));
-    } else {                                      // fallback: מתחת לכפתור
-      top = Math.min(r.bottom + 6, window.innerHeight - h - 10);
-      left = Math.max(8, Math.min(r.left - 150, window.innerWidth - w - 8));
-    }
+    let top = fr.bottom + 8;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, fr.top - h - 8);
+    const left = Math.max(8, Math.min(fr.right - w, window.innerWidth - w - 8));  // מיושר לקצה הימני של השדה
     pop.style.top = top + 'px';
     pop.style.left = left + 'px';
     openPop = pop;
@@ -255,7 +252,7 @@
     return b;
   }
 
-  function makeImproveBtn(field, label, getValue) {
+  function makeImproveBtn(field, label, getValue, fieldEl) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'yvm-btn yvm-imp';
@@ -265,9 +262,19 @@
       ev.preventDefault();
       ev.stopPropagation();
       if (openPop) { closePop(); return; }
-      openImprovePop(b, field, label, getValue);
+      openImprovePop(b, field, label, getValue, fieldEl);
     });
     return b;
+  }
+
+  // שלושת הכפתורים כקבוצה אחת מיושרת — סדר קבוע, בלי שבירה עקומה בין שורות.
+  function makeGroup(field, label, getValue, fieldEl) {
+    const g = document.createElement('span');
+    g.className = 'yvm-group';
+    g.appendChild(makeBtn(field, label, getValue));
+    g.appendChild(makeImproveBtn(field, label, getValue, fieldEl));
+    g.appendChild(makeConfirmBtn(field, label, getValue));
+    return g;
   }
 
   function labelFor(el) {
@@ -290,11 +297,9 @@
     const lab = labelFor(el);
     const labelText = lab ? lab.textContent.trim().slice(0, 120) : el.id;
     const getVal = function () { return el.value; };
-    const btn = makeBtn(el.id, labelText, getVal);
-    const imp = makeImproveBtn(el.id, labelText, getVal);
-    const ok = makeConfirmBtn(el.id, labelText, getVal);
-    if (lab) { lab.appendChild(btn); lab.appendChild(imp); lab.appendChild(ok); }
-    else { el.insertAdjacentElement('beforebegin', btn); btn.insertAdjacentElement('afterend', imp); imp.insertAdjacentElement('afterend', ok); }
+    const group = makeGroup(el.id, labelText, getVal, el);
+    if (lab) lab.appendChild(group);
+    else el.insertAdjacentElement('beforebegin', group);
   }
 
   // דפוס ב' (documents-tik): שדות נבנים דינמית — .field > .head (label+copy) + .body[id].
@@ -306,9 +311,7 @@
     const labEl = head.querySelector('.label');
     const labelText = labEl ? labEl.textContent.trim().slice(0, 120) : body.id;
     const getVal = function () { return (body.innerText || body.textContent || '').slice(0, 4000); };
-    head.appendChild(makeBtn(body.id, labelText, getVal));
-    head.appendChild(makeImproveBtn(body.id, labelText, getVal));
-    head.appendChild(makeConfirmBtn(body.id, labelText, getVal));
+    head.appendChild(makeGroup(body.id, labelText, getVal, body));
   }
 
   let pending = null;
