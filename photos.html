@@ -894,7 +894,7 @@
 <!-- ============================================ -->
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
-<script src="yv-providers.js?v=20260711"></script>
+<script src="yv-providers.js?v=20260712"></script>
 <script type="module">
 
 // =====================================================================
@@ -2652,13 +2652,10 @@ async function loadUnifiedResults(base, outputName) {
 
 // HTML field value → plain text: confidence spans / <h4> subheads stripped,
 // block ends become newlines. "— … —" placeholders are treated as empty.
-function unifiedFieldText(v) {
-  if (typeof v !== 'string') return '';
-  const div = document.createElement('div');
-  div.innerHTML = v.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|h4|li|tr)>/gi, '\n');
-  const t = div.textContent.replace(/\n{3,}/g, '\n\n').trim();
-  return /^—.+—$/.test(t) ? '' : t;
-}
+// Shared in yv-providers.js (external review 2026-07-12 #7): parses via an
+// INERT DOMParser document, never a live innerHTML sink — AI-produced sidecar
+// HTML must not be able to fire <img onerror> on assignment.
+const unifiedFieldText = v => yvProviders.unifiedFieldText(v);
 
 // Split INFO_HE / INFO_EN by their <h4> subheads into the page's info fields.
 function splitUnifiedInfo(html) {
@@ -2695,8 +2692,8 @@ function mapUnifiedPhotoFields(f) {
   };
   const rows = html => {
     if (typeof html !== 'string' || html.indexOf('<tr') === -1) return [];
-    const div = document.createElement('div');
-    div.innerHTML = html;
+    // inert parse (review #7) — sidecar HTML never touches a live DOM sink
+    const div = yvProviders.parseInertHtml(html).body;
     return [...div.querySelectorAll('tr')]
       .map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()))
       .filter(c => c.length && c.some(Boolean));

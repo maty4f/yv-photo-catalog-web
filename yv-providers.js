@@ -113,5 +113,27 @@
     }
   }
 
-  window.yvProviders = { anthropicBase, anthropicFetch, anthropicJson, geminiBase, parseJson };
+  // ── Inert HTML parsing (external review 2026-07-12 #7) ─────────────────
+  // The unified sidecar HTML is AI-PRODUCED from untrusted historical documents.
+  // Assigning it to a live element's innerHTML (even detached) can fire
+  // <img onerror=…> on assignment — a prompt-injection payload in a scanned
+  // verso would execute in the dashboard. DOMParser yields an INERT document:
+  // nothing loads, nothing executes. Every sidecar-HTML read (field text,
+  // id-table rows, timeline scenes) must go through here, never innerHTML.
+  function parseInertHtml(html) {
+    return new DOMParser().parseFromString(typeof html === 'string' ? html : '', 'text/html');
+  }
+
+  // HTML field value → plain text: confidence spans / <h4> subheads stripped,
+  // block ends become newlines. "— … —" placeholders are treated as empty.
+  // Was copy-pasted across photos/films/documents-v2 — exactly the drift this
+  // file exists to prevent; consolidated here with the inert parser.
+  function unifiedFieldText(v) {
+    if (typeof v !== 'string') return '';
+    const doc = parseInertHtml(v.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|h4|li|tr)>/gi, '\n'));
+    const t = doc.body.textContent.replace(/\n{3,}/g, '\n\n').trim();
+    return /^—.+—$/.test(t) ? '' : t;
+  }
+
+  window.yvProviders = { anthropicBase, anthropicFetch, anthropicJson, geminiBase, parseJson, parseInertHtml, unifiedFieldText };
 })();

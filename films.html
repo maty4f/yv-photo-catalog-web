@@ -603,7 +603,7 @@
 
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
-<script src="yv-providers.js?v=20260711"></script>
+<script src="yv-providers.js?v=20260712"></script>
 <script type="module">
 const state = {
   film: null, filmMeta: null, identification: null,
@@ -1533,20 +1533,17 @@ async function loadUnifiedResults(base, outputName) {
 
 // HTML field value → plain text: confidence spans / <h4> subheads stripped,
 // block ends become newlines. "— … —" placeholders are treated as empty.
-function unifiedFieldText(v) {
-  if (typeof v !== 'string') return '';
-  const div = document.createElement('div');
-  div.innerHTML = v.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|h4|li|tr)>/gi, '\n');
-  const t = div.textContent.replace(/\n{3,}/g, '\n\n').trim();
-  return /^—.+—$/.test(t) ? '' : t;
-}
+// Shared in yv-providers.js (external review 2026-07-12 #7): parses via an
+// INERT DOMParser document, never a live innerHTML sink — AI-produced sidecar
+// HTML must not be able to fire <img onerror> on assignment.
+const unifiedFieldText = v => yvProviders.unifiedFieldText(v);
 
 // TIMELINE_SCENES (HTML <div class="scene"> blocks per templates/film.html)
 // → the page's timeline rows {start, end, description_he/en, confidence}.
 function parseUnifiedScenes(html) {
   if (typeof html !== 'string' || !html.trim()) return [];
-  const div = document.createElement('div');
-  div.innerHTML = html;
+  // inert parse (review #7) — sidecar HTML never touches a live DOM sink
+  const div = yvProviders.parseInertHtml(html).body;
   return [...div.querySelectorAll('.scene')].map(s => {
     const tc = (s.querySelector('.tc')?.textContent || '')
       .split(/[↓\n]+/).map(t => t.trim()).filter(Boolean);
