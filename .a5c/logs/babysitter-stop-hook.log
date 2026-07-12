@@ -96,3 +96,10 @@
 [INFO] 2026-07-04T17:51:02.097Z [session=3dafb3c6-4a2a-4e0e-bf74-30401ad2aa57] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
 [INFO] 2026-07-04T17:51:02.097Z [session=3dafb3c6-4a2a-4e0e-bf74-30401ad2aa57] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/3dafb3c6-4a2a-4e0e-bf74-30401ad2aa57.md
 [INFO] 2026-07-04T17:51:02.097Z [session=3dafb3c6-4a2a-4e0e-bf74-30401ad2aa57] No active loop found for session 3dafb3c6-4a2a-4e0e-bf74-30401ad2aa57 — allowing exit
+[INFO] 2026-07-12T18:57:55.811Z handleHookRunStop started
+[INFO] 2026-07-12T18:57:55.814Z Hook input received
+[INFO] 2026-07-12T18:57:55.814Z [session=59f9ff2c-44dc-425f-85f7-d7750efe6ab5] Session ID: 59f9ff2c-44dc-425f-85f7-d7750efe6ab5
+[INFO] 2026-07-12T18:57:55.814Z [session=59f9ff2c-44dc-425f-85f7-d7750efe6ab5] Resolved pluginRoot: /Users/maatyfrenkelzon/.claude/plugins/cache/a5c-ai/babysitter/4.0.157
+[INFO] 2026-07-12T18:57:55.814Z [session=59f9ff2c-44dc-425f-85f7-d7750efe6ab5] Resolved stateDir: /Users/maatyfrenkelzon/.a5c/state
+[INFO] 2026-07-12T18:57:55.814Z [session=59f9ff2c-44dc-425f-85f7-d7750efe6ab5] Checking session file at: /Users/maatyfrenkelzon/.a5c/state/59f9ff2c-44dc-425f-85f7-d7750efe6ab5.md
+[INFO] 2026-07-12T18:57:55.815Z [session=59f9ff2c-44dc-425f-85f7-d7750efe6ab5] No active loop found for session 59f9ff2c-44dc-425f-85f7-d7750efe6ab5 — allowing exit

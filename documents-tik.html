@@ -65,7 +65,7 @@
   .disagree .src{display:inline-block;min-width:62px;font-weight:600;color:var(--muted)}
   .none{color:var(--muted);font-style:italic}
   .tbl{width:100%;border-collapse:collapse;font-size:13px;direction:rtl;text-align:right}
-  .tbl th,.tbl td{border:1px solid var(--line);padding:5px 8px;text-align:right;vertical-align:top;unicode-bidi:isolate;color:var(--ink)}
+  .tbl th,.tbl td{border:1px solid var(--line);padding:5px 8px;text-align:right;vertical-align:top;unicode-bidi:isolate;color:var(--ink);overflow-wrap:anywhere}
   .tbl th{background:var(--card-hover);font-weight:600;color:var(--accent);white-space:nowrap}
   .tbl tr:nth-child(even) td{background:var(--tint)}
   .chip{display:inline-block;background:color-mix(in srgb, var(--accent) 14%, transparent);border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);color:var(--accent);border-radius:14px;
@@ -120,6 +120,7 @@
         <input type="password" id="key-gemini" class="ltr" placeholder="AIza…" autocomplete="off">
         <div class="hint">נדרש רק במצב דו-מנועי. נשמר מקומית במכשיר זה בלבד.</div>
       </div>
+      <div id="gemini-managed-note" class="hint" style="display:none;color:#7fd4a0">🔒 מפתח Gemini מנוהל בשרת — אין צורך להזין מפתח.</div>
     </div>
     <div class="row2">
       <div>
@@ -677,11 +678,15 @@ function renderRecord(rec,restored){
   const dia=(rec.diamonds||[]).length
     ? rec.diamonds.map(d=>`<div class="diamond"><b>${esc(d.type)}</b> — ${esc(d.description)}${d.location?` <small>(${esc(d.location)})</small>`:''}</div>`).join('')
     : '<span class="none">— לא זוהו יהלומים —</span>';
+  // Page-number lists arrive comma-packed ("84,85,86,…") — no break points, so
+  // long lists overflow the cell. Insert a space after each comma so the
+  // browser wraps the numbers onto the next line naturally.
+  const pgs=v=>v?esc(String(v)).replace(/,(?=\S)/g,', '):'—';
   // document inventory — the "map" of the תיק for navigation
   const inv=(rec.document_inventory||[]).filter(d=>d&&(d.doc_type||d.description||d.pages));
   const invHtml=inv.length
     ? `<table class="tbl"><thead><tr><th>דפים</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th></tr></thead><tbody>`+
-        inv.map(d=>`<tr><td>${esc(d.pages||'—')}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td></tr>`).join('')+
+        inv.map(d=>`<tr><td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td></tr>`).join('')+
       `</tbody></table>`
     : '<span class="none">— לא נרשם אינוונטר —</span>';
   // names index — feeds the Shoah Victims' Names DB
@@ -689,14 +694,14 @@ function renderRecord(rec,restored){
   const nmHtml=nm.length
     ? `<table class="tbl"><thead><tr><th>שם</th><th>תפקיד/קרבה</th><th>לידה</th><th>פטירה</th><th>מקום</th><th>גורל</th><th>דפים</th></tr></thead><tbody>`+
         nm.map(p=>{const name=esc(p.name||'')+(p.name_original?` <span style="color:var(--muted)">(${esc(p.name_original)})</span>`:'');
-          return `<tr><td>${name||'—'}</td><td>${esc(p.role||'—')}</td><td>${esc(p.birth||'—')}</td><td>${esc(p.death||'—')}</td><td>${esc(p.place||'—')}</td><td>${esc(p.fate||'—')}</td><td>${esc(p.source_pages||'—')}</td></tr>`;}).join('')+
+          return `<tr><td>${name||'—'}</td><td>${esc(p.role||'—')}</td><td>${esc(p.birth||'—')}</td><td>${esc(p.death||'—')}</td><td>${esc(p.place||'—')}</td><td>${esc(p.fate||'—')}</td><td>${pgs(p.source_pages)}</td></tr>`;}).join('')+
       `</tbody></table>`
     : '<span class="none">— לא זוהו שמות —</span>';
   // biographical timeline (chronological events)
   const tl=(rec.timeline||[]).filter(t=>t&&(t.event||t.date));
   const tlHtml=tl.length
     ? `<table class="tbl"><thead><tr><th>תאריך</th><th>אירוע</th><th>מקום</th><th>דפים</th></tr></thead><tbody>`+
-        tl.map(t=>`<tr><td>${esc(t.date||'—')}${t.confidence?' '+cmark(t.confidence):''}</td><td>${esc(t.event||'')}</td><td>${esc(t.place||'—')}</td><td>${esc(t.source_pages||'—')}</td></tr>`).join('')+
+        tl.map(t=>`<tr><td>${esc(t.date||'—')}${t.confidence?' '+cmark(t.confidence):''}</td><td>${esc(t.event||'')}</td><td>${esc(t.place||'—')}</td><td>${pgs(t.source_pages)}</td></tr>`).join('')+
       `</tbody></table>`
     : '<span class="none">— לא נבנה ציר זמן —</span>';
   // controlled-vocabulary subjects (thesaurus) as chips
@@ -891,7 +896,7 @@ h1{font-size:16px;border-bottom:2px solid #2c5f7c;padding-bottom:6px}
 .field{margin:6px 0}.field .label,.label{font-weight:700;color:#2c5f7c;font-size:11px}
 .copy-btn{display:none!important}
 table.tbl{width:100%;border-collapse:collapse;font-size:10.5px;margin:4px 0}
-table.tbl th,table.tbl td{border:1px solid #cbd5df;padding:3px 6px;text-align:right;vertical-align:top}
+table.tbl th,table.tbl td{border:1px solid #cbd5df;padding:3px 6px;text-align:right;vertical-align:top;overflow-wrap:anywhere}
 table.tbl th{background:#eef3f7}
 .chip{display:inline-block;background:#eef3f7;border-radius:10px;padding:1px 8px;margin:2px;font-size:10.5px}
 .disagree{border:1px solid #e0b000;background:#fffbe6;padding:8px 12px;border-radius:6px;margin-bottom:10px}
@@ -999,6 +1004,11 @@ $('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e
 // + pixel dimensions. Re-encoding to JPEG keeps every page in one color space
 // (DeviceRGB) and keeps the merged PDF small enough for big תיקים (156+ scans).
 async function pdfPageFor(file,edge=2000,quality=0.85){
+  // NOTE: benchmarked 2026-07-12 — createImageBitmap(+toBlob) is ~6x SLOWER
+  // than Image+toDataURL in this Chromium for large scans. Keep the simple
+  // decode path; the speedup for big tiks comes from the caller running
+  // pdfPageFor in a small concurrency pool (overlapping file reads, which
+  // dominate on cloud-mounted scans).
   const url=URL.createObjectURL(file);
   try{
     const img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('טעינת תמונה נכשלה'));im.src=url;});
@@ -1071,11 +1081,17 @@ async function buildCombinedPdf(){
   if(state.pdfBlob&&state.pdfKey===key)return state.pdfBlob;
   const bar=$('pdf-bar');bar.style.display='block';
   bar.textContent='⏳ בונה PDF מאוחד מ-'+imgs.length+' תמונות…';
-  const pages=[];
-  for(let i=0;i<imgs.length;i++){
-    pages.push(await pdfPageFor(imgs[i]));
-    bar.textContent='⏳ בונה PDF מאוחד… '+(i+1)+'/'+imgs.length;
-  }
+  // Pool of 4: overlaps file reads (the dominant cost on cloud-mounted scans).
+  // Full-quality pages are heavier than the describe path, so keep the pool small.
+  const pages=new Array(imgs.length);
+  let built=0;
+  const POOL=Math.min(4,imgs.length);
+  await Promise.all(Array.from({length:POOL},async(_,k)=>{
+    for(let i=k;i<imgs.length;i+=POOL){
+      pages[i]=await pdfPageFor(imgs[i]);
+      bar.textContent='⏳ בונה PDF מאוחד… '+(++built)+'/'+imgs.length;
+    }
+  }));
   const tikName=((imgs[0].webkitRelativePath||'').split('/')[0]||'תיק').replace(/[\\/:*?"<>|]+/g,'_');
   const today=new Date().toISOString().slice(0,10).replace(/-/g,'');
   state.pdfBlob=new Blob([buildImagesPdf(pages)],{type:'application/pdf'});
@@ -1126,7 +1142,10 @@ $('run').addEventListener('click',async()=>{
   try{serverBase();}catch(e){showStatus(esc(e.message),'err');return;}
   const engine=$('engine-mode').value;  // 'claude' | 'dual'
   if(engine==='dual'){
-    state.keyGemini=$('key-gemini').value.trim();
+    // When the server manages the Gemini key (owner), the proxy injects it and
+    // overrides x-goog-api-key — the browser never needs a key. Use the sentinel
+    // instead of the (intentionally hidden, empty) input so the gate never blocks.
+    state.keyGemini=window.YV_GEMINI_MANAGED?'server-managed':$('key-gemini').value.trim();
     if(!state.keyGemini){showStatus('מצב דו-מנועי דורש מפתח Gemini (הקריאה הויזואלית של הדפים).','err');return;}
   }
   const reader=engine==='dual'?'Gemini':'Claude';
@@ -1242,11 +1261,18 @@ async function fastDescribe(){
     if(state.files.length===1&&mimeOf(state.files[0])==='application/pdf'){
       blob=state.files[0];name=state.files[0].name||'tik.pdf';   // single uploaded PDF — as-is
     }else if(imgs.length){
-      const pages=[];
-      for(let i=0;i<imgs.length;i++){
-        showStatus(`<span class="spinner"></span>תיאור מהיר · בונה PDF מוקטן לתיאור… ${i+1}/${imgs.length}`,'info');
-        pages.push(await pdfPageFor(imgs[i],1100,0.55));
-      }
+      // Concurrency pool: overlap file reads (slow on cloud-mounted scans) with
+      // decode/encode. Order is preserved via index assignment. Pool of 4 keeps
+      // memory bounded (~4 decoded bitmaps at 1100px) and the UI responsive.
+      const pages=new Array(imgs.length);
+      let built=0;
+      const POOL=Math.min(4,imgs.length);
+      await Promise.all(Array.from({length:POOL},async(_,k)=>{
+        for(let i=k;i<imgs.length;i+=POOL){
+          pages[i]=await pdfPageFor(imgs[i],1100,0.55);
+          showStatus(`<span class="spinner"></span>תיאור מהיר · בונה PDF מוקטן לתיאור… ${++built}/${imgs.length}`,'info');
+        }
+      }));
       blob=new Blob([buildImagesPdf(pages)],{type:'application/pdf'});name='tik_describe.pdf';
     }
     if(!blob){showStatus('צריך PDF יחיד או סריקות תמונה.','err');return;}
@@ -1359,7 +1385,10 @@ $('describe-fast').addEventListener('click',fastDescribe);
 /* ---------- engine-mode toggle: reveal Gemini fields only in dual mode ---------- */
 function syncEngineUI(){
   const dual=$('engine-mode').value==='dual';
-  $('gemini-key-wrap').style.display=dual?'block':'none';
+  const managed=!!window.YV_GEMINI_MANAGED;
+  // In dual mode show the key field ONLY when the server does not manage the key.
+  $('gemini-key-wrap').style.display=(dual&&!managed)?'block':'none';
+  const gm=$('gemini-managed-note');if(gm)gm.style.display=(dual&&managed)?'block':'none';
   $('model-gemini-wrap').style.display=dual?'block':'none';
 }
 $('engine-mode').addEventListener('change',syncEngineUI);
@@ -1468,6 +1497,7 @@ idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('ove
     // the server overrides x-goog-api-key, so this value never reaches Google
     // and nothing is persisted client-side. No-op if the server has no key.
     if (c && c.geminiKeyManaged) {
+      window.YV_GEMINI_MANAGED = true;   // owner: proxy injects the key — never prompt for one
       try { localStorage.removeItem('yv_api_key_gemini'); } catch (e) {}
       try {
         if (typeof state === 'object' && state) {
@@ -1482,6 +1512,7 @@ idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('ove
         if (_row) _row.style.display = 'none';
       }
       try { if (typeof refreshButtons === 'function') refreshButtons(); } catch (e) {}
+      try { if (typeof syncEngineUI === 'function') syncEngineUI(); } catch (e) {}
     }
     var n = c && c.archiveName; if (!n) return;
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { apply(n); });
