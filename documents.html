@@ -865,7 +865,10 @@ if (testGeminiBtn && testGeminiStatus) {
         if (reason === 'API_KEY_INVALID' || listRes.status === 400) hint = '<br>👉 המפתח לא חוקי או פג. צור חדש ב-<a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com/app/apikey</a>.';
         else if (listRes.status === 403) hint = '<br>👉 ייתכן ש-Generative Language API לא מופעל בפרויקט שלך. גש ל-<a href="https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com" target="_blank">Google Cloud Console</a> ולחץ "Enable".';
         else if (listRes.status === 429) hint = '<br>👉 חרגת מ-quota. חכה דקה ונסה שוב, או שדרג ל-paid tier.';
-        testGeminiStatus.innerHTML = `<span style="color:var(--error);">❌ <b>שלב 1 נכשל — HTTP ${listRes.status}</b>${reason ? ' (' + reason + ')' : ''}<br>${msg}${hint}</span>`;
+        // esc() the API-derived error text (audit 2026-07-12 #): a malicious/
+        // compromised proxy at geminiBase() could return HTML that would execute
+        // in this origin (which holds the key + reaches /api/*).
+        testGeminiStatus.innerHTML = `<span style="color:var(--error);">❌ <b>שלב 1 נכשל — HTTP ${esc(String(listRes.status))}</b>${reason ? ' (' + esc(reason) + ')' : ''}<br>${esc(msg)}${hint}</span>`;
         return;
       }
       const listData = JSON.parse(listBody);
@@ -876,7 +879,7 @@ if (testGeminiBtn && testGeminiStatus) {
       const selectedAvailable = allModels.includes(selectedModel);
 
       // STEP 2: try a tiny generateContent call with the selected model
-      testGeminiStatus.innerHTML = `<span style="color:var(--muted);">⏳ שלב 2/2 · מנסה לקרוא ל-${selectedModel}…</span>`;
+      testGeminiStatus.innerHTML = `<span style="color:var(--muted);">⏳ שלב 2/2 · מנסה לקרוא ל-${esc(selectedModel)}…</span>`;
       const genRes = await fetch(geminiBase() + '/v1beta/models/' + selectedModel + ':generateContent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
@@ -887,21 +890,21 @@ if (testGeminiBtn && testGeminiStatus) {
       });
       const genBody = await genRes.text();
       let resultHtml = `<div style="color:var(--good); font-weight:600;">✓ <b>שלב 1: המפתח תקין.</b> זוהו ${allModels.length} מודלים זמינים.</div>`;
-      resultHtml += `<div style="margin-top:4px; font-size:10.5px; color:var(--muted);"><b>Flash זמינים:</b> ${flashModels.join(', ') || '— אין —'}</div>`;
-      if (proModels.length) resultHtml += `<div style="font-size:10.5px; color:var(--muted);"><b>Pro זמינים:</b> ${proModels.join(', ')}</div>`;
+      resultHtml += `<div style="margin-top:4px; font-size:10.5px; color:var(--muted);"><b>Flash זמינים:</b> ${esc(flashModels.join(', ')) || '— אין —'}</div>`;
+      if (proModels.length) resultHtml += `<div style="font-size:10.5px; color:var(--muted);"><b>Pro זמינים:</b> ${esc(proModels.join(', '))}</div>`;
       if (genRes.ok) {
-        resultHtml += `<div style="margin-top:6px; color:var(--good); font-weight:600;">✓ <b>שלב 2: ${selectedModel} עובד תקין!</b> הכל מוכן לשימוש.</div>`;
+        resultHtml += `<div style="margin-top:6px; color:var(--good); font-weight:600;">✓ <b>שלב 2: ${esc(selectedModel)} עובד תקין!</b> הכל מוכן לשימוש.</div>`;
       } else {
         let genParsed = {}; try { genParsed = JSON.parse(genBody); } catch {}
         const genMsg = genParsed.error?.message || genBody.slice(0, 300);
-        resultHtml += `<div style="margin-top:6px; color:var(--error);">❌ <b>שלב 2 נכשל — HTTP ${genRes.status}</b><br>${genMsg}</div>`;
+        resultHtml += `<div style="margin-top:6px; color:var(--error);">❌ <b>שלב 2 נכשל — HTTP ${esc(String(genRes.status))}</b><br>${esc(genMsg)}</div>`;
         if (!selectedAvailable && flashModels.length) {
-          resultHtml += `<div style="margin-top:4px; color:var(--warn);">👉 <b>${selectedModel} לא מופיע ברשימת המודלים הזמינים אצלך.</b> נסה לבחור אחד מהמודלים שכן מופיעים למעלה (למשל ${flashModels[0]}).</div>`;
+          resultHtml += `<div style="margin-top:4px; color:var(--warn);">👉 <b>${esc(selectedModel)} לא מופיע ברשימת המודלים הזמינים אצלך.</b> נסה לבחור אחד מהמודלים שכן מופיעים למעלה (למשל ${esc(flashModels[0])}).</div>`;
         }
       }
       testGeminiStatus.innerHTML = resultHtml;
     } catch (e) {
-      testGeminiStatus.innerHTML = `<span style="color:var(--error);">❌ שגיאת רשת: ${e.message}<br>אולי חומת אש או VPN חוסמים את generativelanguage.googleapis.com?</span>`;
+      testGeminiStatus.innerHTML = `<span style="color:var(--error);">❌ שגיאת רשת: ${esc(String(e && e.message || e))}<br>אולי חומת אש או VPN חוסמים את generativelanguage.googleapis.com?</span>`;
     } finally {
       testGeminiBtn.disabled = false;
       testGeminiBtn.innerText = '🔍 בדוק מפתח';
