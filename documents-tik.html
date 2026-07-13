@@ -67,6 +67,10 @@
   .mini-btn{background:transparent;border:1px solid var(--line);border-radius:var(--radius-sm);
        color:inherit;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit}
   .mini-btn:hover{border-color:var(--accent)}
+  /* מפתח שמות — שלוש רשימות מקוטלגות */
+  .names-section{margin:0 0 14px}
+  .names-sub{font-weight:700;font-size:13px;margin:0 0 6px;color:var(--accent);direction:rtl;text-align:right}
+  .names-count{color:var(--muted);font-weight:400;font-size:11.5px}
   /* כפתור תיאור-מפורט לעדות */
   .deep-btn{background:transparent;border:1px solid var(--accent);color:var(--accent);
        border-radius:var(--radius-sm);padding:3px 8px;font-size:11.5px;cursor:pointer;
@@ -776,23 +780,42 @@ function renderRecord(rec,restored){
   // (type_key is the engine's controlled-vocabulary key; the text match covers
   // records described before the vocabulary existed).
   const isTestimony=d=>d.type_key==='testimony'||/עדות|testimon/i.test(String(d.doc_type||''));
+  // "עמוד בתיק" = continuous tik-wide sequence; "דפי מקור" = physical numbers
+  // (restart across bundles). Column shown only when the engine stamped tik_pages.
+  const hasTikPages=inv.some(d=>String(d.tik_pages||'').trim());
   const invHtml=inv.length
-    ? `<table class="tbl"><thead><tr><th>דפים</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th><th></th></tr></thead><tbody>`+
-        inv.map(d=>`<tr><td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
+    ? `<table class="tbl"><thead><tr>${hasTikPages?'<th>עמוד בתיק</th>':''}<th>דפי מקור</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th><th></th></tr></thead><tbody>`+
+        inv.map(d=>`<tr>${hasTikPages?`<td>${pgs(d.tik_pages||'—')}</td>`:''}<td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
           `<td>${isTestimony(d)?`<button class="deep-btn" data-pages="${esc(String(d.pages||''))}" data-desc="${esc(String(d.description||d.doc_type||''))}">🔎 תיאור מפורט</button>`:''}</td></tr>`).join('')+
       `</tbody></table>`
     : '<span class="none">— לא נרשם אינוונטר —</span>';
   // deep descriptions from previous button runs ride the record (refresh-safe)
   const deepBlocks=(rec.deep_descriptions||[]).map((d,i)=>
     fieldBlock(`תיאור מפורט — עדות (דפים ${d.pages||'?'})`,`f-deep-${i}`,d.html||esc(d.text||''))).join('');
-  // names index — feeds the Shoah Victims' Names DB
+  // names index — feeds the Shoah Victims' Names DB. Split into three lists
+  // (archivist decision): Jews & fate (the focus) · Germans/collaborators with
+  // role+crimes+fate · additional people. Records with no category fall back to
+  // the single legacy table.
   const nm=(rec.names_index||[]).filter(p=>p&&(p.name||p.name_original));
-  const nmHtml=nm.length
-    ? `<table class="tbl"><thead><tr><th>שם</th><th>תפקיד/קרבה</th><th>לידה</th><th>פטירה</th><th>מקום</th><th>גורל</th><th>דפים</th></tr></thead><tbody>`+
-        nm.map(p=>{const name=esc(p.name||'')+(p.name_original?` <span style="color:var(--muted)">(${esc(p.name_original)})</span>`:'');
-          return `<tr><td>${name||'—'}</td><td>${esc(p.role||'—')}</td><td>${esc(p.birth||'—')}</td><td>${esc(p.death||'—')}</td><td>${esc(p.place||'—')}</td><td>${esc(p.fate||'—')}</td><td>${pgs(p.source_pages)}</td></tr>`;}).join('')+
-      `</tbody></table>`
-    : '<span class="none">— לא זוהו שמות —</span>';
+  const nameCell=p=>esc(p.name||'')+(p.name_original&&p.name_original!==p.name?` <span style="color:var(--muted)">(${esc(p.name_original)})</span>`:'')||'—';
+  const nmTable=(list,cols)=>`<table class="tbl"><thead><tr>`+cols.map(c=>`<th>${c[0]}</th>`).join('')+
+    `</tr></thead><tbody>`+list.map(p=>`<tr>`+cols.map(c=>`<td>${c[1](p)}</td>`).join('')+`</tr>`).join('')+`</tbody></table>`;
+  const COLS={
+    jew:[['שם',nameCell],['לידה',p=>esc(p.birth||'—')],['פטירה',p=>esc(p.death||'—')],['מקום',p=>esc(p.place||'—')],['גורל',p=>esc(p.fate||'—')],['דפים',p=>pgs(p.source_pages)]],
+    perpetrator:[['שם',nameCell],['תפקיד',p=>esc(p.role||'—')],['פשעים',p=>esc(p.crimes||'—')],['גורל',p=>esc(p.fate||'—')],['דפים',p=>pgs(p.source_pages)]],
+    other:[['שם',nameCell],['תפקיד/קרבה',p=>esc(p.role||'—')],['מקום',p=>esc(p.place||'—')],['דפים',p=>pgs(p.source_pages)]]
+  };
+  const legacyCols=[['שם',nameCell],['תפקיד/קרבה',p=>esc(p.role||'—')],['לידה',p=>esc(p.birth||'—')],['פטירה',p=>esc(p.death||'—')],['מקום',p=>esc(p.place||'—')],['גורל',p=>esc(p.fate||'—')],['דפים',p=>pgs(p.source_pages)]];
+  let nmHtml;
+  if(!nm.length){ nmHtml='<span class="none">— לא זוהו שמות —</span>'; }
+  else if(!nm.some(p=>(p.category||'').trim())){ nmHtml=nmTable(nm,legacyCols); }
+  else{
+    const SECT=[['jew','יהודים וגורלם / Jews & their fate'],['perpetrator','גרמנים ומשתפי פעולה / Germans & collaborators'],['other','אנשים נוספים / Additional people']];
+    nmHtml=SECT.map(([k,title])=>{
+      const g=nm.filter(p=>((p.category||'other').trim().toLowerCase()===k)||(k==='other'&&!['jew','perpetrator'].includes((p.category||'').trim().toLowerCase())));
+      return g.length?`<div class="names-section"><div class="names-sub">${title} <span class="names-count">(${g.length})</span></div>${nmTable(g,COLS[k])}</div>`:'';
+    }).join('');
+  }
   // biographical timeline (chronological events)
   const tl=(rec.timeline||[]).filter(t=>t&&(t.event||t.date));
   const tlHtml=tl.length
@@ -998,7 +1021,7 @@ function recordToCsv(rec){
     ['שפות',j(rec.languages)],['סיווג',rec.classification||''],['הערת תוכן',rec.content_note||''],
   ]);
   sec('מפת התיק',['דפים','סוג','תאריך','שפות','תיאור'],(rec.document_inventory||[]).map(d=>[d.pages,d.doc_type,d.date,d.languages,d.description]));
-  sec('מפתח שמות',['שם','כתיב מקורי','תפקיד','לידה','פטירה','מקום','גורל','דפים'],(rec.names_index||[]).map(p=>[p.name,p.name_original,p.role,p.birth,p.death,p.place,p.fate,p.source_pages]));
+  sec('מפתח שמות',['שם','כתיב מקורי','סיווג','תפקיד','פשעים','לידה','פטירה','מקום','גורל','דפים'],(rec.names_index||[]).map(p=>[p.name,p.name_original,({jew:'יהודי/ה',perpetrator:'גרמני/משתף-פעולה',other:'אחר'}[(p.category||'').trim().toLowerCase()]||''),p.role,p.crimes,p.birth,p.death,p.place,p.fate,p.source_pages]));
   sec('ציר זמן',['תאריך','אירוע','מקום','דפים','ודאות'],(rec.timeline||[]).map(t=>[t.date,t.event,t.place,t.source_pages,t.confidence]));
   return '﻿'+L.join('\n');
 }
