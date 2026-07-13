@@ -71,6 +71,11 @@
   .names-section{margin:0 0 14px}
   .names-sub{font-weight:700;font-size:13px;margin:0 0 6px;color:var(--accent);direction:rtl;text-align:right}
   .names-count{color:var(--muted);font-weight:400;font-size:11.5px}
+  /* בחירה פר-שורה בטבלאות (אינוונטר / שמות / ציר-זמן) */
+  .tbl th.rp,.tbl td.rp{width:26px;text-align:center;padding:4px 4px}
+  .row-pick{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;margin:0}
+  tr.row-off td{opacity:.38}
+  tr.row-off td.rp{opacity:1}
   /* כפתור תיאור-מפורט לעדות */
   .deep-btn{background:transparent;border:1px solid var(--accent);color:var(--accent);
        border-radius:var(--radius-sm);padding:3px 8px;font-size:11.5px;cursor:pointer;
@@ -668,6 +673,27 @@ async function synthesizeTik(notes,onStage){
 }
 
 /* ---------- render ---------- */
+/* clone `el` minus rows whose .row-pick is UNCHECKED (read from the LIVE
+   checkboxes — cloneNode copies the checked attribute, not the live property)
+   and minus control cells/buttons. Every copy path goes through this. */
+function copyCloneOf(el){
+  const c=el.cloneNode(true);
+  const live=[...el.querySelectorAll('.row-pick')];
+  [...c.querySelectorAll('.row-pick')].forEach((cb,i)=>{
+    if(live[i]&&!live[i].checked){const tr=cb.closest('tr');if(tr)tr.remove();}
+  });
+  c.querySelectorAll('th.rp,td.rp,th.act,td.act,button').forEach(x=>x.remove());
+  return c;
+}
+/* innerText needs layout — attach the filtered clone off-screen briefly */
+function copyTextOf(el){
+  const c=copyCloneOf(el);
+  c.style.cssText='position:absolute;left:-9999px;top:0;direction:rtl';
+  document.body.appendChild(c);
+  const t=c.innerText.trim();
+  c.remove();
+  return t;
+}
 function fieldBlock(label,id,html){
   // field-pick: the cataloger chooses which fields transfer to the catalog
   // page (default: ALL checked — uncheck to exclude). "העתק מסומנים" assembles
@@ -785,8 +811,8 @@ function renderRecord(rec,restored){
   // (restart across bundles). Column shown only when the engine stamped tik_pages.
   const hasTikPages=inv.some(d=>String(d.tik_pages||'').trim());
   const invHtml=inv.length
-    ? `<table class="tbl"><thead><tr>${hasTikPages?'<th>עמוד בתיק</th>':''}<th>דפי מקור</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th><th class="act"></th></tr></thead><tbody>`+
-        inv.map(d=>`<tr>${hasTikPages?`<td>${pgs(d.tik_pages||'—')}</td>`:''}<td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
+    ? `<table class="tbl"><thead><tr><th class="rp"></th>${hasTikPages?'<th>עמוד בתיק</th>':''}<th>דפי מקור</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th><th class="act"></th></tr></thead><tbody>`+
+        inv.map(d=>`<tr><td class="rp"><input type="checkbox" class="row-pick" checked title="כלול שורה זו בהעתקה ובדף-ההעתקה"></td>${hasTikPages?`<td>${pgs(d.tik_pages||'—')}</td>`:''}<td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
           `<td class="act">${isTestimony(d)?`<button class="deep-btn" data-pages="${esc(String(d.pages||''))}" data-desc="${esc(String(d.description||d.doc_type||''))}">🔎 תיאור מפורט</button>`:''}</td></tr>`).join('')+
       `</tbody></table>`
     : '<span class="none">— לא נרשם אינוונטר —</span>';
@@ -799,8 +825,13 @@ function renderRecord(rec,restored){
   // the single legacy table.
   const nm=(rec.names_index||[]).filter(p=>p&&(p.name||p.name_original));
   const nameCell=p=>esc(p.name||'')+(p.name_original&&p.name_original!==p.name?` <span style="color:var(--muted)">(${esc(p.name_original)})</span>`:'')||'—';
-  const nmTable=(list,cols)=>`<table class="tbl"><thead><tr>`+cols.map(c=>`<th>${c[0]}</th>`).join('')+
-    `</tr></thead><tbody>`+list.map(p=>`<tr>`+cols.map(c=>`<td>${c[1](p)}</td>`).join('')+`</tr>`).join('')+`</tbody></table>`;
+  // rp = per-row pick (archivist request): every data row carries a checkbox —
+  // an unchecked row is excluded from every copy and from the cataloger's
+  // copy-sheet. Default: checked.
+  const RP_TH='<th class="rp"></th>';
+  const RP_TD='<td class="rp"><input type="checkbox" class="row-pick" checked title="כלול שורה זו בהעתקה ובדף-ההעתקה"></td>';
+  const nmTable=(list,cols)=>`<table class="tbl"><thead><tr>${RP_TH}`+cols.map(c=>`<th>${c[0]}</th>`).join('')+
+    `</tr></thead><tbody>`+list.map(p=>`<tr>${RP_TD}`+cols.map(c=>`<td>${c[1](p)}</td>`).join('')+`</tr>`).join('')+`</tbody></table>`;
   const COLS={
     jew:[['שם',nameCell],['לידה',p=>esc(p.birth||'—')],['פטירה',p=>esc(p.death||'—')],['מקום',p=>esc(p.place||'—')],['גורל',p=>esc(p.fate||'—')],['דפים',p=>pgs(p.source_pages)]],
     perpetrator:[['שם',nameCell],['תפקיד',p=>esc(p.role||'—')],['פשעים',p=>esc(p.crimes||'—')],['גורל',p=>esc(p.fate||'—')],['דפים',p=>pgs(p.source_pages)]],
@@ -820,8 +851,8 @@ function renderRecord(rec,restored){
   // biographical timeline (chronological events)
   const tl=(rec.timeline||[]).filter(t=>t&&(t.event||t.date));
   const tlHtml=tl.length
-    ? `<table class="tbl"><thead><tr><th>תאריך</th><th>אירוע</th><th>מקום</th><th>דפים</th></tr></thead><tbody>`+
-        tl.map(t=>`<tr><td>${esc(t.date||'—')}${t.confidence?' '+cmark(t.confidence):''}</td><td>${esc(t.event||'')}</td><td>${esc(t.place||'—')}</td><td>${pgs(t.source_pages)}</td></tr>`).join('')+
+    ? `<table class="tbl"><thead><tr>${RP_TH}<th>תאריך</th><th>אירוע</th><th>מקום</th><th>דפים</th></tr></thead><tbody>`+
+        tl.map(t=>`<tr>${RP_TD}<td>${esc(t.date||'—')}${t.confidence?' '+cmark(t.confidence):''}</td><td>${esc(t.event||'')}</td><td>${esc(t.place||'—')}</td><td>${pgs(t.source_pages)}</td></tr>`).join('')+
       `</tbody></table>`
     : '<span class="none">— לא נבנה ציר זמן —</span>';
   // controlled-vocabulary subjects (thesaurus) as chips
@@ -890,8 +921,9 @@ function renderRecord(rec,restored){
   document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
     b.addEventListener('click',async()=>{
       const el=$(b.getAttribute('data-copy')); if(!el)return;
-      try{await navigator.clipboard.writeText(el.innerText.trim());}
-      catch(e){const t=document.createElement('textarea');t.value=el.innerText.trim();document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
+      const txt=copyTextOf(el); // honors per-row picks
+      try{await navigator.clipboard.writeText(txt);}
+      catch(e){const t=document.createElement('textarea');t.value=txt;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
       const o=b.textContent;b.classList.add('copied');b.textContent='✓';
       $('toast').classList.add('show');
       setTimeout(()=>{b.classList.remove('copied');b.textContent=o;$('toast').classList.remove('show');},1100);
@@ -914,7 +946,7 @@ function renderRecord(rec,restored){
     const parts=[];
     document.querySelectorAll('.field-pick:checked').forEach(cb=>{
       const f=cb.closest('.field'),lb=f.querySelector('.label'),bd=f.querySelector('.body');
-      if(!bd)return;const t=bd.innerText.trim();if(!t||t==='—')return;
+      if(!bd)return;const t=copyTextOf(bd);if(!t||t==='—')return; // honors row picks
       parts.push(`## ${lb?lb.innerText.trim():''}\n${t}`);
     });
     if(!parts.length){showStatus('לא סומנו שדות להעתקה.','err');return;}
@@ -928,6 +960,10 @@ function renderRecord(rec,restored){
   // bind testimony deep-describe buttons
   document.querySelectorAll('.deep-btn').forEach(b=>{
     b.addEventListener('click',()=>deepDescribeTestimony(b));
+  });
+  // bind per-row picks — unchecked row dims and drops out of every copy path
+  document.querySelectorAll('.row-pick').forEach(cb=>{
+    cb.addEventListener('change',()=>{cb.closest('tr').classList.toggle('row-off',!cb.checked);});
   });
   $('results').classList.add('show');
   $('tik-export-bar').style.display='block';
@@ -1013,9 +1049,15 @@ function buildTikCopySheet(){
     const lb=f.querySelector('.label'), bd=f.querySelector('.body');
     if(!lb||!bd) return;
     const txt=bd.innerText.trim(); if(!txt||txt==='—') return;
-    // strip interactive controls — the whole action column (.act) and any stray
-    // buttons are dead weight in a standalone hand-off file
+    // rows the archivist UNCHECKED stay out of the hand-off entirely; rows that
+    // go in KEEP a live checkbox (the cataloger makes their own row selection in
+    // the file — "וגם במסמך של המקטלג"). Action column/buttons are dead weight.
     const clone=bd.cloneNode(true);
+    const live=[...bd.querySelectorAll('.row-pick')];
+    [...clone.querySelectorAll('.row-pick')].forEach((cb,i)=>{
+      if(live[i]&&!live[i].checked){const tr=cb.closest('tr');if(tr)tr.remove();}
+      else cb.setAttribute('checked','');  // serialize as checked (property→attribute)
+    });
     clone.querySelectorAll('th.act,td.act,button').forEach(el=>el.remove());
     fields.push({label:lb.innerText.trim(), html:clone.innerHTML, hasTable:!!clone.querySelector('table')});
   });
@@ -1061,7 +1103,10 @@ function buildTikCopySheet(){
  .chip{display:inline-block;background:#eef0f4;border:1px solid #d9dce3;border-radius:999px;padding:1px 10px;margin:2px;font-size:12px}
  .none{color:#999}.dm-tikpage{color:#888;font-size:11px}
  small{color:#777}
- @media print{.c,.done,.prog{display:none!important}section.f{break-inside:avoid}}
+ th.rp,td.rp{width:26px;text-align:center;padding:4px}
+ .row-pick{accent-color:#6a3fb5;width:14px;height:14px;cursor:pointer;margin:0}
+ tr.row-off td{opacity:.35}tr.row-off td.rp{opacity:1}
+ @media print{.c,.done,.prog,th.rp,td.rp{display:none!important}section.f{break-inside:avoid}}
 </style></head><body><div class="wrap">
 <h1>${esc(title)}</h1>
 <div class="sub">דף-העתקה למערכת הקטלוג · הופק ${esc(stamp)} · ${fields.length} שדות · לחץ 📋 ליד שדה, הדבק במערכת, וסמן ✓ משהוזן</div>
@@ -1070,7 +1115,14 @@ ${flags?`<div class="flags"><b style="font-size:13px">⚠ נקודות לבדי�
 ${secs}
 </div><script>
 var KEY='yv_cs_'+${JSON.stringify(title.slice(0,60)+'_'+stamp)};
-function tsvOf(el){var out=[];el.querySelectorAll('table').forEach(function(tb){
+/* clone minus unchecked rows + pick cells — every copy honors the row picks */
+function rowClone(el){var c=el.cloneNode(true);var live=el.querySelectorAll('.row-pick');
+  var cl=c.querySelectorAll('.row-pick');
+  for(var i=cl.length-1;i>=0;i--){if(live[i]&&!live[i].checked){var tr=cl[i].closest('tr');if(tr)tr.remove();}}
+  c.querySelectorAll('th.rp,td.rp').forEach(function(x){x.remove();});return c;}
+function textOf(el){var c=rowClone(el);c.style.cssText='position:absolute;left:-9999px;direction:rtl';
+  document.body.appendChild(c);var t=c.innerText.trim();c.remove();return t;}
+function tsvOf(el){var out=[];rowClone(el).querySelectorAll('table').forEach(function(tb){
   var sec=tb.closest('.names-section');var t=sec&&sec.querySelector('.names-sub');
   if(t)out.push(t.textContent.trim());
   tb.querySelectorAll('tr').forEach(function(tr){out.push([].map.call(tr.querySelectorAll('th,td'),function(c){return c.innerText.replace(/\\s+/g,' ').trim();}).join('\\t'));});
@@ -1080,7 +1132,9 @@ function put(txt,btn){function ok(){var o=btn.textContent;btn.classList.add('ok'
   function fb(){var t=document.createElement('textarea');t.value=txt;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);ok();}}
 document.querySelectorAll('.c').forEach(function(b){b.addEventListener('click',function(){
   var el=document.getElementById(b.getAttribute('data-t'));if(!el)return;
-  put(b.classList.contains('tsv')?tsvOf(el):el.innerText.trim(),b);});});
+  put(b.classList.contains('tsv')?tsvOf(el):textOf(el),b);});});
+document.querySelectorAll('.row-pick').forEach(function(cb){cb.addEventListener('change',function(){
+  cb.closest('tr').classList.toggle('row-off',!cb.checked);});});
 var done=[];try{done=JSON.parse(localStorage.getItem(KEY)||'[]');}catch(e){}
 function prog(){var n=document.querySelectorAll('.done:checked').length,t=document.querySelectorAll('.done').length;
   document.getElementById('prog').textContent='הוזנו '+n+' מתוך '+t+' שדות'+(n===t?' — הכל הוזן ✓':'');}
