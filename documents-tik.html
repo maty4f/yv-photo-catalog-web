@@ -51,6 +51,28 @@
        cursor:pointer;font-family:inherit;font-weight:700}
   .copy-btn:hover{background:var(--accent-2)}
   .copy-btn.copied{background:var(--good);color:#06210f}
+  /* בחירת שדות להעברה לדף הקטלוג (ברירת-מחדל: הכל מסומן) */
+  .field .head{gap:8px}
+  .field .label{flex:1}
+  .field-pick{accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex:none;margin:0}
+  .field.unpicked .body{opacity:.35}
+  .field.unpicked .label{opacity:.55;text-decoration:line-through}
+  .pick-bar{display:flex;align-items:center;gap:10px;direction:rtl;background:var(--card);
+       border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px;margin:0 0 4px;
+       position:sticky;top:0;z-index:5}
+  #copy-picked{background:var(--accent);color:#150a22;border:none;border-radius:var(--radius-sm);
+       padding:6px 14px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700}
+  #copy-picked:hover{background:var(--accent-2)}
+  .pick-count{color:var(--muted);font-size:12px}
+  .mini-btn{background:transparent;border:1px solid var(--line);border-radius:var(--radius-sm);
+       color:inherit;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+  .mini-btn:hover{border-color:var(--accent)}
+  /* כפתור תיאור-מפורט לעדות */
+  .deep-btn{background:transparent;border:1px solid var(--accent);color:var(--accent);
+       border-radius:var(--radius-sm);padding:3px 8px;font-size:11.5px;cursor:pointer;
+       font-family:inherit;white-space:nowrap}
+  .deep-btn:hover{background:var(--accent);color:#150a22}
+  .deep-btn:disabled{opacity:.6;cursor:default}
   .section-bar{padding:0 0 9px;position:relative;color:var(--accent);font-weight:700;
        font-size:14px;margin:18px 0 10px}
   .section-bar::after{content:"";position:absolute;right:0;bottom:0;width:64px;height:2px;background:linear-gradient(90deg,var(--accent),transparent)}
@@ -642,11 +664,77 @@ async function synthesizeTik(notes,onStage){
 
 /* ---------- render ---------- */
 function fieldBlock(label,id,html){
-  return `<div class="field"><div class="head"><span class="label">${esc(label)}</span>`+
+  // field-pick: the cataloger chooses which fields transfer to the catalog
+  // page (default: ALL checked — uncheck to exclude). "העתק מסומנים" assembles
+  // only the checked ones.
+  return `<div class="field" data-field="${id}"><div class="head">`+
+    `<input type="checkbox" class="field-pick" data-fid="${id}" checked title="כלול בהעברה לדף הקטלוג">`+
+    `<span class="label">${esc(label)}</span>`+
     `<button class="copy-btn" data-copy="${id}">העתק</button></div>`+
     `<div class="body" id="${id}">${html}</div></div>`;
 }
 function conf(rec,key){const c=rec.field_confidence?.[key];return c?(' '+cmark(c)):'';}
+
+/* ---------- testimony deep-describe (כפתור "תיאור מפורט") ---------- */
+// "3-5" / "4,7" / "3-5, 9" → [3,4,5,9]. Bounded so a bad range can't explode.
+function parsePagesSpec(s){
+  const out=new Set();
+  String(s||'').split(',').forEach(part=>{
+    const m=part.trim().match(/^(\d+)\s*[–-]\s*(\d+)$/);
+    if(m){const a=+m[1],b=Math.min(+m[2],a+400);for(let i=a;i<=b;i++)out.add(i);}
+    else if(/^\d+$/.test(part.trim()))out.add(+part.trim());
+  });
+  return [...out].sort((x,y)=>x-y);
+}
+async function deepDescribeTestimony(btn){
+  const pagesSpec=btn.getAttribute('data-pages')||'';
+  const rowDesc=btn.getAttribute('data-desc')||'';
+  const pages=parsePagesSpec(pagesSpec);
+  // Evidence = the actual pages. Individual scans: page N ↔ the N-th uploaded
+  // image (upload order). Single PDF ≤20MB: send whole, prompt scopes the pages.
+  // No evidence available → honest refusal (a "deeper" pass without re-reading
+  // the pages would be inflation, not description).
+  const imgs=state.files.filter(f=>mimeOf(f)!=='application/pdf');
+  const pdfs=state.files.filter(f=>mimeOf(f)==='application/pdf');
+  let evidence=[];
+  if(imgs.length&&pages.length){evidence=pages.map(p=>imgs[p-1]).filter(Boolean);}
+  if(!evidence.length&&pdfs.length===1&&pdfs[0].size<=20*1024*1024)evidence=pdfs;
+  if(!evidence.length){
+    showStatus('לתיאור מפורט צריך את דפי המקור — העלה שוב את סריקות התיק (או PDF עד 20MB) ונסה שוב.','err');
+    return;
+  }
+  const ctx=(state.lastRecord&&state.lastRecord.donor_notes)||'';
+  const prompt=[
+    'לפניך דפי עדות מתוך תיק ארכיוני (שואה, שנות ה-30–40). כתוב תיאור מפורט של העדות — לקטלוג, לא לתמלול מלא.',
+    `הדפים המצורפים: ${pagesSpec||'כל המצורף'}. ${rowDesc?`תקציר קודם: ${rowDesc}`:''}`,
+    ctx?`הקשר מהמוסר: ${ctx}`:'',
+    '',
+    'מבנה התשובה (עברית, פרוזה ארכיונית):',
+    '1. העד/ה — מי מוסר/ת את העדות (שם כפי שכתוב, verbatim), ומה יחסו/ה לאירועים.',
+    '2. תוכן העדות — מהלך הדברים כפי שמתואר: אירועים, תאריכים, אנשים שמוזכרים (שמות verbatim + עמוד).',
+    '3. ציטוטי מפתח — 2-4 קטעים ראויים לציטוט, במקור + תרגום עברי.',
+    '4. הערות — דפים קשים לקריאה, אי-בהירויות, מה דורש בירור.',
+    '',
+    'חוקים: אל תמציא דבר — רק מה שכתוב בדפים. שמות מקומות באנגלית בלבד (Riga, Warsaw). ',
+    'לכל קביעה סמן ודאות V (בהירות הקריאה) ו-H (ודאות היסטורית): V✓/V~/V? H✓/H~/H?. ',
+    'דף שאינו קריא — אמור זאת במפורש.'
+  ].filter(Boolean).join('\n');
+  const o=btn.textContent;btn.disabled=true;
+  try{
+    btn.textContent='⏳ קורא את הדפים…';
+    const text=await claudeReadChunk(evidence,prompt,s=>{btn.textContent=`⏳ מתאר… (${s} שׄ)`;});
+    if(!text||!text.trim())throw new Error('תשובה ריקה');
+    const rec=state.lastRecord||{};
+    (rec.deep_descriptions=rec.deep_descriptions||[]).push({
+      pages:pagesSpec,text:text.trim(),
+      html:esc(text.trim()).replace(/\n/g,'<br>')});
+    renderRecord(rec,false); // re-render (persists via the refresh-survival path)
+    showStatus(`✓ נוסף תיאור מפורט לעדות (דפים ${pagesSpec}) — מופיע אחרי האינוונטר, עם כפתור העתקה ותיבת-סימון משלו.`,'ok');
+  }catch(e){
+    showStatus('התיאור המפורט נכשל: '+(e.message||e),'err');
+    btn.disabled=false;btn.textContent=o;
+  }
+}
 
 function renderRecord(rec,restored){
   state.lastRecord=rec;
@@ -684,11 +772,19 @@ function renderRecord(rec,restored){
   const pgs=v=>v?esc(String(v)).replace(/,(?=\S)/g,', '):'—';
   // document inventory — the "map" of the תיק for navigation
   const inv=(rec.document_inventory||[]).filter(d=>d&&(d.doc_type||d.description||d.pages));
+  // עדות → deep-describe button: a second, richer pass over THOSE pages only
+  // (type_key is the engine's controlled-vocabulary key; the text match covers
+  // records described before the vocabulary existed).
+  const isTestimony=d=>d.type_key==='testimony'||/עדות|testimon/i.test(String(d.doc_type||''));
   const invHtml=inv.length
-    ? `<table class="tbl"><thead><tr><th>דפים</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th></tr></thead><tbody>`+
-        inv.map(d=>`<tr><td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td></tr>`).join('')+
+    ? `<table class="tbl"><thead><tr><th>דפים</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th><th></th></tr></thead><tbody>`+
+        inv.map(d=>`<tr><td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
+          `<td>${isTestimony(d)?`<button class="deep-btn" data-pages="${esc(String(d.pages||''))}" data-desc="${esc(String(d.description||d.doc_type||''))}">🔎 תיאור מפורט</button>`:''}</td></tr>`).join('')+
       `</tbody></table>`
     : '<span class="none">— לא נרשם אינוונטר —</span>';
+  // deep descriptions from previous button runs ride the record (refresh-safe)
+  const deepBlocks=(rec.deep_descriptions||[]).map((d,i)=>
+    fieldBlock(`תיאור מפורט — עדות (דפים ${d.pages||'?'})`,`f-deep-${i}`,d.html||esc(d.text||''))).join('');
   // names index — feeds the Shoah Victims' Names DB
   const nm=(rec.names_index||[]).filter(p=>p&&(p.name||p.name_original));
   const nmHtml=nm.length
@@ -719,6 +815,13 @@ function renderRecord(rec,restored){
   const cls=`${esc(rec.classification||'בלתי מסווג')}${rec.classification_reason?' — '+esc(rec.classification_reason):''}`;
 
   $('record').innerHTML=
+    `<div class="pick-bar">`+
+      `<button class="btn" id="copy-picked" type="button">📋 העתק את השדות המסומנים</button>`+
+      `<span class="pick-count" id="pick-count"></span>`+
+      `<span style="flex:1"></span>`+
+      `<button class="mini-btn" id="pick-all" type="button">סמן הכל</button>`+
+      `<button class="mini-btn" id="pick-none" type="button">נקה הכל</button>`+
+    `</div>`+
     `<div class="section-bar">דפית ראשית</div>`+
     fieldBlock('כותר'+conf(rec,'title'), 'f-title', esc(rec.title))+
     fieldBlock('מקומות קשורים', 'f-places', places)+
@@ -748,6 +851,7 @@ function renderRecord(rec,restored){
 
     `<div class="section-bar">אינוונטר מסמכים — מפת התיק</div>`+
     fieldBlock('אינוונטר מסמכים','f-inv',invHtml)+
+    deepBlocks+
 
     `<div class="section-bar">מפתח שמות — להזנת מאגר שמות הקורבנות</div>`+
     fieldBlock('מפתח שמות','f-names',nmHtml)+
@@ -768,6 +872,38 @@ function renderRecord(rec,restored){
       $('toast').classList.add('show');
       setTimeout(()=>{b.classList.remove('copied');b.textContent=o;$('toast').classList.remove('show');},1100);
     });
+  });
+  // bind field selection (task: only checked fields transfer to the catalog page)
+  const pickCount=()=>{
+    const all=document.querySelectorAll('.field-pick'),on=document.querySelectorAll('.field-pick:checked');
+    const c=$('pick-count');if(c)c.textContent=`${on.length}/${all.length} שדות מסומנים`;
+  };
+  document.querySelectorAll('.field-pick').forEach(cb=>{
+    cb.addEventListener('change',()=>{
+      cb.closest('.field').classList.toggle('unpicked',!cb.checked);pickCount();
+    });
+  });
+  const setAll=v=>{document.querySelectorAll('.field-pick').forEach(cb=>{cb.checked=v;cb.closest('.field').classList.toggle('unpicked',!v);});pickCount();};
+  $('pick-all')?.addEventListener('click',()=>setAll(true));
+  $('pick-none')?.addEventListener('click',()=>setAll(false));
+  $('copy-picked')?.addEventListener('click',async()=>{
+    const parts=[];
+    document.querySelectorAll('.field-pick:checked').forEach(cb=>{
+      const f=cb.closest('.field'),lb=f.querySelector('.label'),bd=f.querySelector('.body');
+      if(!bd)return;const t=bd.innerText.trim();if(!t||t==='—')return;
+      parts.push(`## ${lb?lb.innerText.trim():''}\n${t}`);
+    });
+    if(!parts.length){showStatus('לא סומנו שדות להעתקה.','err');return;}
+    const text=parts.join('\n\n');
+    try{await navigator.clipboard.writeText(text);}
+    catch(e){const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
+    const b=$('copy-picked'),o=b.textContent;b.textContent=`✓ הועתקו ${parts.length} שדות`;
+    setTimeout(()=>{b.textContent=o;},1600);
+  });
+  pickCount();
+  // bind testimony deep-describe buttons
+  document.querySelectorAll('.deep-btn').forEach(b=>{
+    b.addEventListener('click',()=>deepDescribeTestimony(b));
   });
   $('results').classList.add('show');
   $('tik-export-bar').style.display='block';
@@ -894,7 +1030,7 @@ $('export-pdf-btn').addEventListener('click',()=>{
 h1{font-size:16px;border-bottom:2px solid #2c5f7c;padding-bottom:6px}
 .section-bar{background:#2c5f7c;color:#fff;padding:4px 10px;margin:14px 0 8px;font-weight:700;border-radius:4px;font-size:12.5px}
 .field{margin:6px 0}.field .label,.label{font-weight:700;color:#2c5f7c;font-size:11px}
-.copy-btn{display:none!important}
+.copy-btn,.pick-bar,.field-pick,.deep-btn{display:none!important}
 table.tbl{width:100%;border-collapse:collapse;font-size:10.5px;margin:4px 0}
 table.tbl th,table.tbl td{border:1px solid #cbd5df;padding:3px 6px;text-align:right;vertical-align:top;overflow-wrap:anywhere}
 table.tbl th{background:#eef3f7}
