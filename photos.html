@@ -180,12 +180,12 @@
 </head>
 <body>
 <!-- Build marker lives next to the H1 title; console line for quick DevTools check. -->
-<script>console.log('%c[yv photos] build 2026-06-15c · הסרה מהתור-anywhere (front+back pairing)', 'color:#f2b13d;font-weight:bold');</script>
+<script>console.log('%c[yv photos] build 2026-07-14 · זיהוי גב גם לפי XX בסוף השם (front+back pairing)', 'color:#f2b13d;font-weight:bold');</script>
 <div class="wrap">
 
   <header class="doc">
     <div>
-      <h1>📷 קטלוג תצלומים <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small> <span id="yv-build" title="גרסת קוד טעונה — אם זה לא העדכני, נקה cache + service worker" style="font-size:11px; color:var(--accent); background:var(--card-hover); padding:1px 8px; border-radius:8px; font-family:monospace; font-weight:400; vertical-align:middle;">build 2026-06-15c · הסרה מהתור</span></h1>
+      <h1>📷 קטלוג תצלומים <small style="font-size:13px; color:var(--muted); font-weight:400; margin-inline-start:6px;">גרסת web</small> <span id="yv-build" title="גרסת קוד טעונה — אם זה לא העדכני, נקה cache + service worker" style="font-size:11px; color:var(--accent); background:var(--card-hover); padding:1px 8px; border-radius:8px; font-family:monospace; font-weight:400; vertical-align:middle;">build 2026-07-14 · זיהוי גב XX</span></h1>
       <div class="sub">העלאה, פיענוח, זיהוי אוטומטי וייצוא — הכל בדפדפן</div>
     </div>
     <div class="actions-top">
@@ -1132,22 +1132,29 @@ const QUEUE_STATUSES = {
   error:     { icon: '❌', label: 'שגיאה',     color: 'var(--error)' },
 };
 
-// Pair fronts with backs based on '#' convention
+// Pair fronts with backs based on the back-marker conventions
 // Examples that pair: IMG_001.jpg ↔ IMG_001#.jpg
 //                     5030_001.jpg ↔ 5030_001#.jpg
-// Files NOT containing # are treated as fronts
-// Files WITH # at end-of-basename are backs that match a front of same basename
+//                     13090_833.jpg ↔ 13090_833XX.jpg
+// Files WITHOUT a back marker are treated as fronts
+// Files WITH a marker are backs that match a front of same basename
 // Normalize separators so "13090_90", "13090-90", "13090 90" all match.
 const PAIR_NORM = s => s.replace(/[ _-]+/g, '_').replace(/^_+|_+$/g, '');
 const PAIR_WORD_RE = /[ _-]?(?:עורף|גב|verso|back)$/i;
+// Scanner convention: trailing XX marks a verso (13090_833XX = back of 13090_833).
+// Require a digit/separator right before the XX so a name that merely ends in
+// letters+xx (e.g. "maxx") is not misread as a back.
+const PAIR_XX_RE = /^(.*[\d _-])[xX]{2}$/;
 // Classify one file → { key, isBack }. A back (verso/"עורף") is marked by '#'
-// ANYWHERE in the name, or a trailing עורף/גב/verso/back word. The key is the
-// front's basename (marker removed) so a back pairs to its front and is
-// cataloged TOGETHER with it, not as a separate photo.
+// ANYWHERE in the name, a trailing עורף/גב/verso/back word, or a trailing XX.
+// The key is the front's basename (marker removed) so a back pairs to its
+// front and is cataloged TOGETHER with it, not as a separate photo.
 function fileKind(file) {
   const base = file.name.replace(/\.[^.]+$/, '').trim();
   if (base.includes('#')) return { key: PAIR_NORM(base.replace(/#/g, '')), isBack: true };
   if (PAIR_WORD_RE.test(base)) return { key: PAIR_NORM(base.replace(PAIR_WORD_RE, '')), isBack: true };
+  const xx = base.match(PAIR_XX_RE);
+  if (xx) return { key: PAIR_NORM(xx[1]), isBack: true };
   return { key: PAIR_NORM(base), isBack: false };
 }
 const frontKeyOf = file => fileKind(file).key;

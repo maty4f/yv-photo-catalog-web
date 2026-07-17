@@ -209,11 +209,25 @@
     <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" class="visually-hidden-file">
     <input type="file" id="folder-input" webkitdirectory directory multiple class="visually-hidden-file">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
-      <label id="pick-folder" class="upload-btn" for="folder-input" style="color:var(--films);border-color:var(--films)">📁 העלה תיקייה שלמה</label>
+      <label id="pick-folder" class="upload-btn" for="folder-input" style="color:var(--films);border-color:var(--films)" title="תיקייה של סריקות = תיק אחד · תיקייה עם תת-תיקיות או כמה PDF = תור תיקים (כל תת-תיקייה / כל PDF = תיק נפרד)">📁 העלה תיקייה שלמה</label>
       <button type="button" id="download-tik-pdf" class="copy-btn" style="background:var(--brand);color:#04222a" disabled title="איחוד כל דפי התיק לקובץ PDF אחד והורדתו למחשב">⬇ הורד את התיק כ-PDF</button>
       <button type="button" id="clear-files" class="copy-btn" style="background:var(--error);color:#fff">נקה</button>
     </div>
-    <div class="hint">תיקייה = תיק אחד. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
+    <div class="hint">תיקייה של סריקות = תיק אחד; תיקייה שמכילה <b>תת-תיקיות</b> (או כמה קובצי PDF) נכנסת ל<b>תור תיקים</b> — כל תת-תיקייה / כל PDF מקוטלגים כתיק נפרד, תיק אחרי תיק, וכל רשומה נשמרת. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
+
+    <!-- Folder queue: each subfolder / root-level PDF = one tik, processed sequentially -->
+    <div id="tik-queue-panel" style="display:none; margin-top:10px; padding:10px 12px; background:color-mix(in srgb, var(--films) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--films) 40%, transparent); border-radius:8px; direction:rtl; text-align:right;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+        <div style="font-weight:700; font-size:13.5px;">📚 תור תיקים <span id="tik-queue-summary" style="font-weight:400; font-size:12px; color:var(--muted); margin-inline-start:6px;"></span></div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <label id="tik-queue-add-btn" class="upload-btn" for="folder-input" style="padding:3px 9px; font-size:11.5px; color:var(--films); border-color:var(--films);">+ הוסף תיקייה</label>
+          <button type="button" id="tik-queue-retry" class="copy-btn" style="display:none; padding:3px 9px; font-size:11.5px; background:var(--good); color:#06210f;">🔄 נסה כושלים מחדש</button>
+          <button type="button" id="tik-queue-clear" class="copy-btn" style="padding:3px 9px; font-size:11.5px; background:var(--error); color:#fff;">🗑 נקה תור</button>
+        </div>
+      </div>
+      <div id="tik-queue-list"></div>
+      <div class="hint" style="margin-top:6px">התור רץ תיק-אחרי-תיק במנוע של הכפתור שתלחץ — «קטלג תיק» או «⚡ תיאור מהיר». כל רשומה שהסתיימה נשמרת ברשימה: «הצג» מחזיר אותה למסך גם בזמן שהתור ממשיך. שים לב: «מידע מוקדם» וטופס האיסוף חלים על <b>כל</b> התיקים שבתור.</div>
+    </div>
     <div class="filelist" id="filelist"></div>
     <label>טופס איסוף / דף מלווה (אופציונלי — סריקה או PDF)</label>
     <label class="drop" id="intake-drop" for="intake-input" style="padding:16px">גרור לכאן טופס איסוף / דף מלווה — סריקה או PDF<br><small>או לחץ לבחירה · Claude יקרא אותו וישלב את המידע ברשומת התיק</small></label>
@@ -266,7 +280,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const state = { files: [], intakeFiles: [] };
+const state = { files: [], intakeFiles: [], queue: [], queueRunning: false };
 
 /* ---------- helpers ---------- */
 function fileToBase64(file){return new Promise(r=>{const fr=new FileReader();fr.onload=e=>r(e.target.result.split(',')[1]);fr.onerror=()=>r('');fr.readAsDataURL(file);});}
@@ -1454,16 +1468,18 @@ $('download-tik-pdf').addEventListener('click',async()=>{
 });
 
 /* ---------- run (chunked: Claude reads every page, then synthesizes one record) ---------- */
-$('run').addEventListener('click',async()=>{
-  if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return;}
-  try{serverBase();}catch(e){showStatus(esc(e.message),'err');return;}
+// Returns true when a record was produced, false otherwise — the folder queue
+// relies on this to decide done/failed per tik.
+async function catalogTik(){
+  if(!state.files.length){showStatus('העלה תיק (PDF או סריקות).','err');return false;}
+  try{serverBase();}catch(e){showStatus(esc(e.message),'err');return false;}
   const engine=$('engine-mode').value;  // 'claude' | 'dual'
   if(engine==='dual'){
     // When the server manages the Gemini key (owner), the proxy injects it and
     // overrides x-goog-api-key — the browser never needs a key. Use the sentinel
     // instead of the (intentionally hidden, empty) input so the gate never blocks.
     state.keyGemini=window.YV_GEMINI_MANAGED?'server-managed':$('key-gemini').value.trim();
-    if(!state.keyGemini){showStatus('מצב דו-מנועי דורש מפתח Gemini (הקריאה הויזואלית של הדפים).','err');return;}
+    if(!state.keyGemini){showStatus('מצב דו-מנועי דורש מפתח Gemini (הקריאה הויזואלית של הדפים).','err');return false;}
   }
   const reader=engine==='dual'?'Gemini':'Claude';
   // Tiling explodes each page into many tiles → force one page per chunk so a
@@ -1557,16 +1573,25 @@ $('run').addEventListener('click',async()=>{
     const warn=failed.length?` ⚠ ${failed.length} מנות נכשלו (דפים ${failed.join(', ')}) — דרושה קריאה חוזרת ידנית.`:'';
     showStatus(`✓ הקטלוג הושלם — נקראו ${state.files.length} הדפים ב-${chunks.length} מנות.${warn} בדוק את נקודות הבדיקה והיהלומים לפני הדבקה לספיר.`,failed.length?'info':'ok');
     $('results').scrollIntoView({behavior:'smooth'});
+    return true;
   }catch(err){
     console.error(err);
     showStatus('שגיאה: '+esc(err.message)+(err.rawText?'\n\n=== תגובה גולמית ===\n'+esc(err.rawText.slice(0,1200)):''),'err');
+    return false;
   }finally{$('run').disabled=false;}
+}
+// With pending queue items the button runs the whole queue (tik after tik);
+// otherwise it catalogs the currently loaded files, exactly as before.
+$('run').addEventListener('click',()=>{
+  if(state.queueRunning)return;
+  if(state.queue.some(q=>q.status==='pending'))runQueue('catalog');else catalogTik();
 });
 
 /* ---------- ⚡ fast description: ONE whole-PDF Gemini call (no page-by-page) ---------- */
+// Returns true when a record was produced, false otherwise (queue relies on this).
 async function fastDescribe(){
-  if(!state.files.length){showStatus('העלה תיק (PDF או סריקות) קודם.','err');return;}
-  try{serverBase();}catch(e){showStatus(esc(e.message),'err');return;}
+  if(!state.files.length){showStatus('העלה תיק (PDF או סריקות) קודם.','err');return false;}
+  try{serverBase();}catch(e){showStatus(esc(e.message),'err');return false;}
   $('run').disabled=true;$('describe-fast').disabled=true;
   try{
     // One PDF for the whole tik. For image scans, build a DOWNSIZED PDF (~1100px):
@@ -1592,9 +1617,9 @@ async function fastDescribe(){
       }));
       blob=new Blob([buildImagesPdf(pages)],{type:'application/pdf'});name='tik_describe.pdf';
     }
-    if(!blob){showStatus('צריך PDF יחיד או סריקות תמונה.','err');return;}
+    if(!blob){showStatus('צריך PDF יחיד או סריקות תמונה.','err');return false;}
     const mb=(blob.size/1024/1024).toFixed(1);
-    if(blob.size>1900*1024*1024){showStatus(`⚠ ה-PDF ${mb}MB — מעל תקרת 2GB של Gemini Files API. פצל את התיק לשני חלקים.`,'err');return;}
+    if(blob.size>1900*1024*1024){showStatus(`⚠ ה-PDF ${mb}MB — מעל תקרת 2GB של Gemini Files API. פצל את התיק לשני חלקים.`,'err');return false;}
     // Gemini→Claude collaboration: the server has Gemini read every page and extract
     // facts, then Claude (the historian) synthesizes the record from those facts. This
     // prompt is Claude's synthesis brief; the server appends Gemini's extracted facts.
@@ -1686,18 +1711,22 @@ async function fastDescribe(){
         const split=(j.geminiSec&&j.claudeSec)?`Gemini ${j.geminiSec}שׄ + Claude ${j.claudeSec}שׄ`:(j.model||'Gemini+Claude');
         showStatus(`✓ תיאור הושלם תוך ${j.elapsedSec||Math.round((Date.now()-t)/1000)} שׄ (${split}). בדוק את נקודות הבדיקה ו-review_flags לפני הדבקה לספיר.`,'ok');
         $('results').scrollIntoView({behavior:'smooth'});
-        return;
+        return true;
       }
       if(j.status==='error'){
-        if(j.prohibited){showStatus('⚠ Gemini סירב לקרוא את התיק (חומר רגיש). עבור למצב "Claude בלבד" והרץ "קטלג תיק".','err');return;}
+        if(j.prohibited){showStatus('⚠ Gemini סירב לקרוא את התיק (חומר רגיש). עבור למצב "Claude בלבד" והרץ "קטלג תיק".','err');return false;}
         throw new Error(j.error||'תיאור נכשל');
       }
     }
     throw new Error('לא התקבלה שום התקדמות מהשרת במשך 90 דקות — ייתכן שהשרת נתקע או שהחיבור נותק. בדוק את מסך ההפעלות (logs.html) לפני ניסיון חוזר.');
   }catch(err){console.error(err);showStatus('שגיאה בתיאור מהיר: '+esc(err.message),'err');}
   finally{$('run').disabled=false;$('describe-fast').disabled=false;}
+  return false;
 }
-$('describe-fast').addEventListener('click',fastDescribe);
+$('describe-fast').addEventListener('click',()=>{
+  if(state.queueRunning)return;
+  if(state.queue.some(q=>q.status==='pending'))runQueue('fast');else fastDescribe();
+});
 
 /* ---------- engine-mode toggle: reveal Gemini fields only in dual mode ---------- */
 function syncEngineUI(){
@@ -1751,9 +1780,15 @@ function renderFiles(){
     `<div class="f"><span>${esc(f.name)}</span><span>${(f.size/1024/1024).toFixed(1)}MB</span></div>`).join('');
   const more=n>60?`<div class="f"><span>… ועוד ${n-60}</span><span></span></div>`:'';
   $('filelist').innerHTML=note+rows+more;
-  $('run').disabled=!n;
-  $('describe-fast').disabled=!n;
+  syncRunButtons();
   $('download-tik-pdf').disabled=!n;
+}
+// Run buttons work when there are loaded files OR pending queue items; both are
+// locked while the queue is running (the queue loop drives the runs itself).
+function syncRunButtons(){
+  const runnable=state.files.length||state.queue.some(q=>q.status==='pending');
+  $('run').disabled=state.queueRunning||!runnable;
+  $('describe-fast').disabled=state.queueRunning||!runnable;
 }
 function addFiles(list){
   const files=Array.from(list)
@@ -1765,7 +1800,7 @@ const drop=$('drop');
 $('file-input').addEventListener('change',e=>{addFiles(e.target.files);e.target.value='';});
 $('folder-input').addEventListener('change',e=>{
   if(!e.target.files.length){alert('לא נבחרו קבצים.');return;}
-  addFiles(e.target.files);e.target.value='';
+  enqueueFolderSelection(e.target.files);e.target.value='';
 });
 $('clear-files').addEventListener('click',()=>{state.files=[];renderFiles();});
 $('chunk-size').addEventListener('change',renderFiles);
@@ -1773,6 +1808,132 @@ $('tiling').addEventListener('change',renderFiles);
 drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
 drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
 drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files);});
+
+/* ---------- folder queue: many tiks, processed one after another ---------- */
+// Mirrors the CLI semantics (yv doc describe <folder>): each first-level
+// subfolder = one tik; ≥2 root-level PDFs = one tik per PDF; root-level scans
+// = one tik. A plain folder of scans keeps the classic single-tik flow.
+function tikGroupsOf(list){
+  const files=Array.from(list)
+    .filter(f=>/\.(pdf|jpe?g|png|tiff?|webp)$/i.test(f.name))
+    .sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name,undefined,{numeric:true}));
+  const subs=new Map(),rootImgs=[],rootPdfs=[];
+  for(const f of files){
+    const parts=String(f.webkitRelativePath||f.name).split('/');
+    if(parts.length>=3){const k=parts[1];if(!subs.has(k))subs.set(k,[]);subs.get(k).push(f);}
+    else (/\.pdf$/i.test(f.name)?rootPdfs:rootImgs).push(f);
+  }
+  const groups=[...subs.entries()].map(([name,fs])=>({name,files:fs}));
+  if(rootPdfs.length>=2||(rootPdfs.length===1&&groups.length))
+    groups.push(...rootPdfs.map(p=>({name:p.name.replace(/\.pdf$/i,''),files:[p]})));
+  else rootImgs.push(...rootPdfs);   // a single root PDF with no subfolders stays part of the root tik
+  if(rootImgs.length){
+    const rootName=String((files[0]&&files[0].webkitRelativePath)||'').split('/')[0]||'התיקייה';
+    groups.push({name:groups.length?rootName+' — דפים בשורש':rootName,files:rootImgs});
+  }
+  groups.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+  return groups;
+}
+function enqueueFolderSelection(list){
+  const groups=tikGroupsOf(list);
+  if(!groups.length){alert('לא נמצאו קבצים נתמכים (PDF / JPG / PNG / TIFF / WEBP).');return;}
+  if(groups.length===1&&!state.queue.length){addFiles(groups[0].files);return;}   // classic single-tik flow
+  groups.forEach(g=>state.queue.push({name:g.name,files:g.files,status:'pending'}));
+  renderQueue();
+  showStatus(`נוספו ${groups.length} תיקים לתור (${state.queue.length} סה״כ) — לחץ «⚡ תיאור מהיר» או «קטלג תיק» כדי להריץ את התור, תיק אחרי תיק.`,'ok');
+}
+function renderQueue(){
+  const panel=$('tik-queue-panel');
+  if(!state.queue.length){panel.style.display='none';syncRunButtons();return;}
+  panel.style.display='block';
+  const c={pending:0,running:0,done:0,error:0};state.queue.forEach(q=>c[q.status]=(c[q.status]||0)+1);
+  $('tik-queue-summary').textContent=`${state.queue.length} תיקים · ${c.done||0} הושלמו`+(c.error?` · ${c.error} נכשלו`:'')+((c.pending&&!state.queueRunning)?` · ${c.pending} ממתינים`:'')+(state.queueRunning?' · התור רץ…':'');
+  $('tik-queue-retry').style.display=(c.error&&!state.queueRunning)?'':'none';
+  let base='';try{base=serverBase();}catch(e){}
+  const icon=q=>q.status==='running'?'<span class="spinner"></span>'
+    :q.status==='done'?'<span style="color:var(--good)">✓</span>'
+    :q.status==='error'?'<span style="color:var(--error)">✗</span>':'⏳';
+  $('tik-queue-list').innerHTML=state.queue.map((q,i)=>{
+    const mb=(q.files.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(1);
+    const what=(q.files.length===1&&/\.pdf$/i.test(q.files[0].name))?'PDF':`${q.files.length} דפים`;
+    const acts=[];
+    if(q.status==='done'&&q.rec)acts.push(`<button type="button" class="copy-btn" data-show="${i}" style="padding:2px 9px;font-size:11.5px" title="הצגת רשומת התיק הזה במסך (הרשומות של שאר התיקים נשארות שמורות בתור)">הצג</button>`);
+    if(q.status==='done'&&q.outputName&&base)acts.push(`<a href="${base}/api/output/${encodeURIComponent(q.outputName)}" style="font-size:11.5px" title="הורדת קובץ הרשומה שנשמר בשרת">⬇ קובץ</a>`);
+    if(q.status==='pending')acts.push(`<button type="button" class="copy-btn" data-del="${i}" style="padding:2px 9px;font-size:11.5px;background:var(--error);color:#fff" title="הסרה מהתור">✕</button>`);
+    const err=q.status==='error'?` <span style="color:var(--error);font-size:11px" title="${esc(q.error||'')}">— ${esc(String(q.error||'נכשל').slice(0,90))}</span>`:'';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px dashed color-mix(in srgb, var(--muted) 30%, transparent);font-size:12.5px;flex-wrap:wrap">
+      <span style="width:18px;text-align:center;flex:none">${icon(q)}</span>
+      <b>${i+1}. ${esc(q.name)}</b>
+      <span style="color:var(--muted)">${what} · ${mb}MB</span>${err}
+      <span style="margin-inline-start:auto;display:flex;gap:6px;align-items:center">${acts.join('')}</span>
+    </div>`;
+  }).join('');
+  $('tik-queue-list').querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{state.queue.splice(+b.dataset.del,1);renderQueue();}));
+  $('tik-queue-list').querySelectorAll('[data-show]').forEach(b=>b.addEventListener('click',()=>showQueueItem(+b.dataset.show)));
+  syncRunButtons();
+}
+// Bring a finished tik's record back on screen. Works mid-queue too — the
+// bookkeeping in runQueue captures its fields synchronously, so a view switch
+// between items can't corrupt what gets saved.
+function showQueueItem(i){
+  const q=state.queue[i];if(!q||q.status!=='done'||!q.rec)return;
+  state.files=q.files.slice();renderFiles();
+  state.chunkNotes=Array.isArray(q.notes)?q.notes:[];
+  state.outputName=q.outputName||null;
+  renderRecord(q.rec,true);   // restored=true: don't overwrite the refresh-survival snapshot
+  showStatus(`מוצגת רשומת התיק «${esc(q.name)}» מהתור — שאר הרשומות נשארות שמורות ברשימת התור.`,'ok');
+  $('results').scrollIntoView({behavior:'smooth'});
+}
+async function runQueue(mode){
+  if(state.queueRunning)return;
+  state.lastQueueMode=mode;
+  // Loose files already on screen become the first tik — nothing is dropped
+  // silently. Files that came FROM the queue («הצג», or the last processed tik)
+  // are recognized by File-object identity and skipped, so viewing a finished
+  // record never re-enqueues it as a duplicate.
+  if(state.files.length){
+    const fromQueue=state.queue.some(q=>q.files.length===state.files.length&&q.files.every((f,j)=>f===state.files[j]));
+    if(!fromQueue)state.queue.unshift({name:'דפים שהועלו ידנית',files:state.files.slice(),status:'pending'});
+    state.files=[];
+  }
+  state.queueRunning=true;renderQueue();
+  const runner=mode==='catalog'?catalogTik:fastDescribe;
+  let ok=0,fail=0,i;
+  // Re-scan for the next pending item each round: items can be added/removed
+  // from the queue mid-run without breaking iteration.
+  while((i=state.queue.findIndex(q=>q.status==='pending'))!==-1){
+    const item=state.queue[i];
+    item.status='running';renderQueue();
+    state.files=item.files.slice();renderFiles();
+    state.chunkNotes=null;state.outputName=null;
+    let good=false;
+    try{good=(await runner())===true;}catch(e){console.error(e);}
+    if(good){
+      item.status='done';item.rec=state.lastRecord;
+      // Capture per-engine only — "הצג" mid-run swaps these globals, so a blind
+      // copy could attach another tik's notes/output to this item.
+      item.notes=(mode==='catalog'&&Array.isArray(state.chunkNotes))?state.chunkNotes:null;
+      item.outputName=(mode==='fast'&&state.outputName)?state.outputName:null;
+      ok++;
+    }else{
+      item.status='error';item.error=(($('status').textContent||'').trim()||'נכשל').slice(0,400);fail++;
+    }
+    renderQueue();
+    if(state.queue.some(q=>q.status==='pending'))await new Promise(r=>setTimeout(r,800));
+  }
+  state.queueRunning=false;renderQueue();   // state.files keeps the last tik's pages (צ'אט / תיאור מפורט / PDF)
+  const failTxt=fail?` · ${fail} נכשלו — «🔄 נסה כושלים מחדש» יריץ אותם שוב`:'';
+  showStatus(`✓ התור הסתיים — ${ok} תיקים קוטלגו${failTxt}. כל הרשומות שמורות בתור: «הצג» מחזיר רשומה למסך, «⬇ קובץ» מוריד את מה שנשמר בשרת.`,fail?'info':'ok');
+}
+$('tik-queue-clear').addEventListener('click',()=>{
+  if(state.queueRunning){showStatus('התור רץ — המתן לסיום התיק הנוכחי לפני ניקוי.','err');return;}
+  state.queue=[];renderQueue();
+});
+$('tik-queue-retry').addEventListener('click',()=>{
+  if(state.queueRunning)return;
+  state.queue.forEach(q=>{if(q.status==='error'){q.status='pending';delete q.error;}});
+  renderQueue();runQueue(state.lastQueueMode||'fast');
+});
 
 /* ---------- intake form (טופס איסוף) handling ---------- */
 function renderIntake(){
