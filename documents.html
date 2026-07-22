@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Cross-origin isolation for ffmpeg.wasm (required by SharedArrayBuffer). Must load before any other script. -->
-<script src="coi-serviceworker.min.js"></script>
+<script src="coi-serviceworker.min.js?v=20260721"></script>
 <title>קטלוג מסמכים</title>
 
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
-<link rel="stylesheet" href="yv-theme.css">
+<link rel="stylesheet" href="yv-theme.css?v=20260722">
 <style>
   :root { --accent: var(--docs); --accent-2: #5ee0a3; }
   .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
@@ -60,8 +60,17 @@
   input.ltr, textarea.ltr,
   #r-title-en, #r-doc-date, #r-archive-id, #r-intake-num,
   #r-sender-en, #r-recipient-en, #r-place-en,
-  #r-original-text, #r-transliteration, #r-translation-en {
+  #r-transliteration, #r-translation-en {
     direction: ltr !important; text-align: right !important; font-family: 'Heebo', sans-serif;
+  }
+  /* Original transcription: the source language is frequently Yiddish/Hebrew —
+     written RTL in Hebrew letters — and forcing LTR rendered it reversed
+     (system review 2026-07-21 #15, house RTL rule). unicode-bidi:plaintext
+     lets EVERY LINE take its natural direction: German/Polish lines stay LTR,
+     Yiddish/Hebrew lines render RTL. */
+  #r-original-text {
+    direction: rtl; text-align: right; unicode-bidi: plaintext;
+    font-family: 'Heebo', sans-serif;
   }
 
   .settings-panel { display: none; background: color-mix(in srgb, var(--accent) 8%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: var(--radius); padding: 14px; margin-bottom: 14px; }
@@ -927,6 +936,13 @@ function syncProviderRows() {
   document.querySelectorAll('.provider-row').forEach(row => {
     row.style.display = rowsFor.includes(row.dataset.provider) ? 'grid' : 'none';
   });
+  // Managed Gemini key: toggling the provider dropdown must not resurrect the
+  // hidden key row (system review 2026-07-21 #14 — reproducible clobber).
+  if (window.YV_GEMINI_MANAGED) {
+    const _gk = document.getElementById('api-key-gemini') || document.getElementById('key-gemini');
+    const _row = _gk && _gk.closest('.provider-row');
+    if (_row) _row.style.display = 'none';
+  }
 }
 function getActiveApiKey() {
   // review #1: the Anthropic path goes through the server proxy — a reachable
@@ -1101,7 +1117,7 @@ function renderDocQueuePanel() {
     return `<div class="doc-queue-item" data-idx="${idx}"${errTip}
       style="flex:0 0 auto; width:100px; cursor:pointer; padding:5px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'};">
       <div style="position:relative; width:90px; height:90px; border-radius:4px; overflow:hidden; background:var(--tint); margin:0 auto; display:flex; align-items:center; justify-content:center;">
-        ${it.thumb ? `<img src="${it.thumb}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="font-size:36px; opacity:.6;">${isPdf ? '📄' : '🖼'}</div>`}
+        ${it.thumb ? `<img alt="" src="${it.thumb}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="font-size:36px; opacity:.6;">${isPdf ? '📄' : '🖼'}</div>`}
         <div style="position:absolute; bottom:0; right:0; left:0; background:rgba(0,0,0,.7); color:#fff; font-size:9px; text-align:center; padding:1px 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(it.file.name)}</div>
       </div>
       <div style="text-align:center; margin-top:3px; font-size:10.5px; color:${s.color}; font-weight:600;">${s.icon} ${s.label}</div>
@@ -1667,7 +1683,7 @@ function removeMerge(idx) {
 }
 
 async function performMerge() {
-  console.log('[merge] performMerge called, files:', state.merge_files.length);
+  window.yvDebug&&console.log('[merge] performMerge called, files:', state.merge_files.length);
   if (!state.merge_files.length) { alert('אין קבצים למיזוג'); return; }
   if (!window.jspdf?.jsPDF) {
     alert('ספריית jsPDF לא נטענה. נסה לרענן את הדף (Cmd+Shift+R) ושים לב לשגיאות ב-DevTools Console.');
@@ -1693,7 +1709,7 @@ async function performMerge() {
   else if (qualitySetting === 'low') qualityValue = 0.60;
   else if (qualitySetting === 'auto') qualityValue = totalSizeMB > 18 ? 0.75 : null;
 
-  console.log('[merge] starting:', { fileCount: state.merge_files.length, pageSize, outputName, qualitySetting, qualityValue, totalSizeMB });
+  window.yvDebug&&console.log('[merge] starting:', { fileCount: state.merge_files.length, pageSize, outputName, qualitySetting, qualityValue, totalSizeMB });
 
   try {
     const { jsPDF } = window.jspdf;
@@ -1702,7 +1718,7 @@ async function performMerge() {
     for (let i = 0; i < state.merge_files.length; i++) {
       const file = state.merge_files[i];
       progressEl.textContent = `מעבד ${i + 1}/${state.merge_files.length}: ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)…`;
-      console.log(`[merge] page ${i+1}/${state.merge_files.length}:`, file.name, file.type, `${(file.size/1024/1024).toFixed(1)}MB`);
+      window.yvDebug&&console.log(`[merge] page ${i+1}/${state.merge_files.length}:`, file.name, file.type, `${(file.size/1024/1024).toFixed(1)}MB`);
 
       // Read file as data URL
       const dataUrl = await new Promise((res, rej) => {
@@ -1719,7 +1735,7 @@ async function performMerge() {
         im.onerror = () => rej(new Error('טעינת תמונה נכשלה (אולי פגומה): ' + file.name));
         im.src = dataUrl;
       });
-      console.log(`[merge]   loaded image: ${img.width}×${img.height}`);
+      window.yvDebug&&console.log(`[merge]   loaded image: ${img.width}×${img.height}`);
 
       // Compress if quality is set
       let finalDataUrl = dataUrl;
@@ -1736,7 +1752,7 @@ async function performMerge() {
         fmt = 'JPEG';
         const beforeKB = (file.size / 1024).toFixed(0);
         const afterKB = (finalDataUrl.length * 0.75 / 1024).toFixed(0);  // base64→bytes ≈ ×0.75
-        console.log(`[merge]   compressed @${qualityValue}: ${beforeKB}KB → ${afterKB}KB`);
+        window.yvDebug&&console.log(`[merge]   compressed @${qualityValue}: ${beforeKB}KB → ${afterKB}KB`);
       }
 
       if (pageSize === 'fit') {
@@ -1771,14 +1787,14 @@ async function performMerge() {
         const y = (ph - h) / 2;
         doc.addImage(finalDataUrl, fmt, x, y, w, h);
       }
-      console.log(`[merge]   page ${i+1} added`);
+      window.yvDebug&&console.log(`[merge]   page ${i+1} added`);
     }
 
     progressEl.textContent = 'מייצר קובץ PDF — רגע…';
-    console.log('[merge] generating blob');
+    window.yvDebug&&console.log('[merge] generating blob');
     const pdfBlob = doc.output('blob');
     const pdfFile = new File([pdfBlob], outputName, { type: 'application/pdf' });
-    console.log(`[merge] DONE: ${outputName}, ${(pdfBlob.size/1024/1024).toFixed(1)}MB`);
+    window.yvDebug&&console.log(`[merge] DONE: ${outputName}, ${(pdfBlob.size/1024/1024).toFixed(1)}MB`);
 
     // BUILD SUCCESS PANE (replace the modal body entirely — safer than innerHTML+=)
     const modalContainer = overlay.querySelector('div'); // First child div = the modal container
@@ -1935,7 +1951,7 @@ async function runClaudeJobDocs(prompt, images) {
   while (Date.now() - started < maxMs) {
     await new Promise(r => setTimeout(r, 3000));
     let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
-    if (!pr.ok) continue;
+    if (!pr.ok) { if (window.yvAuthExpired && yvAuthExpired(pr)) return; continue; }   // 401/403 => stop+banner (review 21.7 #13)
     const j = await pr.json();
     showStatus('Claude קורא את המסמך ומפיק את הרישום… (' + Math.round((Date.now() - started) / 1000) + ' שׄ)', 'info');
     if (j.status === 'done') return (j.text || '').trim();
@@ -2033,7 +2049,7 @@ async function geminiOCROnly() {
     else if (lname.endsWith('.webp')) mime = 'image/webp';
     else mime = 'application/pdf'; // default for unknown — most archive docs are PDFs
   }
-  console.log('[Gemini OCR] doc MIME:', mime, 'size:', sizeMB.toFixed(1) + 'MB', 'name:', state.document.name);
+  window.yvDebug&&console.log('[Gemini OCR] doc MIME:', mime, 'size:', sizeMB.toFixed(1) + 'MB', 'name:', state.document.name);
 
   // Build docPart (inline_data for small, file_data for large via Files API)
   let docPart;
@@ -2060,8 +2076,8 @@ async function geminiOCROnly() {
   }
 
   const url = geminiBase() + '/v1beta/models/' + modelSelGemini.value + ':generateContent';
-  console.log('[Gemini OCR] POST', url);
-  console.log('[Gemini OCR] docPart kind:', docPart.inline_data ? 'inline_data' : 'file_data', 'mime:',
+  window.yvDebug&&console.log('[Gemini OCR] POST', url);
+  window.yvDebug&&console.log('[Gemini OCR] docPart kind:', docPart.inline_data ? 'inline_data' : 'file_data', 'mime:',
     docPart.inline_data?.mime_type || docPart.file_data?.mime_type,
     docPart.file_data ? 'uri:' + docPart.file_data.file_uri : `data:${(docPart.inline_data?.data?.length || 0)} chars`);
   const res = await fetch(url, {
@@ -2079,11 +2095,11 @@ async function geminiOCROnly() {
     // RETRY with alternative file_uri format (just 'files/abc' instead of full URL)
     // if this was a 400 with Files API and we haven't retried yet
     if (res.status === 400 && docPart.file_data && state._lastUploadedFile && !state._fileUriRetried) {
-      console.log('[Gemini OCR] 400 with Files API — retrying with shortname file_uri');
+      window.yvDebug&&console.log('[Gemini OCR] 400 with Files API — retrying with shortname file_uri');
       state._fileUriRetried = true;
       showStatus('שלב 1/2 · נסיון שני עם פורמט URI אלטרנטיבי…', 'info');
       docPart = { file_data: { file_uri: state._lastUploadedFile.name, mime_type: state._lastUploadedFile.mimeType || mime } };
-      console.log('[Gemini OCR] retry docPart:', docPart);
+      window.yvDebug&&console.log('[Gemini OCR] retry docPart:', docPart);
       const res2 = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
@@ -2097,7 +2113,7 @@ async function geminiOCROnly() {
         const data2 = await res2.json();
         const text2 = (data2.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
         if (text2) {
-          console.log('[Gemini OCR] retry SUCCESS');
+          window.yvDebug&&console.log('[Gemini OCR] retry SUCCESS');
           return text2;
         }
       }
@@ -3701,6 +3717,7 @@ refreshButtons();
     // the server overrides x-goog-api-key, so this value never reaches Google
     // and nothing is persisted client-side. No-op if the server has no key.
     if (c && c.geminiKeyManaged) {
+      window.YV_GEMINI_MANAGED = true;   // sync guards re-hide the key row (review 21.7 #14)
       try { localStorage.removeItem('yv_api_key_gemini'); } catch (e) {}
       try {
         if (typeof state === 'object' && state) {
@@ -3722,10 +3739,10 @@ refreshButtons();
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js?v=20260711"></script>
-<script src="yv-autosave.js"></script>
+<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-autosave.js?v=20260721"></script>
 <script src="yv-misid.js?v=20260711e"></script>
 <script>yvMisid.init({ screen: 'documents', roots: ['#results'] });</script>
-<script src="yv-chunk.js"></script>
+<script src="yv-chunk.js?v=20260721"></script>
 </body>
 </html>

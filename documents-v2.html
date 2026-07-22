@@ -6,7 +6,7 @@
 <title>קטלוג מסמכים — v2 (זרימה מפושטת)</title>
 <!-- pdf.js for sampling pages from oversized PDFs -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs" type="module"></script>
-<link rel="stylesheet" href="yv-theme.css">
+<link rel="stylesheet" href="yv-theme.css?v=20260722">
 <style>
   :root { --accent: var(--docs); --accent-2: #5ee0a3; --err: var(--error); --ok: var(--good); }
   .wrap { max-width: 1080px; margin: 0 auto; padding: 30px 24px; }
@@ -606,7 +606,7 @@ async function runClaudeJobV2(prompt, images) {
   while (Date.now() - started < maxMs) {
     await new Promise(r => setTimeout(r, 3000));
     let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
-    if (!pr.ok) continue;
+    if (!pr.ok) { if (window.yvAuthExpired && yvAuthExpired(pr)) return; continue; }   // 401/403 => stop+banner (review 21.7 #13)
     const j = await pr.json();
     showStatus('Claude קורא את המסמך ומפיק את הרישום… (' + Math.round((Date.now() - started) / 1000) + ' שׄ)');
     if (j.status === 'done') return (j.text || '').trim();
@@ -1314,24 +1314,37 @@ ${r.notes ? `<div class="section"><h2>הערות</h2><div>${esc(r.notes).replace
   var base = '';
   try { if (typeof serverBase === 'function') base = serverBase(); } catch (e) {}
   fetch(base + '/api/config').then(function (r) { return r.json(); }).then(function (c) {
+    // Managed Gemini key (system review 2026-07-21 #14): this screen never read
+    // the flag, so the owner saw an empty/stale personal-key field — exactly
+    // the regression the managed-key feature exists to prevent.
+    if (c && c.geminiKeyManaged) {
+      window.YV_GEMINI_MANAGED = true;
+      try { localStorage.removeItem('yv_api_key_gemini'); } catch (e) {}
+      try { if (typeof state === 'object' && state && 'apiKey' in state) state.apiKey = 'server-managed'; } catch (e) {}
+      var _k = document.getElementById('api-key');
+      if (_k) {
+        var _row = _k.closest('.provider-row') || _k.closest('label') || _k.parentElement;
+        if (_row) _row.style.display = 'none';
+      }
+    }
     var n = c && c.archiveName; if (!n) return;
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { apply(n); });
     else apply(n);
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js"></script>
-<script src="yv-autosave.js"></script>
+<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-autosave.js?v=20260721"></script>
 <script src="yv-misid.js?v=20260711e"></script>
 <script>yvMisid.init({ screen: 'documents-v2', roots: ['#results'] });</script>
-<script src="yv-flow.js"></script>
+<script src="yv-flow.js?v=20260721"></script>
 <script>yvFlow.init({ screen: 'documents-v2', backend: true, label: 'זרימת עיבוד:', options: [
   { value: 'auto', label: 'אוטומטי (מומלץ)', hint: 'Gemini מבין את המסמך + גיבוי' },
   { value: 'smart', label: 'חכם (זיהוי שפה)', hint: 'מסווג שפה+סוג: מודפס לא-עברי → Mistral (מהיר/זול), אחרת → Gemini' },
   { value: 'mistral', label: 'OCR מהיר (מודפס)', hint: 'Mistral OCR — מהיר לטקסט מודפס נקי' },
   { value: 'consensus', label: 'אימות דו-מודלי', hint: 'Gemini + Claude קוראים בנפרד ומפייסים — לכתב-יד קשה (איטי/יקר יותר)' },
 ] });</script>
-<script src="yv-progress.js"></script>
-<script src="yv-chunk.js"></script>
+<script src="yv-progress.js?v=20260721"></script>
+<script src="yv-chunk.js?v=20260721"></script>
 </body>
 </html>

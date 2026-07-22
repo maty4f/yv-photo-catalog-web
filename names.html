@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>מאגר שמות — חיפוש</title>
-<link rel="stylesheet" href="yv-theme.css">
+<link rel="stylesheet" href="yv-theme.css?v=20260722">
 <style>
   :root { --accent:var(--tik); --accent-2:#c9a6ff; }
   body { padding:20px; }
@@ -154,7 +154,8 @@ function render(){
     return;
   }
   const trs = rows.map(r => {
-    const nameCell = esc(r.name) + (r.name_original && r.name_original !== r.name ? ` <small>(${esc(r.name_original)})</small>` : '');
+    const nameCell = esc(r.name) + (r.name_original && r.name_original !== r.name
+      ? ` <small dir="auto" style="unicode-bidi:isolate">(${esc(r.name_original)})</small>` : '');
     const tikCell = r.tik_output
       ? `<a href="${esc(outputUrl(r.tik_output))}" target="_blank" rel="noopener">${esc(r.tik_title || r.tik || r.tik_output)}</a>`
       : esc(r.tik_title || r.tik || '—');

@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Cross-origin isolation for ffmpeg.wasm (required by SharedArrayBuffer). Must load before any other script. -->
-<script src="coi-serviceworker.min.js"></script>
+<script src="coi-serviceworker.min.js?v=20260721"></script>
 <title>קטלוג תצלומים</title>
 
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-<link rel="stylesheet" href="yv-theme.css">
+<link rel="stylesheet" href="yv-theme.css?v=20260722">
 <style>
   :root { --accent: var(--photos); --accent-2: #ffcb70; }
   .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
@@ -1313,7 +1313,7 @@ function renderFaceClusters(data, htmlUrl) {
     else document.body.appendChild(panel);
   }
   const cards = clusters.length ? clusters.map((c, ci) => {
-    const crops = (c.crops || []).map(u => `<img src="${esc(u)}" alt="" style="width:62px;height:62px;object-fit:cover;border-radius:6px;border:1px solid var(--line);margin-inline-start:4px">`).join('');
+    const crops = (c.crops || []).map(u => `<img alt="" src="${esc(u)}" alt="" style="width:62px;height:62px;object-fit:cover;border-radius:6px;border:1px solid var(--line);margin-inline-start:4px">`).join('');
     let body;
     if (c.proposed && (c.unnamed || []).length) {
       body = `<div style="font-size:13.5px">👧 <b>${esc(c.proposed)}</b> <span style="color:var(--muted)">(מתצלום ${esc((c.named || []).join(', '))})</span> `
@@ -1749,7 +1749,7 @@ function renderQueuePanel() {
       ${hasBackBadge}
       <button class="queue-remove" data-idx="${idx}" title="הסר תצלום מהתור" style="position:absolute; top:-4px; inset-inline-end:-4px; z-index:3; background:var(--error); color:#fff; border:none; border-radius:50%; width:17px; height:17px; font-size:11px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 2px rgba(0,0,0,.4);">✕</button>
       <div style="position:relative; width:80px; height:80px; border-radius:4px; overflow:hidden; background:var(--tint); margin:0 auto;">
-        ${it.thumb ? `<img src="${it.thumb}" style="width:100%; height:100%; object-fit:cover;">` : ''}
+        ${it.thumb ? `<img alt="" src="${it.thumb}" style="width:100%; height:100%; object-fit:cover;">` : ''}
         <div style="position:absolute; bottom:0; right:0; left:0; background:rgba(0,0,0,.7); color:#fff; font-size:10px; text-align:center; padding:1px 2px;">#${photoNum}</div>
       </div>
       <div style="text-align:center; margin-top:3px; font-size:10.5px; color:${s.color}; font-weight:600;">
@@ -2304,6 +2304,13 @@ function syncProviderRows() {
       row.style.display = row.dataset.provider === state.provider ? 'grid' : 'none';
     }
   });
+  // Managed Gemini key: a provider toggle must not resurrect the hidden key
+  // row (system review 2026-07-21 #14 — reproducible clobber).
+  if (window.YV_GEMINI_MANAGED) {
+    const _gk = document.getElementById('api-key-gemini') || document.getElementById('key-gemini');
+    const _row = _gk && _gk.closest('.provider-row');
+    if (_row) _row.style.display = 'none';
+  }
 }
 
 function getActiveApiKey() {
@@ -2577,15 +2584,27 @@ async function runUnifiedJob(file, contextText, onStatus, backFile, startedAt) {
     throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
 
   const fd = new FormData();
-  fd.append('file', file);
   fd.append('kind', 'photo');
   fd.append('context', (contextText || '').trim());
   if (window.yvFlow) fd.append('flow', yvFlow.current('photos'));   // מהיר / מדורג / מעמיק
   if (window.yvFlow && yvFlow.backend) fd.append('backend', yvFlow.backend('photos'));   // Claude: מנוי / API
   if (backFile) fd.append('back', backFile);   // verso — read alongside the front
-  if (onStatus) onStatus('מעלה לשרת המאוחד…' + (backFile ? ' (חזית + גב)' : ''));
-
-  const res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+  let res;
+  if (window.yvChunk && file.size > yvChunk.THRESHOLD) {
+    // Big scan (e.g. TIFF) — sliced to ≤32MB parts exactly like documents/films
+    // (a single body over the tunnel's ~100MB cap dies mid-upload); the finalize
+    // POST carries uploadId instead of file. System review 2026-07-21 —
+    // photos.html was the one cataloging screen with no chunk path.
+    const uploadId = await yvChunk.upload(base, file, file.name || 'photo.tif',
+      msg => { if (onStatus) onStatus(msg); });
+    fd.append('uploadId', uploadId);
+    if (onStatus) onStatus('כל הנתחים הועלו — השרת מרכיב את הקובץ ומתחיל בקטלוג…');
+    res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+  } else {
+    fd.append('file', file);
+    if (onStatus) onStatus('מעלה לשרת המאוחד…' + (backFile ? ' (חזית + גב)' : ''));
+    res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+  }
   const j = await res.json().catch(() => ({}));
   if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
@@ -2602,7 +2621,16 @@ async function runUnifiedJob(file, contextText, onStatus, backFile, startedAt) {
   while (true) {
     await new Promise(r => setTimeout(r, POLL_MS));
     let job = null;
-    try { job = await (await fetch(jobUrl)).json(); } catch (e) { /* transient — keep polling */ }
+    try {
+      const _r = await fetch(jobUrl);
+      // 401/403 = expired Access session, not a blip — stop with a real error
+      // instead of polling silently for 20 minutes (review 2026-07-21 #13).
+      if (window.yvAuthExpired && yvAuthExpired(_r)) throw new Error('ההתחברות פגה — רענן את הדף והתחבר מחדש');
+      job = await _r.json();
+    } catch (e) {
+      if (/ההתחברות פגה/.test(String(e && e.message))) throw e;
+      /* transient — keep polling */
+    }
     if (!job) { if (Date.now() - t0 > MAX_MS) throw new Error('timeout בניתוח'); continue; }
     if (window.yvProgress) yvProgress.pump(job);
     if (onStatus && Array.isArray(job.events) && job.events.length) {
@@ -3516,7 +3544,7 @@ function buildFinalHTML() {
 
   // Get embedded image (front only, for preview)
   const frontImg = state.thumbnails.front
-    ? `<img src="${state.thumbnails.front}" alt="" style="max-width:100%; max-height:480px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.08);">`
+    ? `<img alt="" src="${state.thumbnails.front}" alt="" style="max-width:100%; max-height:480px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.08);">`
     : '<div style="color:#5a5a5a; font-style:italic; padding:24px">תצלום אינו מוטמע / Not embedded</div>';
 
   // ID table HTML
@@ -3843,7 +3871,7 @@ function buildCollectionReport(c) {
   const photosHTML = photos.map(ph => `
     <tr>
       <td><b>${esc(ph.photo_id)}</b></td>
-      <td>${ph.front_thumbnail ? `<img src="${ph.front_thumbnail}" alt="" style="max-width:100px; max-height:80px; border-radius:3px;">` : ''}</td>
+      <td>${ph.front_thumbnail ? `<img alt="" src="${ph.front_thumbnail}" alt="" style="max-width:100px; max-height:80px; border-radius:3px;">` : ''}</td>
       <td><b>${esc(ph.title_he || '')}</b><br><span style="color:#666; font-size:12px;">${esc(ph.title_en || '')}</span></td>
       <td>${esc(ph.creation_date || '—')}</td>
       <td>${esc(ph.places_en || '—')}</td>
@@ -4890,7 +4918,7 @@ document.addEventListener('click', async e => {
   let viewerHtml = '';
   if (file.type.startsWith('image/')) {
     const url = URL.createObjectURL(file);
-    viewerHtml = `<img src="${url}" style="max-width:100%; max-height:90vh; display:block; margin:0 auto;">`;
+    viewerHtml = `<img alt="" src="${url}" style="max-width:100%; max-height:90vh; display:block; margin:0 auto;">`;
   } else if (file.type === 'application/pdf') {
     // Render via PDF.js — show all pages
     try {
@@ -5237,6 +5265,7 @@ refreshButtons();
     // the server overrides x-goog-api-key, so this value never reaches Google
     // and nothing is persisted client-side. No-op if the server has no key.
     if (c && c.geminiKeyManaged) {
+      window.YV_GEMINI_MANAGED = true;   // sync guards re-hide the key row (review 21.7 #14)
       try { localStorage.removeItem('yv_api_key_gemini'); } catch (e) {}
       try {
         if (typeof state === 'object' && state) {
@@ -5258,16 +5287,17 @@ refreshButtons();
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js"></script>
-<script src="yv-autosave.js"></script>
+<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-autosave.js?v=20260721"></script>
+<script src="yv-chunk.js?v=20260721"></script>
 <script src="yv-misid.js?v=20260711e"></script>
 <script>yvMisid.init({ screen: 'photos', roots: ['#results'] });</script>
-<script src="yv-flow.js"></script>
+<script src="yv-flow.js?v=20260721"></script>
 <script>yvFlow.init({ screen: 'photos', backend: true, label: 'זרימת עיבוד:', options: [
   { value: 'tiered', label: 'מדורג (מומלץ)', hint: 'Gemini לכולם + Claude לעוגני-זיהוי' },
   { value: 'fast', label: 'מהיר', hint: 'Gemini בלבד — הכי מהיר וזול' },
   { value: 'free', label: 'מעמיק', hint: 'Claude תמיד — הכי יסודי, איטי' },
 ] });</script>
-<script src="yv-progress.js"></script>
+<script src="yv-progress.js?v=20260721"></script>
 </body>
 </html>

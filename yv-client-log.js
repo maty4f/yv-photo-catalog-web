@@ -222,6 +222,37 @@
     lang: navigator.language,
   });
 
+  // Debug-log gate: screens wrap noisy console.log calls in `window.yvDebug &&`
+  // (enable with localStorage.yvDebug = '1') — review 2026-07-21 #43.
+  if (window.yvDebug === undefined) {
+    try { window.yvDebug = localStorage.getItem('yvDebug') === '1'; }
+    catch (e) { window.yvDebug = false; }
+  }
+
+  // Shared 401/403 poll guard (system review 2026-07-21 #13): an expired
+  // Cloudflare-Access session made every job-polling loop spin silently for up
+  // to 40 minutes ("still working…"). Loops call yvAuthExpired(res) on a
+  // non-ok response — for 401/403 it shows one fixed banner and returns true
+  // so the loop can STOP instead of masking the auth failure as a blip.
+  window.yvAuthExpired = function (res) {
+    var st = res && res.status;
+    if (st !== 401 && st !== 403) return false;
+    try {
+      if (!document.getElementById('yv-auth-banner')) {
+        var b = document.createElement('div');
+        b.id = 'yv-auth-banner';
+        b.setAttribute('dir', 'rtl');
+        b.style.cssText = 'position:fixed;top:0;right:0;left:0;z-index:9999;' +
+          'background:#b71c1c;color:#fff;padding:10px 16px;text-align:center;' +
+          'font-size:15px;font-family:inherit';
+        b.textContent = '⚠ ההתחברות פגה (401/403) — רענן את הדף והתחבר מחדש; העבודה בשרת ממשיכה ותופיע לאחר הרענון';
+        document.body.appendChild(b);
+      }
+      push({ type: 'auth-expired', status: st, url: location.pathname });
+    } catch (e) { /* banner is best-effort */ }
+    return true;
+  };
+
   // Test hook (jsdom contract tests) — not a public API.
   window.__yvLog = { push: push, send: send, buf: buf, sid: sid };
 })();

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>קטלוג תיק (Claude קורא ומסנתז)</title>
-<link rel="stylesheet" href="yv-theme.css">
+<link rel="stylesheet" href="yv-theme.css?v=20260722">
 <style>
   :root{ --accent:var(--tik); --accent-2:#c9a6ff; --diamond:var(--brand); --high:var(--good); --mid:var(--warn); --low:var(--error); }
   body{ font-size:15px; line-height:1.6; }
@@ -345,6 +345,13 @@ function mimeOf(f){const n=(f.name||'').toLowerCase();
   return'image/jpeg';}
 function showStatus(msg,kind){const s=$('status');s.innerHTML=msg;s.className='status show '+(kind||'info');}
 function parseJson(text,label){
+  // Delegate to the SHARED parser (yv-providers.js): the private copy here
+  // missed the live invalid-escape fix of 2026-07-11 — the exact drift the
+  // system review flagged (2026-07-21 #21). Local impl stays as fallback only.
+  if(window.yvProviders&&yvProviders.parseJson)return yvProviders.parseJson(text,label);
+  return parseJsonLocal(text,label);
+}
+function parseJsonLocal(text,label){
   let s=String(text||'').trim();
   const fence=s.match(/```(?:json)?\s*([\s\S]*?)```/); if(fence)s=fence[1].trim();
   if(!s.startsWith('{')){const m=s.match(/\{[\s\S]*\}/);if(m)s=m[0];}
@@ -625,7 +632,7 @@ async function runClaudeJob({prompt,images,onTick,model}){
     await new Promise(r=>setTimeout(r,3000));
     let pr;
     try{pr=await fetch(base+'/api/ask-async/'+jobId);}catch(e){continue;} // transient — keep polling
-    if(!pr.ok)continue;
+    if(!pr.ok){ if(window.yvAuthExpired&&yvAuthExpired(pr))return; continue; }
     const j=await pr.json();
     if(onTick)onTick(Math.round((Date.now()-started)/1000));
     if(j.status==='done')return (j.text||'').trim();
@@ -838,7 +845,7 @@ function renderRecord(rec,restored){
   // role+crimes+fate · additional people. Records with no category fall back to
   // the single legacy table.
   const nm=(rec.names_index||[]).filter(p=>p&&(p.name||p.name_original));
-  const nameCell=p=>esc(p.name||'')+(p.name_original&&p.name_original!==p.name?` <span style="color:var(--muted)">(${esc(p.name_original)})</span>`:'')||'—';
+  const nameCell=p=>esc(p.name||'')+(p.name_original&&p.name_original!==p.name?` <span dir="auto" style="unicode-bidi:isolate;color:var(--muted)">(${esc(p.name_original)})</span>`:'')||'—';
   // rp = per-row pick (archivist request): every data row carries a checkbox —
   // an unchecked row is excluded from every copy and from the cataloger's
   // copy-sheet. Default: checked.
@@ -1695,7 +1702,7 @@ async function fastDescribe(){
     while(Date.now()-started<maxMs){
       await new Promise(r=>setTimeout(r,3000));
       let pr;try{pr=await fetch(serverBase()+'/api/tik-describe/'+jobId);}catch(e){continue;}
-      if(!pr.ok)continue;
+      if(!pr.ok){ if(window.yvAuthExpired&&yvAuthExpired(pr))return; continue; }
       const j=await pr.json();
       const evs=Array.isArray(j.events)?j.events:[];
       if(evs.length>lastEvCount){lastEvCount=evs.length;started=Date.now();}   // progress → slide the deadline
@@ -1998,16 +2005,17 @@ idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('ove
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js"></script>
-<script src="yv-autosave.js"></script>
+<script src="yv-providers.js?v=20260722"></script>
+<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-autosave.js?v=20260721"></script>
 <script src="yv-misid.js?v=20260711e"></script>
 <script>yvMisid.init({ screen: 'documents-tik', roots: ['#results'] });</script>
-<script src="yv-flow.js"></script>
+<script src="yv-flow.js?v=20260721"></script>
 <script>yvFlow.init({ screen: 'documents-tik', backend: true, label: 'קורא התיק:', options: [
   { value: 'auto', label: 'אוטומטי (מומלץ)', hint: 'Gemini קורא → גיבוי Claude → Mistral' },
   { value: 'claude', label: 'קורא Claude', hint: 'לתיקים גדולים / כשמכסת Gemini אזלה' },
   { value: 'gemini', label: 'Gemini בלבד', hint: 'ללא גיבוי לקורא' },
 ] });</script>
-<script src="yv-progress.js"></script>
+<script src="yv-progress.js?v=20260721"></script>
 </body>
 </html>

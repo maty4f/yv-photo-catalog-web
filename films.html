@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Cross-origin isolation for ffmpeg.wasm (required by SharedArrayBuffer). Must load before any other script. -->
-<script src="coi-serviceworker.min.js"></script>
+<script src="coi-serviceworker.min.js?v=20260721"></script>
 <title>קטלוג סרטים</title>
 
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 
-<link rel="stylesheet" href="yv-theme.css">
+<link rel="stylesheet" href="yv-theme.css?v=20260722">
 <style>
   :root { --accent: var(--films); --accent-2: #7cb0ff; }
   .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
@@ -88,10 +88,16 @@
   .film-drop.has-file .delete-film-btn { display: block; }
   .delete-film-btn:hover { background: var(--error); }
 
-  #r-title-en, #r-summary-en, #r-original-title, #r-duration, #r-creation-date,
+  #r-title-en, #r-summary-en, #r-duration, #r-creation-date,
   #r-receive-date, #r-register-date, #r-source-en, #r-donor-en,
   #r-original-id, #r-intake-num, #r-archive-id, #r-persons-en, #r-inscriptions-en {
     direction: ltr !important; text-align: right !important; font-family: 'Heebo', sans-serif;
+  }
+  /* Original film title may be Yiddish/Hebrew (RTL) — per-line auto direction
+     instead of forced LTR (system review 2026-07-21 #15). */
+  #r-original-title {
+    direction: rtl; text-align: right; unicode-bidi: plaintext;
+    font-family: 'Heebo', sans-serif;
   }
 
   .settings-panel { display: none; background: color-mix(in srgb, var(--accent) 8%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: var(--radius); padding: 14px; margin-bottom: 14px; }
@@ -693,6 +699,13 @@ function syncProviderRows() {
     const providers = (row.dataset.provider || '').split(/\s+/).filter(Boolean);
     row.style.display = providers.includes(state.provider) ? 'grid' : 'none';
   });
+  // Managed Gemini key: a provider toggle must not resurrect the hidden key
+  // row (system review 2026-07-21 #14 — reproducible clobber).
+  if (window.YV_GEMINI_MANAGED) {
+    const _gk = document.getElementById('api-key-gemini') || document.getElementById('key-gemini');
+    const _row = _gk && _gk.closest('.provider-row');
+    if (_row) _row.style.display = 'none';
+  }
 }
 function getActiveApiKey() { if (state.provider === 'anthropic') return (state.localServerUrl || location.origin) ? 'via-server-proxy' : ''; return state.apiKeys[state.provider] || ''; }
 function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
@@ -1880,7 +1893,7 @@ async function runClaudeJob(prompt, images) {
   while (Date.now() - started < maxMs) {
     await new Promise(r => setTimeout(r, 3000));
     let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
-    if (!pr.ok) continue;
+    if (!pr.ok) { if (window.yvAuthExpired && yvAuthExpired(pr)) return; continue; }   // 401/403 => stop+banner (review 21.7 #13)
     const j = await pr.json();
     showStatus('שלב 2/2 · Claude CLI מאמת היסטורית… (' + Math.round((Date.now() - started) / 1000) + ' שׄ)', 'info');
     if (j.status === 'done') return (j.text || '').trim();
@@ -2906,6 +2919,7 @@ refreshButtons();
     // the server overrides x-goog-api-key, so this value never reaches Google
     // and nothing is persisted client-side. No-op if the server has no key.
     if (c && c.geminiKeyManaged) {
+      window.YV_GEMINI_MANAGED = true;   // sync guards re-hide the key row (review 21.7 #14)
       try { localStorage.removeItem('yv_api_key_gemini'); } catch (e) {}
       try {
         if (typeof state === 'object' && state) {
@@ -2927,17 +2941,17 @@ refreshButtons();
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js"></script>
-<script src="yv-autosave.js"></script>
+<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-autosave.js?v=20260721"></script>
 <script src="yv-misid.js?v=20260711e"></script>
 <script>yvMisid.init({ screen: 'films', roots: ['#results'] });</script>
-<script src="yv-flow.js"></script>
+<script src="yv-flow.js?v=20260721"></script>
 <script>yvFlow.init({ screen: 'films', backend: true, label: 'זרימת עיבוד:', options: [
   { value: 'auto', label: 'אוטומטי (מומלץ)', hint: 'Gemini לפריימים + גיבוי Qwen' },
   { value: 'nofallback', label: 'Gemini בלבד', hint: 'ללא גיבוי Qwen' },
   { value: 'consensus', label: 'אימות דו-מודלי', hint: 'Gemini + Claude קוראים כיתובים ומפייסים (איטי/יקר יותר)' },
 ] });</script>
-<script src="yv-progress.js"></script>
-<script src="yv-chunk.js"></script>
+<script src="yv-progress.js?v=20260721"></script>
+<script src="yv-chunk.js?v=20260721"></script>
 </body>
 </html>
