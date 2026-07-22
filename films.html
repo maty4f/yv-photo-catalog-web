@@ -915,7 +915,7 @@ function renderFilmQueuePanel() {
     const isActive = idx === state.current_film_queue_index;
     const sizeMB = (it.file.size / 1024 / 1024).toFixed(0);
     const errTooltip = it.error ? ` title="${esc(it.error)}"` : '';
-    return `<div class="film-queue-item" data-idx="${idx}"${errTooltip}
+    return `<div class="film-queue-item" role="button" tabindex="0" data-idx="${idx}"${errTooltip}
       style="flex:0 0 auto; width:140px; cursor:pointer; padding:8px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'};">
       <div style="font-size:11.5px; color:var(--ink); font-weight:600; direction:ltr; unicode-bidi:isolate; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(it.file.name)}</div>
       <div style="font-size:10.5px; color:var(--muted); text-align:center; margin-top:2px;">${sizeMB} MB</div>
@@ -1889,16 +1889,14 @@ async function runClaudeJob(prompt, images) {
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('שרת HTTP ' + res.status + ': ' + (e.error || '').slice(0, 400)); }
   const { jobId } = await res.json();
   if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
-  const started = Date.now(), maxMs = 15 * 60 * 1000;
-  while (Date.now() - started < maxMs) {
-    await new Promise(r => setTimeout(r, 3000));
-    let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
-    if (!pr.ok) { if (window.yvAuthExpired && yvAuthExpired(pr)) return; continue; }   // 401/403 => stop+banner (review 21.7 #13)
-    const j = await pr.json();
-    showStatus('שלב 2/2 · Claude CLI מאמת היסטורית… (' + Math.round((Date.now() - started) / 1000) + ' שׄ)', 'info');
-    if (j.status === 'done') return (j.text || '').trim();
-    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
-  }
+  // Shared poll mechanics (yvPollAsk in yv-client-log.js — review 21.7 #21):
+  // the per-screen copy kept only its own status line, cap and timeout wording.
+  if (!window.yvPollAsk) throw new Error('רכיב משותף (yv-client-log) לא נטען — רענן את הדף');
+  const r = await yvPollAsk(base, jobId, { maxMs: 15 * 60 * 1000,
+    onTick: (j, sec) => showStatus('שלב 2/2 · Claude CLI מאמת היסטורית… (' + sec + ' שׄ)', 'info') });
+  if (r.status === 'auth') return;
+  if (r.status === 'done') return r.text;
+  if (r.status === 'error') throw new Error('Claude נכשל: ' + r.error);
   throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. נסה סרט קצר יותר.');
 }
 
@@ -2351,7 +2349,7 @@ document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
 <\/script>
 </body></html>`;
 
-function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function esc(s){ return window.yvEsc ? yvEsc(s) : String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }   // delegates to the ONE canonical escaper (review 21.7 #21); inline fallback covers pre-load calls
 function setMini(el, html, kind) { el.innerHTML = html; el.className = 'mini-status' + (kind ? ' ' + kind : ''); }
 
 // =====================================================================
@@ -2941,9 +2939,9 @@ refreshButtons();
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-client-log.js?v=20260722d"></script>
 <script src="yv-autosave.js?v=20260721"></script>
-<script src="yv-misid.js?v=20260711e"></script>
+<script src="yv-misid.js?v=20260722b"></script>
 <script>yvMisid.init({ screen: 'films', roots: ['#results'] });</script>
 <script src="yv-flow.js?v=20260721"></script>
 <script>yvFlow.init({ screen: 'films', backend: true, label: 'זרימת עיבוד:', options: [
@@ -2951,7 +2949,7 @@ refreshButtons();
   { value: 'nofallback', label: 'Gemini בלבד', hint: 'ללא גיבוי Qwen' },
   { value: 'consensus', label: 'אימות דו-מודלי', hint: 'Gemini + Claude קוראים כיתובים ומפייסים (איטי/יקר יותר)' },
 ] });</script>
-<script src="yv-progress.js?v=20260721"></script>
-<script src="yv-chunk.js?v=20260721"></script>
+<script src="yv-progress.js?v=20260722b"></script>
+<script src="yv-chunk.js?v=20260722d"></script>
 </body>
 </html>

@@ -345,6 +345,8 @@
       // Self-contained live model-availability poller — reads /api/status and
       // marks which route in each fallback chain is serving right now.
       function serverBase(){
+        // Deliberately NOT the canonical yvServerBase (review 21.7 #21): this
+        // widget additionally treats stored trycloudflare.com URLs as stale.
         var u = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
         if (u && !/trycloudflare\.com/.test(u)) return u;
         if (location.origin && /^https?:/.test(location.origin) &&
@@ -1744,7 +1746,7 @@ function renderQueuePanel() {
     const photoNum = it.photo_seq || (idx + 1);
     const hasBackBadge = (it.back || it.backName) ? '<span title="כולל גב" style="position:absolute; top:-3px; inset-inline-start:-3px; background:var(--accent); color:#1a1206; border-radius:50%; width:14px; height:14px; font-size:9px; display:flex; align-items:center; justify-content:center;">#</span>' : '';
     const errTooltip = it.error ? ` title="${esc(it.error)}"` : '';
-    return `<div class="queue-item" data-idx="${idx}"${errTooltip}
+    return `<div class="queue-item" role="button" tabindex="0" data-idx="${idx}"${errTooltip}
       style="position:relative; flex:0 0 auto; width:92px; cursor:pointer; padding:5px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'}; transition:all .15s;">
       ${hasBackBadge}
       <button class="queue-remove" data-idx="${idx}" title="הסר תצלום מהתור" style="position:absolute; top:-4px; inset-inline-end:-4px; z-index:3; background:var(--error); color:#fff; border:none; border-radius:50%; width:17px; height:17px; font-size:11px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 2px rgba(0,0,0,.4);">✕</button>
@@ -4050,7 +4052,9 @@ document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
 //  HELPERS
 // =====================================================================
 function esc(s) {
-  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  // Delegates to the ONE canonical escaper (review 21.7 #21); inline fallback
+  // covers calls that run before yv-client-log.js loads at the bottom.
+  return window.yvEsc ? yvEsc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, c =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function setMini(el, html, kind) {
@@ -5287,10 +5291,10 @@ refreshButtons();
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-client-log.js?v=20260722d"></script>
 <script src="yv-autosave.js?v=20260721"></script>
-<script src="yv-chunk.js?v=20260721"></script>
-<script src="yv-misid.js?v=20260711e"></script>
+<script src="yv-chunk.js?v=20260722d"></script>
+<script src="yv-misid.js?v=20260722b"></script>
 <script>yvMisid.init({ screen: 'photos', roots: ['#results'] });</script>
 <script src="yv-flow.js?v=20260721"></script>
 <script>yvFlow.init({ screen: 'photos', backend: true, label: 'זרימת עיבוד:', options: [
@@ -5298,6 +5302,6 @@ refreshButtons();
   { value: 'fast', label: 'מהיר', hint: 'Gemini בלבד — הכי מהיר וזול' },
   { value: 'free', label: 'מעמיק', hint: 'Claude תמיד — הכי יסודי, איטי' },
 ] });</script>
-<script src="yv-progress.js?v=20260721"></script>
+<script src="yv-progress.js?v=20260722b"></script>
 </body>
 </html>

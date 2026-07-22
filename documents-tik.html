@@ -139,7 +139,7 @@
     <h2>הגדרות <span id="save-state" class="hint" style="font-weight:400;margin-right:8px"></span></h2>
     <div class="row2">
       <div>
-        <label>מנוע קריאה (שלב 1)</label>
+        <label for="engine-mode">מנוע קריאה (שלב 1)</label>
         <select id="engine-mode">
           <option value="claude" selected>Claude בלבד — Claude קורא את הסריקות ומסנתז (מנוי, בלי מפתח)</option>
           <option value="dual">דו-מנועי — Gemini קורא ויזואלית, Claude מסנתז (הצלבה, דורש מפתח Gemini)</option>
@@ -147,7 +147,7 @@
         <div class="hint">Claude בלבד: פשוט, מנוע אחד, בלי תלות במכסת Gemini. דו-מנועי: שני מנועים מצליבים — דיוק רב יותר אך תלוי במכסת Gemini.</div>
       </div>
       <div id="gemini-key-wrap" style="display:none">
-        <label>מפתח Gemini API</label>
+        <label for="key-gemini">מפתח Gemini API</label>
         <input type="password" id="key-gemini" class="ltr" placeholder="AIza…" autocomplete="off">
         <div class="hint">נדרש רק במצב דו-מנועי. נשמר מקומית במכשיר זה בלבד.</div>
       </div>
@@ -155,7 +155,7 @@
     </div>
     <div class="row2">
       <div>
-        <label>מודל Claude</label>
+        <label for="model-claude">מודל Claude</label>
         <select id="model-claude">
           <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (מומלץ)</option>
           <option value="claude-opus-4-6">Claude Opus 4.6 (מדויק יותר)</option>
@@ -163,7 +163,7 @@
         <div class="hint">Claude רץ דרך שרת הבית (claude -p) במנוי — בלי מפתח ובלי עלות API.</div>
       </div>
       <div id="model-gemini-wrap" style="display:none">
-        <label>מודל Gemini</label>
+        <label for="model-gemini">מודל Gemini</label>
         <select id="model-gemini">
           <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (מומלץ — יציב)</option>
           <option value="gemini-2.5-pro">Gemini 2.5 Pro (איטי, מדויק)</option>
@@ -172,26 +172,26 @@
         <div class="hint">משמש רק במצב דו-מנועי לקריאה הויזואלית של הדפים.</div>
       </div>
       <div>
-        <label>כתובת שרת מקומי / tunnel</label>
+        <label for="server-url">כתובת שרת מקומי / tunnel</label>
         <input type="text" id="server-url" class="ltr" value="" placeholder="http://localhost:3000 או https://….trycloudflare.com">
         <div class="hint">בהרצה מקומית מוגדר אוטומטית ל-localhost. בגישה מרחוק — הדבק את כתובת ה-tunnel (מתחלפת בכל הפעלה).</div>
       </div>
     </div>
     <div class="row2">
       <div>
-        <label>דפים למנה (chunk)</label>
+        <label for="chunk-size">דפים למנה (chunk)</label>
         <input type="number" id="chunk-size" value="8" min="1" max="40" style="width:90px">
         <div class="hint">Claude קורא את כל דפי התיק במנות בגודל זה (כיסוי מלא, לא דגימה). מנה קטנה = קריאה מדויקת יותר אך יותר מנות.</div>
       </div>
       <div>
-        <label>רזולוציית קריאה (px לצד הארוך)</label>
+        <label for="img-edge">רזולוציית קריאה (px לצד הארוך)</label>
         <input type="number" id="img-edge" value="1500" min="500" max="3500" step="100" style="width:110px">
         <div class="hint">סריקות מוקטנות לגודל זה לפני שליחה. אם כתב יד לא נקרא — העלה ל-2000–3000. עם אריחים, זהו הגודל של כל אריח.</div>
       </div>
     </div>
     <div class="row2">
       <div>
-        <label>אריחים לכתב יד (tiling)</label>
+        <label for="tiling">אריחים לכתב יד (tiling)</label>
         <select id="tiling">
           <option value="off" selected>ללא — כל עמוד נשלח כתמונה אחת</option>
           <option value="2">2×2 — כל עמוד נחתך ל-4 אריחים חופפים</option>
@@ -234,7 +234,7 @@
     <input type="file" id="intake-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" class="visually-hidden-file">
     <div class="filelist" id="intake-filelist"></div>
     <div class="hint">מידע מהמוסר/הארכיון על התיק (לא חלק מהתיק עצמו). Claude יקרא אותו לפני הקטלוג וישלב אותו כ"מידע מוקדם" — לא יוצג כעובדה מהתיק.</div>
-    <label>מידע מוקדם (טקסט חופשי, אופציונלי)</label>
+    <label for="context">מידע מוקדם (טקסט חופשי, אופציונלי)</label>
     <textarea id="context" placeholder="הערות מוסר החומר, שם החטיבה, רקע משפחתי, סימול… (בנוסף לטופס שמעלים למעלה, או במקומו)"></textarea>
     <div class="hint">המידע הזה ישמש ל"הערות מוסר החומר" ולהקשר — לא יוצג כעובדה מהתיק.</div>
   </div>
@@ -336,7 +336,7 @@ async function tileImageB64(file,grid,edge,quality){
   }
   return out;
 }
-function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function esc(s){ return window.yvEsc ? yvEsc(s) : String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }   // delegates to the ONE canonical escaper (review 21.7 #21); inline fallback covers pre-load calls
 function mimeOf(f){const n=(f.name||'').toLowerCase();
   if(n.endsWith('.pdf'))return'application/pdf';
   if(n.endsWith('.png'))return'image/png';
@@ -604,6 +604,9 @@ async function callGeminiRetry(parts,promptText,onWait){
 // On localhost we talk to this same origin (localhost never changes). Off
 // localhost (remote access) we use the tunnel URL the archivist pasted.
 function serverBase(){
+  // Canonical resolver with required:true (review 21.7 #21) — same strict
+  // contract as before: no resolvable base ⇒ loud throw, never a silent ''.
+  if(window.yvServerBase)return yvServerBase({ inputEl: $('server-url'), required: true });
   const v=$('server-url').value.trim().replace(/\/$/,'');
   if(v)return v;
   if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))return location.origin;
@@ -2006,9 +2009,9 @@ idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('ove
 })();
 </script>
 <script src="yv-providers.js?v=20260722"></script>
-<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-client-log.js?v=20260722d"></script>
 <script src="yv-autosave.js?v=20260721"></script>
-<script src="yv-misid.js?v=20260711e"></script>
+<script src="yv-misid.js?v=20260722b"></script>
 <script>yvMisid.init({ screen: 'documents-tik', roots: ['#results'] });</script>
 <script src="yv-flow.js?v=20260721"></script>
 <script>yvFlow.init({ screen: 'documents-tik', backend: true, label: 'קורא התיק:', options: [
@@ -2016,6 +2019,6 @@ idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('ove
   { value: 'claude', label: 'קורא Claude', hint: 'לתיקים גדולים / כשמכסת Gemini אזלה' },
   { value: 'gemini', label: 'Gemini בלבד', hint: 'ללא גיבוי לקורא' },
 ] });</script>
-<script src="yv-progress.js?v=20260721"></script>
+<script src="yv-progress.js?v=20260722b"></script>
 </body>
 </html>

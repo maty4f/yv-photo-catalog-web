@@ -77,7 +77,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function esc(s){ return window.yvEsc ? yvEsc(s) : String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }   // delegates to the ONE canonical escaper (review 21.7 #21); inline fallback covers pre-load calls
 
 /* server base — same convention/localStorage key as names/photos/films/documents */
 function computeDefaultServerUrl(){
@@ -85,12 +85,17 @@ function computeDefaultServerUrl(){
   return '';
 }
 const serverUrlInput = $('server-url');
-serverUrlInput.value = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '') || computeDefaultServerUrl();
+serverUrlInput.value = (window.yvServerBase ? yvServerBase()
+  : (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '') || computeDefaultServerUrl());
 serverUrlInput.addEventListener('input', () => {
   localStorage.setItem('yv_local_server_url', serverUrlInput.value.trim().replace(/\/$/, ''));
   load();
 });
-function serverBase(){ return (serverUrlInput.value || '').trim().replace(/\/$/, ''); }
+function serverBase(){
+  // Canonical resolver (review 21.7 #21) — adds stored/origin fallback.
+  return window.yvServerBase ? yvServerBase({ inputEl: serverUrlInput })
+       : (serverUrlInput.value || '').trim().replace(/\/$/, '');
+}
 function outputUrl(name){
   const base = serverBase();
   const path = '/api/output/' + encodeURIComponent(name);

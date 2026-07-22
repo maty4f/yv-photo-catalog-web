@@ -194,8 +194,10 @@
   }
 
   function esc(s) {
-    return String(s).replace(/[&<>"]/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    // Canonical escaper delegate (review 21.7 #21) — was a 4-char variant.
+    if (window.yvEsc) return yvEsc(s);
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
 

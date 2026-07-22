@@ -104,7 +104,7 @@
   <div class="panel">
     <h2>⚙ הגדרות</h2>
     <div class="row">
-      <label>מצב עיבוד</label>
+      <label for="mode">מצב עיבוד</label>
       <select id="mode">
         <option value="unified-server" selected>⭐ מנוע מאוחד בשרת (מומלץ — חינם, בלי מפתחות; מסמך — כמה דקות)</option>
         <option value="claude-cli">Claude CLI מקומי — Claude קורא את המסמך ישירות (חינם, בלי Gemini)</option>
@@ -112,14 +112,14 @@
       </select>
     </div>
     <div class="row">
-      <label>מפתח Gemini</label>
+      <label for="api-key">מפתח Gemini</label>
       <div>
         <input type="password" id="api-key" class="ltr" placeholder="AIza…" autocomplete="off">
         <div class="small">השג חינם ב-<a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
       </div>
     </div>
     <div class="row">
-      <label>מודל Gemini</label>
+      <label for="model">מודל Gemini</label>
       <select id="model">
         <option value="gemini-3.5-flash" selected>Gemini 3.5 Flash (מומלץ — חדש)</option>
         <option value="gemini-2.5-flash">Gemini 2.5 Flash (יציב)</option>
@@ -128,14 +128,14 @@
       </select>
     </div>
     <div class="row" id="row-claude-model">
-      <label>מודל Claude</label>
+      <label for="claude-model">מודל Claude</label>
       <select id="claude-model">
         <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (מומלץ — איזון איכות/עלות)</option>
         <option value="claude-opus-4-6">Claude Opus 4.6 (מדויק יותר)</option>
       </select>
     </div>
     <div class="row">
-      <label>🔬 שרת Docling (אופציונלי)</label>
+      <label for="local-server-url">🔬 שרת Docling (אופציונלי)</label>
       <div>
         <input type="text" id="local-server-url" class="ltr" placeholder="https://xxx.trycloudflare.com">
         <div class="small">
@@ -195,14 +195,14 @@
     <div class="panel">
       <h2>📋 רישום ארכיוני</h2>
 
-      <div class="row"><label>סוג מסמך</label><input type="text" id="r-doc-type"></div>
-      <div class="row"><label>שפות</label><input type="text" id="r-languages"></div>
-      <div class="row"><label>כתיבה</label><input type="text" id="r-writing-type"></div>
-      <div class="row"><label>מספר עמודים</label><input type="text" id="r-pages-count"></div>
-      <div class="row"><label>תאריך מסמך</label><input type="text" id="r-doc-date"></div>
+      <div class="row"><label for="r-doc-type">סוג מסמך</label><input type="text" id="r-doc-type"></div>
+      <div class="row"><label for="r-languages">שפות</label><input type="text" id="r-languages"></div>
+      <div class="row"><label for="r-writing-type">כתיבה</label><input type="text" id="r-writing-type"></div>
+      <div class="row"><label for="r-pages-count">מספר עמודים</label><input type="text" id="r-pages-count"></div>
+      <div class="row"><label for="r-doc-date">תאריך מסמך</label><input type="text" id="r-doc-date"></div>
 
-      <div class="row"><label>כותר עברית</label><textarea id="r-title-he" rows="2"></textarea></div>
-      <div class="row"><label>כותר English</label><textarea id="r-title-en" rows="2" class="ltr"></textarea></div>
+      <div class="row"><label for="r-title-he">כותר עברית</label><textarea id="r-title-he" rows="2"></textarea></div>
+      <div class="row"><label for="r-title-en">כותר English</label><textarea id="r-title-en" rows="2" class="ltr"></textarea></div>
 
       <div class="row"><label>שולח / יוצר</label>
         <div class="bilingual">
@@ -253,11 +253,11 @@
         </div>
       </div>
 
-      <div class="row"><label>נושאים מרכזיים</label><textarea id="r-subjects" rows="2" placeholder="מופרדים בפסיקים"></textarea></div>
+      <div class="row"><label for="r-subjects">נושאים מרכזיים</label><textarea id="r-subjects" rows="2" placeholder="מופרדים בפסיקים"></textarea></div>
 
-      <div class="row"><label>ציטוטים מרכזיים</label><textarea id="r-quotes" rows="4" placeholder="2–4 ציטוטים מהמסמך, בשפת המקור"></textarea></div>
+      <div class="row"><label for="r-quotes">ציטוטים מרכזיים</label><textarea id="r-quotes" rows="4" placeholder="2–4 ציטוטים מהמסמך, בשפת המקור"></textarea></div>
 
-      <div class="row"><label>הערות</label><textarea id="r-notes" rows="2"></textarea></div>
+      <div class="row"><label for="r-notes">הערות</label><textarea id="r-notes" rows="2"></textarea></div>
 
       <div class="footer-actions">
         <button class="secondary" id="copy-json-btn">📋 העתק JSON</button>
@@ -602,16 +602,14 @@ async function runClaudeJobV2(prompt, images) {
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('שרת HTTP ' + res.status + ': ' + (e.error || '').slice(0, 400)); }
   const { jobId } = await res.json();
   if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
-  const started = Date.now(), maxMs = 15 * 60 * 1000;
-  while (Date.now() - started < maxMs) {
-    await new Promise(r => setTimeout(r, 3000));
-    let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
-    if (!pr.ok) { if (window.yvAuthExpired && yvAuthExpired(pr)) return; continue; }   // 401/403 => stop+banner (review 21.7 #13)
-    const j = await pr.json();
-    showStatus('Claude קורא את המסמך ומפיק את הרישום… (' + Math.round((Date.now() - started) / 1000) + ' שׄ)');
-    if (j.status === 'done') return (j.text || '').trim();
-    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
-  }
+  // Shared poll mechanics (yvPollAsk in yv-client-log.js — review 21.7 #21):
+  // the per-screen copy kept only its own status line, cap and timeout wording.
+  if (!window.yvPollAsk) throw new Error('רכיב משותף (yv-client-log) לא נטען — רענן את הדף');
+  const r = await yvPollAsk(base, jobId, { maxMs: 15 * 60 * 1000,
+    onTick: (j, sec) => showStatus('Claude קורא את המסמך ומפיק את הרישום… (' + sec + ' שׄ)') });
+  if (r.status === 'auth') return;
+  if (r.status === 'done') return r.text;
+  if (r.status === 'error') throw new Error('Claude נכשל: ' + r.error);
   throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. נסה מסמך קצר יותר.');
 }
 
@@ -1242,7 +1240,7 @@ $('download-html-btn').addEventListener('click', () => {
 });
 
 function buildOutputHtml(r, today) {
-  const esc = s => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const esc = s => window.yvEsc ? yvEsc(s) : String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));   // canonical escaper delegate (review 21.7 #21)   // upgraded from the 4-char variant — apostrophes now escaped
   const row = (label, val) => val ? `<tr><th>${esc(label)}</th><td>${esc(val).replace(/\n/g, '<br>')}</td></tr>` : '';
   return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><title>${esc(r.title_he || 'מסמך')}</title>
 <style>
@@ -1333,9 +1331,9 @@ ${r.notes ? `<div class="section"><h2>הערות</h2><div>${esc(r.notes).replace
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-client-log.js?v=20260722d"></script>
 <script src="yv-autosave.js?v=20260721"></script>
-<script src="yv-misid.js?v=20260711e"></script>
+<script src="yv-misid.js?v=20260722b"></script>
 <script>yvMisid.init({ screen: 'documents-v2', roots: ['#results'] });</script>
 <script src="yv-flow.js?v=20260721"></script>
 <script>yvFlow.init({ screen: 'documents-v2', backend: true, label: 'זרימת עיבוד:', options: [
@@ -1344,7 +1342,7 @@ ${r.notes ? `<div class="section"><h2>הערות</h2><div>${esc(r.notes).replace
   { value: 'mistral', label: 'OCR מהיר (מודפס)', hint: 'Mistral OCR — מהיר לטקסט מודפס נקי' },
   { value: 'consensus', label: 'אימות דו-מודלי', hint: 'Gemini + Claude קוראים בנפרד ומפייסים — לכתב-יד קשה (איטי/יקר יותר)' },
 ] });</script>
-<script src="yv-progress.js?v=20260721"></script>
-<script src="yv-chunk.js?v=20260721"></script>
+<script src="yv-progress.js?v=20260722b"></script>
+<script src="yv-chunk.js?v=20260722d"></script>
 </body>
 </html>

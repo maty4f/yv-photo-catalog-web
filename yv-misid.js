@@ -55,11 +55,10 @@
   // השרת ב-localStorage (yv_local_server_url); דף שמוגש מהשרת עצמו משתמש ב-origin.
   // כך הכפתור עובד גם ממשטח ה-Pages (github.io), לא רק מאותו origin.
   function serverBase() {
-    try {
-      var u = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
-      if (u) return u;
-    } catch (e) { /* storage blocked — fall through */ }
-    return location.origin;
+    // Canonical resolver (yv-client-log.js); '' on a static mirror falls back
+    // to origin — the button keeps working from the Pages surface.
+    var b = window.yvServerBase ? yvServerBase() : '';
+    return b || location.origin;
   }
 
   // מזהה הפריט: עדיפות ל-getter של המסך; אחרת — קישור הפלט האחרון שמופיע בדף

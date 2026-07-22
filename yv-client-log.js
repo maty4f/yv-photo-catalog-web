@@ -31,11 +31,11 @@
   // Server base: the dashboards persist their server URL in localStorage
   // (yv_local_server_url); pages served from the server itself use the origin.
   function serverBase() {
-    try {
-      var u = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
-      if (u) return u;
-    } catch (e) { /* storage blocked — fall through */ }
-    return location.origin;
+    // Canonical resolver (yvServerBase is defined later in this file — set
+    // well before any sender/timer first runs); '' on a static mirror falls
+    // back to origin so the beacon keeps its old best-effort behavior.
+    var b = window.yvServerBase ? yvServerBase() : '';
+    return b || location.origin;
   }
 
   var page = (location.pathname.split('/').pop() || 'index.html');
@@ -222,6 +222,37 @@
     lang: navigator.language,
   });
 
+  // ---- shared tiny utilities (consolidation, system review 2026-07-21 #21) --
+  // ONE canonical HTML-escaper (full 5-char set). The 13 per-screen copies had
+  // drifted into two variants — 4 of them missing apostrophe-escaping. Screens
+  // keep a one-line delegator with an inline fallback because their big inline
+  // scripts execute BEFORE this file loads (includes sit at the bottom).
+  window.yvEsc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g,
+      function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  };
+
+  // ONE canonical server-base resolver (9 divergent copies before). Precedence:
+  // explicit input field → the shared localStorage key → origin adoption when
+  // served by a real backend (not a static mirror) → '' (or throw if required).
+  window.yvServerBase = function (opts) {
+    opts = opts || {};
+    var input = '';
+    try { input = opts.inputEl ? String(opts.inputEl.value || '').trim().replace(/\/$/, '') : ''; } catch (e) {}
+    var stored = '';
+    try { stored = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, ''); } catch (e) {}
+    var explicit = input || stored;
+    if (explicit) return explicit;
+    if (/^https?:$/.test(location.protocol)
+        && !/\.(pages\.dev|github\.io|trycloudflare\.com)$/.test(location.hostname)) {
+      return location.origin;   // served by the local server / tunnel — same origin keeps the Access cookie
+    }
+    if (opts.required) {
+      throw new Error('הזן כתובת שרת (למשל https://films.mf-sr.com) — הדף מוגש ממארח סטטי ללא backend');
+    }
+    return '';
+  };
+
   // Debug-log gate: screens wrap noisy console.log calls in `window.yvDebug &&`
   // (enable with localStorage.yvDebug = '1') — review 2026-07-21 #43.
   if (window.yvDebug === undefined) {
@@ -252,6 +283,50 @@
     } catch (e) { /* banner is best-effort */ }
     return true;
   };
+
+  // Shared /api/ask-async poller (review 21.7 #21, phase 2): ONE copy of the
+  // sleep→fetch→auth-guard→deadline mechanics that documents/documents-v2/
+  // films each hand-rolled (~25 lines ×3). Returns {status:'done',text} |
+  // {status:'error',error} | {status:'auth'} (banner already shown) |
+  // {status:'timeout'}. documents-tik keeps its own sliding-deadline variant
+  // (deadline resets on progress) — a deliberate, documented divergence.
+  window.yvPollAsk = async function (base, jobId, opts) {
+    opts = opts || {};
+    var maxMs = opts.maxMs || 15 * 60 * 1000;
+    var started = Date.now();
+    while (Date.now() - started < maxMs) {
+      await new Promise(function (r) { setTimeout(r, opts.sleepMs || 3000); });
+      var pr;
+      try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
+      if (!pr.ok) {
+        if (window.yvAuthExpired && yvAuthExpired(pr)) return { status: 'auth' };
+        continue;
+      }
+      var j;
+      try { j = await pr.json(); } catch (e) { continue; }
+      if (opts.onTick) {
+        try { opts.onTick(j, Math.round((Date.now() - started) / 1000)); } catch (e) {}
+      }
+      if (j.status === 'done') return { status: 'done', text: String(j.text || '').trim() };
+      if (j.status === 'error') return { status: 'error', error: String(j.error || '').slice(0, 400) };
+    }
+    return { status: 'timeout' };
+  };
+
+  // Keyboard activation for div-based click targets (review 21.7 #16): any
+  // element opting in with role="button" tabindex="0" (the queue items in
+  // photos/documents/films) activates on Enter/Space like a real button.
+  window.addEventListener('keydown', function (e) {
+    try {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var el = e.target;
+      if (el && el.getAttribute && el.getAttribute('role') === 'button'
+          && el.hasAttribute('tabindex') && el.tagName !== 'BUTTON') {
+        e.preventDefault();
+        el.click();
+      }
+    } catch (err) { /* never break the page */ }
+  });
 
   // Test hook (jsdom contract tests) — not a public API.
   window.__yvLog = { push: push, send: send, buf: buf, sid: sid };

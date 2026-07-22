@@ -1114,7 +1114,7 @@ function renderDocQueuePanel() {
     const isActive = idx === state.current_doc_queue_index;
     const isPdf = it.file.type === 'application/pdf';
     const errTip = it.error ? ` title="${esc(it.error)}"` : '';
-    return `<div class="doc-queue-item" data-idx="${idx}"${errTip}
+    return `<div class="doc-queue-item" role="button" tabindex="0" data-idx="${idx}"${errTip}
       style="flex:0 0 auto; width:100px; cursor:pointer; padding:5px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'};">
       <div style="position:relative; width:90px; height:90px; border-radius:4px; overflow:hidden; background:var(--tint); margin:0 auto; display:flex; align-items:center; justify-content:center;">
         ${it.thumb ? `<img alt="" src="${it.thumb}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="font-size:36px; opacity:.6;">${isPdf ? '📄' : '🖼'}</div>`}
@@ -1947,16 +1947,14 @@ async function runClaudeJobDocs(prompt, images) {
   // aborting a healthy run. The server has its own idle watchdog, so a hung job
   // still dies server-side; on cap-hit the result usually EXISTS in the server's
   // jobs list — say so instead of implying the work is lost.
-  const started = Date.now(), maxMs = 30 * 60 * 1000;
-  while (Date.now() - started < maxMs) {
-    await new Promise(r => setTimeout(r, 3000));
-    let pr; try { pr = await fetch(base + '/api/ask-async/' + jobId); } catch (e) { continue; }
-    if (!pr.ok) { if (window.yvAuthExpired && yvAuthExpired(pr)) return; continue; }   // 401/403 => stop+banner (review 21.7 #13)
-    const j = await pr.json();
-    showStatus('Claude קורא את המסמך ומפיק את הרישום… (' + Math.round((Date.now() - started) / 1000) + ' שׄ)', 'info');
-    if (j.status === 'done') return (j.text || '').trim();
-    if (j.status === 'error') throw new Error('Claude נכשל: ' + (j.error || '').slice(0, 400));
-  }
+  // Shared poll mechanics (yvPollAsk in yv-client-log.js — review 21.7 #21):
+  // the per-screen copy kept only its own status line, cap and timeout wording.
+  if (!window.yvPollAsk) throw new Error('רכיב משותף (yv-client-log) לא נטען — רענן את הדף');
+  const r = await yvPollAsk(base, jobId, { maxMs: 30 * 60 * 1000,
+    onTick: (j, sec) => showStatus('Claude קורא את המסמך ומפיק את הרישום… (' + sec + ' שׄ)', 'info') });
+  if (r.status === 'auth') return;
+  if (r.status === 'done') return r.text;
+  if (r.status === 'error') throw new Error('Claude נכשל: ' + r.error);
   throw new Error('הריצה נמשכה מעל 30 דקות ולא הסתיימה. ייתכן שהשרת עוד מסיים אותה ברקע — התוצאה תישמר ברשימת הג׳ובים של השרת (jobId ' + jobId + '); אפשר גם לנסות מסמך קצר יותר.');
 }
 
@@ -3691,7 +3689,7 @@ document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
 <\/script>
 </body></html>`;
 
-function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function esc(s){ return window.yvEsc ? yvEsc(s) : String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }   // delegates to the ONE canonical escaper (review 21.7 #21); inline fallback covers pre-load calls
 function setMini(el, html, kind) { el.innerHTML = html; el.className = 'mini-status' + (kind ? ' ' + kind : ''); }
 
 refreshButtons();
@@ -3739,10 +3737,10 @@ refreshButtons();
   }).catch(function () {});
 })();
 </script>
-<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-client-log.js?v=20260722d"></script>
 <script src="yv-autosave.js?v=20260721"></script>
-<script src="yv-misid.js?v=20260711e"></script>
+<script src="yv-misid.js?v=20260722b"></script>
 <script>yvMisid.init({ screen: 'documents', roots: ['#results'] });</script>
-<script src="yv-chunk.js?v=20260721"></script>
+<script src="yv-chunk.js?v=20260722d"></script>
 </body>
 </html>

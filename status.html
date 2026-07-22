@@ -54,7 +54,7 @@
   <div class="grid" id="grid"><div class="card">טוען…</div></div>
 </div>
 <script>
-function esc(x){ return String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function esc(x){ return window.yvEsc ? yvEsc(x) : String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }   // canonical delegate; upgraded from 4-char variant
 function pill(s){ const m={ok:['ok','תקין'],limited:['warn','מוגבל'],error:['bad','שגיאה'],'no-key':['bad','אין מפתח'],unknown:['unk','בבדיקה…']}; const [c,l]=m[s]||['unk',s||'—']; return `<span class="pill ${c}">${l}</span>`; }
 function dot(b){ return `<span class="dot ${b?'ok':'bad'}"></span>`; }
 function up(s){ s=s||0; const h=Math.floor(s/3600),m=Math.floor((s%3600)/60); return (h?h+' ש׳ ':'')+m+' דק׳'; }
@@ -130,6 +130,6 @@ async function load(){
 function schedule(fast){ clearTimeout(window._t); window._t=setTimeout(load, fast?5000:15000); }
 load();
 </script>
-<script src="yv-client-log.js?v=20260722"></script>
+<script src="yv-client-log.js?v=20260722d"></script>
 </body>
 </html>

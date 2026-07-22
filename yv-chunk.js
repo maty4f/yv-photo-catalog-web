@@ -17,6 +17,13 @@
   const xhrPost = (url, body, onPct) => new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url);
+    // Session header (CSRF hardening, review 21.7 #36): fetch calls inherit it
+    // from the yv-client-log wrapper, but XHR bypasses that wrapper — set it
+    // here so chunk uploads pass the production header requirement too.
+    try {
+      const sid = sessionStorage.getItem('yvSessionId');
+      if (sid) xhr.setRequestHeader('x-yv-session', sid);
+    } catch (e) { /* storage blocked — server exempts rayless/local anyway */ }
     xhr.upload.onprogress = ev => { if (ev.lengthComputable && onPct) onPct(ev.loaded, ev.total); };
     xhr.onload = () => resolve(xhr);
     xhr.onerror = () => reject(new Error('network'));
