@@ -1,0 +1,2284 @@
+const state = {
+  film: null, filmMeta: null, identification: null,
+  filmParts: [], currentPartIdx: -1, autoRunning: false,
+  provider: (['unified-server','gemini','anthropic'].includes(localStorage.getItem('yv_api_provider')) ? localStorage.getItem('yv_api_provider') : 'unified-server'),
+  apiKeys: {
+    // review #2: no Anthropic entry — the server proxy injects its own key
+    gemini: localStorage.getItem('yv_api_key_gemini') || '',
+  },
+  thesaurus_top: [],
+};
+
+const settingsToggle = document.getElementById('settings-toggle');
+const settingsPanel = document.getElementById('settings-panel');
+const providerSel = document.getElementById('api-provider');
+const apiKeyGemini = document.getElementById('api-key-gemini');
+const modelSelAnthropic = document.getElementById('api-model-anthropic');
+const modelSelGemini = document.getElementById('api-model-gemini');
+
+apiKeyGemini.value = state.apiKeys.gemini;
+providerSel.value = state.provider;
+
+// CLI-Hybrid: local server URL
+state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
+state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
+// Auto-config: the dashboard is normally served BY the API server (localhost in
+// dev, films.mf-sr.com via the tunnel) — same origin keeps the Cloudflare Access
+// cookie attached and lets the server proxy Gemini. Adopt the origin unless we're
+// on a static GitHub Pages host (*.pages.dev / *.github.io). Drop stale trycloudflare.
+if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(location.hostname)) {
+  state.localServerUrl = location.origin;
+  state.proxyGemini = true;
+} else if (/trycloudflare\.com/.test(state.localServerUrl)) {
+  state.localServerUrl = '';
+}
+const localServerUrlInput = document.getElementById('local-server-url');
+if (localServerUrlInput) {
+  localServerUrlInput.value = state.localServerUrl;
+  localServerUrlInput.addEventListener('input', () => {
+    state.localServerUrl = localServerUrlInput.value.trim().replace(/\/$/, '');
+    localStorage.setItem('yv_local_server_url', state.localServerUrl);
+    refreshButtons();
+  });
+}
+const proxyGeminiCheckbox = document.getElementById('proxy-gemini-checkbox');
+if (proxyGeminiCheckbox) {
+  proxyGeminiCheckbox.checked = state.proxyGemini;
+  proxyGeminiCheckbox.addEventListener('change', () => {
+    state.proxyGemini = proxyGeminiCheckbox.checked;
+    localStorage.setItem('yv_proxy_gemini', state.proxyGemini ? '1' : '0');
+  });
+}
+function geminiBase() { return yvProviders.geminiBase(state); }  // shared — see yv-providers.js
+const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
+const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
+const activeTunnelEl = document.getElementById('active-tunnel-url');
+if (copyTunnelBtn && activeTunnelEl) {
+  copyTunnelBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(activeTunnelEl.textContent.trim());
+      const orig = copyTunnelBtn.innerText;
+      copyTunnelBtn.innerText = '✓ הועתק';
+      setTimeout(() => { copyTunnelBtn.innerText = orig; }, 1400);
+    } catch (e) { alert('שגיאה בהעתקה: ' + e.message); }
+  });
+}
+if (fillTunnelBtn && activeTunnelEl && localServerUrlInput) {
+  fillTunnelBtn.addEventListener('click', () => {
+    const url = activeTunnelEl.textContent.trim();
+    localServerUrlInput.value = url;
+    state.localServerUrl = url.replace(/\/$/, '');
+    localStorage.setItem('yv_local_server_url', state.localServerUrl);
+    refreshButtons();
+    const orig = fillTunnelBtn.innerText;
+    fillTunnelBtn.innerText = '✓ הוזן';
+    setTimeout(() => { fillTunnelBtn.innerText = orig; }, 1400);
+  });
+}
+
+syncProviderRows();
+
+providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
+try { localStorage.removeItem('yv_api_key_anthropic'); } catch {}   // review #1: purge any persisted Claude key
+apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
+function syncProviderRows() {
+  document.querySelectorAll('.provider-row').forEach(row => {
+    const providers = (row.dataset.provider || '').split(/\s+/).filter(Boolean);
+    row.style.display = providers.includes(state.provider) ? 'grid' : 'none';
+  });
+  // Managed Gemini key: a provider toggle must not resurrect the hidden key
+  // row (system review 2026-07-21 #14 — reproducible clobber).
+  if (window.YV_GEMINI_MANAGED) {
+    const _gk = document.getElementById('api-key-gemini') || document.getElementById('key-gemini');
+    const _row = _gk && _gk.closest('.provider-row');
+    if (_row) _row.style.display = 'none';
+  }
+}
+function getActiveApiKey() { if (state.provider === 'anthropic') return (state.localServerUrl || location.origin) ? 'via-server-proxy' : ''; return state.apiKeys[state.provider] || ''; }
+function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
+function hasAllRequiredKeys() {
+  if (state.provider === 'unified-server') return true; // server-side engine — no browser keys needed
+  return !!getActiveApiKey();
+}
+settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('open'));
+
+// Thesaurus
+async function loadThesaurus() {
+  try { const r = await fetch('data/thesaurus_top300.json'); if (r.ok) state.thesaurus_top = await r.json(); }
+  catch (e) { console.warn('thesaurus fetch failed', e); }
+}
+loadThesaurus();
+
+// Film upload
+const filmDrop = document.getElementById('film-drop');
+const fileInput = document.getElementById('film-file-input');
+const filmPreview = document.getElementById('film-preview');
+const filmFilename = document.getElementById('film-filename');
+const filmMetaBox = document.getElementById('film-meta');
+const delFilmBtn = document.getElementById('delete-film-btn');
+
+['dragenter', 'dragover'].forEach(evt => filmDrop.addEventListener(evt, e => { e.preventDefault(); filmDrop.classList.add('dragover'); }));
+['dragleave', 'drop'].forEach(evt => filmDrop.addEventListener(evt, e => { e.preventDefault(); filmDrop.classList.remove('dragover'); }));
+filmDrop.addEventListener('drop', e => { const f = e.dataTransfer.files?.[0]; if (f && f.type.startsWith('video/')) { state.currentPartIdx = -1; loadFilm(f); } });
+fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) { state.currentPartIdx = -1; loadFilm(f); } fileInput.value = ''; });
+delFilmBtn.addEventListener('click', e => { e.stopPropagation(); clearFilm(); });
+
+function loadFilm(file) {
+  state.film = file;
+  filmFilename.textContent = `${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+  filmFilename.style.display = 'block';
+  const url = URL.createObjectURL(file);
+  filmPreview.src = url;
+  filmPreview.onloadedmetadata = () => {
+    state.filmMeta = { duration: filmPreview.duration, width: filmPreview.videoWidth, height: filmPreview.videoHeight, mime: file.type || 'video/mp4', size_bytes: file.size };
+    renderFilmMeta();
+    refreshButtons();
+  };
+  filmDrop.classList.add('has-file');
+}
+function renderFilmMeta() {
+  if (!state.filmMeta) { filmMetaBox.style.display = 'none'; return; }
+  const m = state.filmMeta;
+  const dur = formatDuration(m.duration);
+  // Expected processing time: ~45 processing-seconds per minute-of-film (keyframes +
+  // Gemini + Claude); real range ~30-70s/min. Baseline from smoke-e2e measured runs.
+  const estSec = m.duration * 45 / 60;
+  const estStr = estSec < 90 ? Math.round(estSec) + ' שׄ' : (estSec / 60).toFixed(estSec < 600 ? 1 : 0) + ' דק׳';
+  const sizeMB = m.size_bytes / 1024 / 1024;
+  const sizeMBStr = sizeMB.toFixed(1);
+  let badge = '';
+  if (sizeMB <= 18) {
+    badge = ` <span style="color:var(--good); font-size:10px;">inline</span>`;
+  } else if (sizeMB <= 2048) {
+    badge = ` <span style="color:var(--warn); font-size:10px;">Files API</span>`;
+  } else {
+    badge = ` <span style="color:var(--soft); font-size:10px;">⚠ &gt;2GB</span>`;
+  }
+  filmMetaBox.innerHTML = `<div class="item"><b>משך:</b> <code>${dur}</code></div><div class="item"><b>⏱ עיבוד צפוי:</b> <code>~${estStr}</code></div><div class="item"><b>רזולוציה:</b> <code>${m.width}×${m.height}</code></div><div class="item"><b>גודל:</b> <code>${sizeMBStr} MB</code>${badge}</div><div class="item"><b>פורמט:</b> <code>${m.mime}</code></div>`;
+  filmMetaBox.style.display = 'grid';
+  renderServerPathHint(m);
+  if (!document.getElementById('r-duration').value) document.getElementById('r-duration').value = dur;
+}
+// Long films are better served by the server-side path (ffmpeg extraction, windowed
+// Stage-1, no upload). Same ~10-min guidance as server-films.html itself; a browser
+// that can't read the duration of a big file (Infinity) gets the strong wording too.
+const SERVER_PATH_MIN_SEC = 600, SERVER_PATH_STRONG_SEC = 1800, SERVER_PATH_MIN_MB = 500;
+function renderServerPathHint(m) {
+  const hint = document.getElementById('film-server-hint');
+  if (!hint) return;
+  const durOk = Number.isFinite(m.duration) && m.duration > 0;
+  const sizeMB = (m.size_bytes || 0) / 1024 / 1024;
+  const long = (durOk && m.duration >= SERVER_PATH_MIN_SEC) || (!durOk && sizeMB >= SERVER_PATH_MIN_MB);
+  if (!long) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+  const strong = (durOk && m.duration >= SERVER_PATH_STRONG_SEC) || !durOk;
+  const why = durOk
+    ? `הסרט באורך <code>${formatDuration(m.duration)}</code>`
+    : `הדפדפן לא הצליח לקרוא את משך הסרט (קובץ גדול, <span style="unicode-bidi:isolate">${sizeMB.toFixed(0)} MB</span>)`;
+  const linkEl = document.getElementById('server-films-link');
+  const href = (linkEl && linkEl.getAttribute('href')) || 'server-films.html';
+  hint.innerHTML = `🖥️ ${why} — ${strong ? '<b>מומלץ מאוד</b>' : 'מומלץ'} לקטלג במסלול השרת: `
+    + `<a href="${href}" style="color:var(--warn); font-weight:700;">קטלוג על השרת</a> `
+    + `(בלי העלאה, ניתוח בחלונות בכל אורך — הנח את הקובץ בתיקיית <code style="unicode-bidi:isolate">media/films/</code> על המחשב של השרת). `
+    + `אפשר גם להמשיך כאן${strong ? ', אך כיסוי הפריימים יהיה דליל והעיבוד בדפדפן איטי' : ''}.`;
+  hint.style.display = 'block';
+}
+function formatDuration(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function clearFilm() {
+  state.film = null; state.filmMeta = null;
+  // removeAttribute+load, not src='' — empty src resolves to the page URL and logs a resource error
+  filmPreview.removeAttribute('src');
+  filmPreview.load();
+  filmDrop.classList.remove('has-file');
+  filmFilename.style.display = 'none';
+  filmMetaBox.style.display = 'none';
+  const _sh = document.getElementById('film-server-hint');
+  if (_sh) { _sh.style.display = 'none'; _sh.innerHTML = ''; }
+  fileInput.value = '';
+  refreshButtons();
+}
+
+// Full reset for the NEXT film: clears the current film + results + parts rail and
+// frees the loaded video / extracted frames / part-blobs from browser memory — a
+// clean slate so memory doesn't accumulate across films. Leaves settings + any batch
+// queue untouched.
+function resetForNextFilm() {
+  clearFilm();                       // clears the input + frees the video (src='')
+  state.identification = null;
+  state.filmParts = [];              // drop part blobs → GC frees the memory
+  state.currentPartIdx = -1;
+  state.autoRunning = false;
+  // clear the prior-context ("מידע מוקדם") textarea + any uploaded-context file/status
+  const ctxIn = document.getElementById('context-input'); if (ctxIn) ctxIn.value = '';
+  const ctxFile = document.getElementById('ctx-file-input'); if (ctxFile) ctxFile.value = '';
+  const ctxStat = document.getElementById('ctx-file-status'); if (ctxStat) { ctxStat.textContent = ''; ctxStat.className = 'mini-status'; }
+  // hide results, show the empty placeholder, hide the download bar
+  document.getElementById('results').classList.remove('show');
+  const nr = document.getElementById('no-results'); if (nr) nr.style.display = '';
+  document.getElementById('download-bar').style.display = 'none';
+  // clear every result field + the timeline + the subject chips
+  document.querySelectorAll('#results textarea, #results input').forEach(el => { el.value = ''; });
+  const tb = document.getElementById('r-timeline-tbody');
+  if (tb) tb.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted); font-style:italic; padding:14px">לחץ "זהה את הסרט" לטיימליין אוטומטי</td></tr>';
+  if (typeof renderSubjects === 'function') renderSubjects([]);
+  // hide + empty the film-parts rail
+  const rail = document.getElementById('parts-rail'); if (rail) rail.classList.remove('show');
+  ['pr-list', 'pr-progress'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
+  const prc = document.getElementById('pr-count'); if (prc) prc.textContent = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (typeof showStatus === 'function') showStatus('🧹 נוקה — מוכן לסרט הבא', 'ok');
+}
+document.getElementById('next-film-btn').addEventListener('click', () => {
+  if (!confirm('לעבור לסרט הבא? הסרט והתוצאות הנוכחיים ינוקו מהזיכרון. ודא שהורדת או העתקת מה שצריך.')) return;
+  resetForNextFilm();
+});
+
+// =====================================================================
+//  FILM BATCH QUEUE — up to 5 films at once (heavy; smaller cap than photos)
+// =====================================================================
+state.film_queue = [];
+state.current_film_queue_index = -1;
+state.film_queue_processor_running = false;
+
+const FILM_BATCH_MAX = 5;
+const FILM_QUEUE_STATUSES = {
+  pending:   { icon: '⏳', label: 'ממתין',  color: 'var(--muted)' },
+  analyzing: { icon: '🔄', label: 'מנתח',   color: 'var(--brand)' },
+  ready:     { icon: '✓',  label: 'מוכן',   color: 'var(--good)' },
+  reviewing: { icon: '▶',  label: 'בסקירה', color: 'var(--accent)' },
+  done:      { icon: '💾', label: 'נשמר',   color: 'var(--good)' },
+  error:     { icon: '❌', label: 'שגיאה',  color: 'var(--error)' },
+};
+
+document.getElementById('film-batch-input').addEventListener('change', e => {
+  const files = [...e.target.files].filter(f => f.type.startsWith('video/'));
+  e.target.value = '';
+  addFilmsToQueue(files);
+});
+
+function addFilmsToQueue(files) {
+  if (!files.length) return;
+  if (state.film_queue.length + files.length > FILM_BATCH_MAX) {
+    const can = FILM_BATCH_MAX - state.film_queue.length;
+    if (can <= 0) {
+      alert(`התור מלא (${FILM_BATCH_MAX} פריטים). נקה תור או סיים סרטים קיימים.`);
+      return;
+    }
+    if (!confirm(`התור יקבל רק ${can} מתוך ${files.length} (מקסימום ${FILM_BATCH_MAX}). להמשיך?`)) return;
+    files = files.slice(0, can);
+  }
+  const totalMB = files.reduce((s, f) => s + f.size, 0) / 1024 / 1024;
+  if (totalMB > 500) {
+    if (!confirm(`גודל כולל: ${totalMB.toFixed(0)} MB. ייתכן ויאיט את הדפדפן. להמשיך?`)) return;
+  }
+  files.forEach(file => {
+    const id = 'fq' + Date.now() + '_' + state.film_queue.length;
+    state.film_queue.push({
+      id, file, status: 'pending', identification: null, error: null, meta: null,
+    });
+  });
+  document.getElementById('film-queue-panel').style.display = 'block';
+  renderFilmQueuePanel();
+  setTimeout(() => startFilmQueueProcessor(), 100);
+}
+
+function renderFilmQueuePanel() {
+  const list = document.getElementById('film-queue-list');
+  const summary = document.getElementById('film-queue-summary');
+  if (!state.film_queue.length) {
+    document.getElementById('film-queue-panel').style.display = 'none';
+    return;
+  }
+  const counts = { pending: 0, analyzing: 0, ready: 0, reviewing: 0, done: 0, error: 0 };
+  state.film_queue.forEach(it => counts[it.status]++);
+  summary.textContent = `(${state.film_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}`;
+
+  list.innerHTML = state.film_queue.map((it, idx) => {
+    const s = FILM_QUEUE_STATUSES[it.status] || FILM_QUEUE_STATUSES.pending;
+    const isActive = idx === state.current_film_queue_index;
+    const sizeMB = (it.file.size / 1024 / 1024).toFixed(0);
+    const errTooltip = it.error ? ` title="${esc(it.error)}"` : '';
+    return `<div class="film-queue-item" role="button" tabindex="0" data-idx="${idx}"${errTooltip}
+      style="flex:0 0 auto; width:140px; cursor:pointer; padding:8px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'};">
+      <div style="font-size:11.5px; color:var(--ink); font-weight:600; direction:ltr; unicode-bidi:isolate; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(it.file.name)}</div>
+      <div style="font-size:10.5px; color:var(--muted); text-align:center; margin-top:2px;">${sizeMB} MB</div>
+      <div style="text-align:center; margin-top:6px; font-size:11.5px; color:${s.color}; font-weight:600;">
+        ${s.icon} ${s.label}
+      </div>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.film-queue-item').forEach(el => {
+    el.addEventListener('click', () => {
+      jumpToFilmQueueItem(parseInt(el.dataset.idx));
+    });
+  });
+}
+
+function jumpToFilmQueueItem(idx) {
+  if (idx < 0 || idx >= state.film_queue.length) return;
+  const item = state.film_queue[idx];
+  if (state.current_film_queue_index >= 0 && state.current_film_queue_index !== idx) {
+    const prev = state.film_queue[state.current_film_queue_index];
+    if (prev && prev.status === 'reviewing') prev.status = 'ready';
+  }
+  state.current_film_queue_index = idx;
+  loadFilmQueueItemIntoUI(item);
+  renderFilmQueuePanel();
+}
+
+function loadFilmQueueItemIntoUI(item) {
+  state.currentPartIdx = -1;
+  clearFilm();
+  loadFilm(item.file);
+  if (item.status === 'ready' || item.status === 'reviewing') {
+    item.status = 'reviewing';
+    if (item.identification) {
+      fillResults(item.identification);
+      document.getElementById('results').classList.add('show');
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('download-bar').style.display = 'flex';
+    }
+  } else if (item.status === 'error') {
+    showStatus('הסרט נכשל בזיהוי: ' + (item.error || 'שגיאה'), 'err');
+  }
+}
+
+async function startFilmQueueProcessor() {
+  if (state.film_queue_processor_running) return;
+  state.film_queue_processor_running = true;
+  try {
+    while (true) {
+      const next = state.film_queue.find(it => it.status === 'pending');
+      if (!next) break;
+      next.status = 'analyzing';
+      renderFilmQueuePanel();
+      try {
+        const result = await identifyFilmQueueItem(next);
+        next.identification = result;
+        next.status = 'ready';
+        if (state.current_film_queue_index < 0) {
+          state.current_film_queue_index = state.film_queue.indexOf(next);
+          loadFilmQueueItemIntoUI(next);
+        }
+      } catch (err) {
+        next.status = 'error';
+        next.error = err.message;
+        console.error(`Film queue item ${next.id} failed:`, err);
+      }
+      renderFilmQueuePanel();
+      // Longer delay for films (larger payloads, fewer requests/min)
+      await new Promise(r => setTimeout(r, 15000));
+    }
+  } finally {
+    state.film_queue_processor_running = false;
+  }
+}
+
+async function identifyFilmQueueItem(item) {
+  const savedFilm = state.film;
+  const savedMeta = state.filmMeta;
+  state.film = item.file;
+  // Re-extract metadata for this file. Guard with onerror + timeout so a bad
+  // queued video REJECTS (caught by the queue processor -> marked 'error') instead
+  // of leaving the while(true) queue loop hung forever.
+  await new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    v.src = URL.createObjectURL(item.file);
+    const to = setTimeout(() => { URL.revokeObjectURL(v.src); reject(new Error('פג הזמן בטעינת מטא-דאטה של הסרטון')); }, 30000);
+    v.onloadedmetadata = () => {
+      clearTimeout(to);
+      state.filmMeta = {
+        duration: v.duration,
+        width: v.videoWidth,
+        height: v.videoHeight,
+        mime: item.file.type || 'video/mp4',
+        size_bytes: item.file.size,
+      };
+      URL.revokeObjectURL(v.src);
+      resolve();
+    };
+    v.onerror = () => { clearTimeout(to); URL.revokeObjectURL(v.src); reject(new Error('טעינת הסרטון נכשלה')); };
+  });
+  try {
+    if (state.provider === 'unified-server') return await catalogCurrentFilmUnified();
+    if (state.provider === 'gemini')     return await callGemini();
+    return await callAnthropic();
+  } finally {
+    state.film = savedFilm;
+    state.filmMeta = savedMeta;
+  }
+}
+
+document.getElementById('film-queue-clear-btn').addEventListener('click', () => {
+  if (!state.film_queue.length) return;
+  const undone = state.film_queue.filter(it => it.status !== 'done').length;
+  const msg = undone > 0
+    ? `יש ${undone} סרטים שעדיין לא נשמרו. למחוק את כל התור?`
+    : 'למחוק את התור כולו?';
+  if (!confirm(msg)) return;
+  state.film_queue = [];
+  state.current_film_queue_index = -1;
+  renderFilmQueuePanel();
+});
+
+// Context
+const contextEl = document.getElementById('context-input');
+const ctxInput = document.getElementById('ctx-file-input');
+const ctxStatus = document.getElementById('ctx-file-status');
+ctxInput.addEventListener('change', () => { const f = ctxInput.files?.[0]; ctxInput.value = ''; if (f) extractContext(f); });
+
+// Upload an accompanying document (donor page, background doc) → the archive
+// server's AI pulls the archivally-relevant facts into the מידע-מוקדם box for
+// review. PDFs (incl. SCANNED) + images go straight to the server (Gemini reads
+// + OCRs); office/text is read in-browser then distilled by the same AI. Never
+// a raw dump — only the relevant context.
+async function extractContext(file) {
+  const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+  const isImg = /\.(jpe?g|png|webp|tiff?|gif)$/i.test(file.name);
+  setMini(ctxStatus, '<span class="dot"></span>מחלץ מידע מ־' + esc(file.name) + '… (עד דקה)', 'working');
+  try {
+    let payload, sendName;
+    if (ext === '.pdf' || isImg) { payload = file; sendName = file.name; }
+    else {
+      let text = '';
+      if (ext === '.docx') ({ text } = await extractDOCX(file));
+      else if (['.txt','.md','.markdown','.rtf','.log'].includes(ext)) text = await file.text();
+      else throw new Error('סוג לא נתמך: ' + ext);
+      if (!text.trim()) throw new Error('לא נמצא טקסט בקובץ');
+      payload = new Blob([text], { type: 'text/plain' }); sendName = 'extracted.txt';
+    }
+    let base = location.origin;
+    try { if (typeof serverBase === 'function' && serverBase()) base = serverBase(); } catch (e) {}
+    if (typeof state !== 'undefined' && state && state.localServerUrl) base = state.localServerUrl;
+    const fd = new FormData(); fd.append('file', payload, sendName);
+    const r = await fetch(base + '/api/context-extract', { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'חילוץ נכשל');
+    const existing = contextEl.value.trim();
+    const sep = existing ? '\n\n――――――――――――――――\n\n' : '';
+    contextEl.value = existing + sep + (j.context || '').trim();
+    contextEl.dispatchEvent(new Event('input', { bubbles: true }));
+    setMini(ctxStatus, '<span class="dot"></span>✓ המידע חולץ מ־' + esc(file.name) + ' — בדקו וערכו לפי הצורך', 'ok');
+  } catch (err) { setMini(ctxStatus, '<span class="dot"></span>שגיאה: ' + err.message, 'err'); }
+}
+async function extractDOCX(file) {
+  const r = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+  return { text: r.value.trim(), meta: { format: 'docx' } };
+}
+
+// Identify
+const identifyBtn = document.getElementById('identify-btn');
+const identifyStatus = document.getElementById('identify-status');
+
+function refreshButtons() {
+  const hasFilm = !!state.film;
+  const hasKey = hasAllRequiredKeys();
+  identifyBtn.disabled = !(hasFilm && hasKey);
+  const missingMsg = 'יש להגדיר API key';
+  identifyBtn.title = !hasFilm ? 'יש להעלות סרט' : (!hasKey ? missingMsg : '');
+}
+
+function providerLabel() {
+  return state.provider === 'unified-server'
+    ? 'המנוע המאוחד בשרת'
+    : (state.provider === 'gemini' ? 'Gemini' : 'Claude');
+}
+// Run the currently selected provider against state.film and return the result.
+function callActiveProvider() {
+  if (state.provider === 'unified-server') return catalogCurrentFilmUnified();
+  return state.provider === 'gemini' ? callGemini() : callAnthropic();
+}
+
+// Catalog the CURRENT state.film through the unified server engine and return the
+// result record (same shape callGemini/callAnthropic return). This lets the
+// split-parts auto-run AND the film queue use the server engine too: each part /
+// queued film is its own sub-100MB clip, so it uploads cleanly past Cloudflare's
+// 100MB cap. (A whole oversized film dropped directly is still auto-split inside
+// runUnifiedServer.) Constants/helpers below are defined in the unified section.
+// Post a prepared keyframe array to the engine; poll; return the produced outputName.
+// No video upload — only the small JPEGs travel (sidesteps the tunnel's large-upload
+// truncation). Shared by the single-film and the split-parts-as-one-film paths.
+// Wrap an onStatus(msg) so every status line is prefixed with a running clock and the
+// duration of the previous step — "⏱ 2:34 (קודם 0:48) · <msg>". A new step = the
+// message text changed; the 🛠 live-tick on the same step just advances the clock.
+function makeActionClock(onStatus) {
+  const t0 = Date.now();
+  let lastMsg = '', stepStart = t0;
+  const clk = ms => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  return (msg) => {
+    if (!onStatus || !msg) return;
+    const total = clk(Date.now() - t0);
+    const core = String(msg).replace(/^🛠\s*/, '');
+    if (core !== lastMsg) {
+      const note = lastMsg ? ` (קודם ${clk(Date.now() - stepStart)})` : '';
+      stepStart = Date.now(); lastMsg = core;
+      onStatus(`⏱ ${total}${note} · ${msg}`);
+    } else {
+      onStatus(`⏱ ${total} · ${msg}`);
+    }
+  };
+}
+
+async function postFramesCatalog(base, frames, durationSec, name, context, onStatus) {
+  if (!frames.length) throw new Error('אין keyframes לשליחה');
+  if (onStatus) onStatus(`שולח ${frames.length} keyframes לשרת (ללא העלאת וידאו)…`);
+  let res;
+  try {
+    res = await fetch(base + '/api/items-frames', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frames: frames.map(f => ({ t: f.t, b64: f.b64 })), durationSec, name: name || 'film.mp4', context: context || '' }),
+    });
+  } catch (e) { throw new Error('שליחת ה-keyframes לשרת נכשלה: ' + e.message); }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
+  if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items-frames');
+  state.lastFramesStem = j.framesStem || null;   // → "זיהוי דמויות בסרט" (/api/film-faces)
+  if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… כמה דקות');
+  const out = await pollUnifiedJob(base, j.jobId, onStatus);
+  if (out.status === 'done') return out.outputName;
+  throw new Error(out.errorText || 'הניתוח הסתיים בשגיאה בשרת');
+}
+
+// Keyframes sampled across the film. The browser samples EVENLY, so more frames =
+// finer coverage = fewer missed scenes. The engine's cap (cli/yv.py) must match or
+// exceed this. 80 ≈ 2× the old 40, for more accurate scene detection. Tunable.
+const FILM_KEYFRAMES_MAX = 72;
+// Keyframe budget is about scene GROUPING now (the Stage-2 timeout is gone, since the
+// engine renders the timeline). Sample ~1 frame/min so each scene spans several
+// consecutive frames and Gemini can merge them into ONE scene with a scene-level
+// description — instead of one shot per sparse frame. 50 for ≤50-min films, scaling
+// up to 72 (under the engine's 80-frame cap) for longer ones.
+function filmKeyframes(durationSec) {
+  const min = (durationSec || 0) / 60;
+  return Math.min(FILM_KEYFRAMES_MAX, Math.max(50, Math.round(min)));
+}
+
+// Catalog a SINGLE film: extract keyframes in the browser, post only those.
+async function catalogFilmFrames(base, file, context, onStatus) {
+  onStatus = makeActionClock(onStatus);   // per-action clock on every status line
+  const n = filmKeyframes(state.filmMeta?.duration || 0);
+  onStatus(`מחלץ ${n} keyframes מהסרט בדפדפן (ללא העלאת וידאו)…`);
+  const frames = await extractKeyframes(file, n);   // [{tc, t, b64}]
+  if (!frames.length) throw new Error('לא הצלחתי לחלץ keyframes מהסרט');
+  // True film length (not the last keyframe's tc, which sits ~one interval short).
+  const md = state.filmMeta?.duration;   // large files can report Infinity here too
+  const durationSec = Math.round((Number.isFinite(md) && md > 0) ? md : Math.max(0, ...frames.map(f => f.t || 0)));
+  return await postFramesCatalog(base, frames, durationSec, file.name, context, onStatus);
+}
+
+// Catalog a SPLIT film as ONE film: pull keyframes from EVERY part with CONTINUOUS
+// timecodes (each part's frames offset by its start time), then catalog them in a
+// SINGLE request → one unified record (one title/summary, one continuous timeline).
+// The parts are never treated as separate films and no per-part fields are filled.
+// Frames are budgeted to ~the engine's 40-frame cap, sampled evenly across the whole
+// film so coverage doesn't bunch at the start.
+async function catalogPartsAsOneFilm(base, context, onStatus) {
+  onStatus = makeActionClock(onStatus);   // per-action clock on every status line
+  const parts = state.filmParts || [];
+  if (!parts.length) throw new Error('אין חלקים');
+  const totalDur = (parts[parts.length - 1] && parts[parts.length - 1].endSec) || 0;
+  const budget = filmKeyframes(totalDur);   // scale the budget down for long films
+  const perPart = Math.max(3, Math.ceil(budget / parts.length));
+  const all = [];
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (onStatus) onStatus(`מחלץ keyframes מחלק ${i + 1}/${parts.length} (ציר זמן רציף)…`);
+    const pf = new File([p.blob], p.name, { type: (p.blob && p.blob.type) || 'video/mp4' });
+    let fr;
+    try { fr = await extractKeyframes(pf, perPart); }
+    catch (e) { console.warn('part', i + 1, 'frame extract failed', e); continue; }
+    fr.forEach(f => all.push({ t: (p.startSec || 0) + (f.t || 0), b64: f.b64 }));
+  }
+  if (!all.length) throw new Error('לא חולצו keyframes מאף חלק');
+  all.sort((a, b) => a.t - b.t); // one continuous timeline across all parts
+  let frames = all;
+  if (frames.length > budget) {      // even-coverage downsample to the scaled budget
+    const step = frames.length / budget, keep = [];
+    for (let k = 0; k < budget; k++) keep.push(frames[Math.floor(k * step)]);
+    frames = keep;
+  }
+  const last = parts[parts.length - 1];
+  const durationSec = (last && last.endSec) || Math.max(0, ...frames.map(f => f.t));
+  const name = ((state.film && state.film.name) || parts[0].name || 'film').replace(/_part\d+.*$/i, '') + '.mp4';
+  return await postFramesCatalog(base, frames, durationSec, name, context, onStatus);
+}
+
+async function catalogCurrentFilmUnified() {
+  if (!state.film) throw new Error('אין סרט');
+  const base = await resolveUnifiedBase();
+  if (base === null)
+    throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
+  const outputName = await catalogFilmFrames(base, state.film, contextEl.value.trim(),
+    msg => showStatus(msg, 'info'));
+  return await fetchUnifiedRecord(base, outputName);
+}
+
+identifyBtn.addEventListener('click', async () => {
+  identifyBtn.disabled = true;
+  identifyBtn.innerHTML = '<span class="spinner"></span>מנתח דרך ' + providerLabel() + '…';
+  // Unified server engine (frames-based, no video upload). ALWAYS produces ONE
+  // record: a SPLIT film → all parts as one continuous record; a whole film → the
+  // whole film. An individual part is NEVER cataloged on its own — the catalog
+  // appears only after every part has been processed.
+  if (state.provider === 'unified-server') {
+    try {
+      await runUnifiedServer();
+    } catch (err) {
+      console.error(err);
+      showStatus('שגיאה: ' + err.message, 'err');
+    } finally {
+      identifyBtn.disabled = false;
+      identifyBtn.innerHTML = '🔍 זהה את הסרט';
+      refreshButtons();
+    }
+    return;
+  }
+  showStatus('שולח את הסרט ל-' + providerLabel() + ' (30-180 שניות)…', 'info');
+  try {
+    const result = await callActiveProvider();
+    state.identification = result;
+    fillResults(result);
+    document.getElementById('results').classList.add('show');
+    document.getElementById('no-results').style.display = 'none';
+    document.getElementById('download-bar').style.display = 'flex';
+    // If we are cataloging a specific film-part, store the result per-part
+    if (state.currentPartIdx >= 0 && state.filmParts[state.currentPartIdx]) {
+      const part = state.filmParts[state.currentPartIdx];
+      part.identification = result;
+      part.status = 'identified';
+      renderPartsRail();
+      maybeAutoCombineParts();   // all parts done? → auto-build the whole-film record
+    }
+    showStatus('✓ הזיהוי הושלם.', 'ok');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    console.error(err);
+    showStatus('שגיאה: ' + err.message, 'err');
+  } finally {
+    identifyBtn.disabled = false;
+    identifyBtn.innerHTML = '🔍 זהה את הסרט';
+    refreshButtons();
+  }
+});
+
+function showStatus(msg, kind) { identifyStatus.textContent = msg; identifyStatus.className = 'status-msg show ' + (kind || ''); }
+
+// =====================================================================
+//  UNIFIED SERVER ENGINE — upload to /api/items, stream SSE, link output.
+//  Uses the same local-server base URL as the CLI flow (state.localServerUrl);
+//  empty base ⇒ relative URLs (works when the page is served by the server).
+// =====================================================================
+// Same-origin first: if this page is served by the API server itself
+// (films.mf-sr.com / localhost), a stale saved tunnel URL in localStorage must
+// not shadow it — probe /api/health and prefer relative URLs when it answers.
+async function resolveUnifiedBase() {
+  try {
+    const r = await fetch('/api/health', { cache: 'no-store' });
+    if (r.ok) return '';
+  } catch {}
+  return state.localServerUrl || null;
+}
+
+// server-films.html lives only on the local server (not on the static mirror) —
+// point the long-film link at the resolved server base so it works from anywhere.
+resolveUnifiedBase().then(base => {
+  if (!base) return;                       // same origin ('') or unknown (null) → keep relative
+  const a = document.getElementById('server-films-link');
+  if (a) a.href = base.replace(/\/+$/, '') + '/server-films.html';
+}).catch(() => {});
+
+// Cloudflare (Free/Pro) rejects any request body over 100MB with a 413 at the
+// edge — BEFORE it ever reaches the local server (which itself allows 4GB). Most
+// films exceed this, so the whole-video upload to /api/items would 413. For a
+// large film we therefore split it in the browser (ffmpeg.wasm, stream-copy —
+// fast & lossless) into sub-100MB parts, catalog each through the engine, and
+// merge the per-part timelines into one continuous film using the existing parts
+// machinery (which already offsets timecodes and re-synthesizes one summary).
+const CF_BODY_LIMIT_MB = 100;   // Cloudflare Free/Pro hard cap on request bodies
+const SAFE_UPLOAD_MB   = 95;    // upload whole only if comfortably under the cap
+const PART_TARGET_MB   = 80;    // aim each split part here, leaving VBR headroom
+
+async function runUnifiedServer() {
+  const base = await resolveUnifiedBase();
+  if (base === null)
+    throw new Error('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת');
+
+  // ONE record, always — never a per-part catalog. A SPLIT film → keyframes from
+  // ALL parts on a continuous timeline (catalog appears only after every part is
+  // processed); a whole film → keyframes across the whole film. Default is NO
+  // video upload (frames only), so film size / the 100MB tunnel limit are
+  // irrelevant; the "העלאה מלאה לשרת" checkbox switches a whole film to the
+  // direct-upload path (chunked >60MB) for dense server-side ffmpeg keyframes.
+  const split = !!(state.filmParts && state.filmParts.length);
+  if (!split && !state.film) throw new Error('אין סרט');
+
+  let outputName;
+  if (split) {
+    state.currentPartIdx = -1;
+    state.filmParts.forEach(p => { p.status = 'analyzing'; });
+    renderPartsRail();
+    outputName = await catalogPartsAsOneFilm(base, contextEl.value.trim(), msg => showStatus('⚡ ' + msg, 'info'));
+    state.filmParts.forEach(p => { p.status = 'identified'; });
+    renderPartsRail();
+  } else if (document.getElementById('film-direct-upload')?.checked) {
+    outputName = await catalogViaUnified(base, state.film, contextEl.value.trim(),
+      makeActionClock(msg => showStatus(msg, 'info')));
+  } else {
+    outputName = await catalogFilmFrames(base, state.film, contextEl.value.trim(), msg => showStatus(msg, 'info'));
+  }
+
+  const url = base + '/api/output/' + encodeURIComponent(outputName);
+  identifyStatus.innerHTML = (split ? '✓ כל החלקים קוטלגו כסרט אחד (רשומה מאוחדת) — ' : '✓ הקטלוג מוכן — ')
+    + '<a href="' + url + '" download>⬇ הורד את קובץ הקטלוג</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+  identifyStatus.className = 'status-msg show ok';
+  addFilmFacesButton(base);
+  await loadUnifiedResults(base, outputName); // fills the editable results; fail-soft
+}
+
+// "Who appears in this film" — cluster the characters from the film's keyframes
+// (local InsightFace on the server; no Gemini/Claude). Appears after a successful
+// unified-server catalog, since the frames dir persists on the server.
+function addFilmFacesButton(base) {
+  if (!state.lastFramesStem || document.getElementById('film-faces-btn')) return;
+  const catalogLinksHtml = identifyStatus.innerHTML;   // restored next to the faces link on success
+  identifyStatus.innerHTML += ' · <button type="button" id="film-faces-btn" style="padding:3px 10px; font-size:12px; cursor:pointer; border:1px solid var(--accent); border-radius:5px; background:var(--card); color:var(--accent); font-family:inherit;">🧑‍🤝‍🧑 זיהוי דמויות בסרט</button>';
+  document.getElementById('film-faces-btn').addEventListener('click',
+    () => runFilmFaces(base, state.lastFramesStem, catalogLinksHtml));
+}
+
+async function runFilmFaces(base, stem, catalogLinksHtml) {
+  const btn = document.getElementById('film-faces-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '🧑‍🤝‍🧑 מזהה דמויות…'; }
+  const onStatus = makeActionClock(msg => showStatus(msg, 'info'));
+  try {
+    let res;
+    try {
+      res = await fetch(base + '/api/film-faces', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stem }),
+      });
+    } catch (e) { throw new Error('הבקשה לשרת נכשלה: ' + e.message); }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.error) throw new Error(j.error || ('שגיאת שרת ' + res.status));
+    onStatus('מאתר ומקבץ פנים בפריימים של הסרט (מקומי, דקות אחדות)…');
+    const out = await pollUnifiedJob(base, j.jobId, onStatus);
+    if (out.status !== 'done' || !out.outputName) throw new Error(out.errorText || 'זיהוי הדמויות נכשל');
+    const fUrl = base + '/api/output/' + encodeURIComponent(out.outputName);
+    identifyStatus.innerHTML = catalogLinksHtml
+      + ' · 🧑‍🤝‍🧑 <a href="' + fUrl + '" target="_blank" rel="noopener">↗ דוח הדמויות בסרט</a>'
+      + ' <span style="color:var(--soft); font-size:11px;">(עזר לשיפוט — אינו קביעת זהות)</span>';
+    identifyStatus.className = 'status-msg show ok';
+  } catch (err) {
+    console.error(err);
+    showStatus('שגיאה בזיהוי דמויות: ' + err.message, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = '🧑‍🤝‍🧑 זיהוי דמויות בסרט'; }
+  }
+}
+
+// A truncated/corrupt upload — the Cloudflare tunnel intermittently cuts a large
+// POST body mid-stream, so the server saves an incomplete file that dies at the
+// ffprobe/keyframe stage. These are worth re-uploading (a fresh attempt usually
+// gets through intact); a genuine engine error (e.g. Gemini refusal) is not.
+function isTruncatedUploadError(text) {
+  return /moov atom not found|Invalid data found|חילוץ keyframes|ffprobe|Probing video|exited with code 1/i.test(text || '');
+}
+
+// Poll GET /api/jobs/:id to completion. Returns {status:'done',outputName} or
+// {status:'error',errorText} — never throws on a job error (caller decides).
+// SSE doesn't stream reliably through the tunnel (idle connection dropped during
+// the long silent Gemini step), so we poll.
+async function pollUnifiedJob(base, jobId, onStatus) {
+  const jobUrl = base + '/api/jobs/' + jobId;
+  const POLL_MS = 2500, MAX_MS = 35 * 60 * 1000; // long: Gemini(80 frames) + a many-scene Claude render
+  const t0 = Date.now();
+  if (window.yvProgress) yvProgress.begin({ screen: 'films', kind: 'film' });
+  while (true) {
+    await new Promise(r => setTimeout(r, POLL_MS));
+    let job = null;
+    // Cache-bust each poll (unique URL defeats a proxy cache) + no-store, so a
+    // stale "running" can never be served after the job is actually done.
+    try { job = await (await fetch(jobUrl + (jobUrl.includes('?') ? '&' : '?') + '_=' + Date.now(), { cache: 'no-store' })).json(); } catch (ignore) { /* transient — keep polling */ }
+    if (!job) { if (Date.now() - t0 > MAX_MS) return { status: 'error', errorText: 'timeout בניתוח' }; continue; }
+    if (window.yvProgress) yvProgress.pump(job);
+    if (onStatus && Array.isArray(job.events) && job.events.length) {
+      const last = job.events[job.events.length - 1];
+      const line = String(last.text || last.message || '').trim().split('\n').pop().slice(0, 160);
+      if (line) onStatus('🛠 ' + line);
+    }
+    if (job.status === 'done' && job.outputName) return { status: 'done', outputName: job.outputName };
+    if (job.status === 'error') {
+      const er = (job.events || []).filter(e => e.type === 'error').pop();
+      return { status: 'error', errorText: (er && (er.message || er.text)) || 'הניתוח הסתיים בשגיאה בשרת' };
+    }
+    if (Date.now() - t0 > MAX_MS) return { status: 'error', errorText: 'timeout — הניתוח לקח יותר מדי זמן' };
+  }
+}
+
+// Upload one media file to the unified engine and poll until its catalog is
+// ready; returns the produced outputName. This is the DIRECT-UPLOAD path (the
+// "העלאה מלאה לשרת" option): the whole video travels to the server and the engine
+// extracts dense keyframes with real ffmpeg — vs the default frames-only path
+// where the browser samples sparse keyframes locally. Files over 60MB are chunk-
+// uploaded via yvChunk (past the tunnel's ~100MB request cap, up to the server's
+// multer limit); smaller ones stay a single POST. The tunnel intermittently
+// truncates large single POSTs (connection cut → corrupt file on the server), so
+// we RE-UPLOAD the same clip up to MAX_TRIES times when the upload is cut or the
+// saved file is corrupt.
+async function catalogViaUnified(base, file, context, onStatus) {
+  const MAX_TRIES = 4;
+  let lastErr = '';
+  for (let tryN = 1; tryN <= MAX_TRIES; tryN++) {
+    const fd = new FormData();
+    fd.append('kind', 'film');
+    fd.append('context', context || '');
+    if (window.yvFlow) fd.append('flow', yvFlow.current('films'));   // עם/בלי גיבוי Qwen
+    if (window.yvFlow && yvFlow.backend) fd.append('backend', yvFlow.backend('films'));   // Claude: מנוי / API
+
+    let res = null;
+    if (window.yvChunk && file.size > yvChunk.THRESHOLD) {
+      // Big film — sliced to ≤32MB parts (each under Cloudflare's ~100MB request
+      // cap; per-chunk retry ×3 inside yvChunk), assembled server-side. The
+      // finalize POST carries uploadId instead of the file.
+      const uploadId = await yvChunk.upload(base, file, file.name || 'film.mp4',
+        msg => { if (onStatus) onStatus(msg + (tryN > 1 ? ` (ניסיון ${tryN}/${MAX_TRIES})` : '')); });
+      if (onStatus) onStatus('כל הנתחים הועלו — השרת מרכיב את הסרט ומתחיל בקטלוג…');
+      fd.append('uploadId', uploadId);
+      try {
+        res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+      } catch (e) {
+        lastErr = 'סגירת ההעלאה נכשלה (' + e.message + ')';
+        if (onStatus) onStatus(`${lastErr} — מנסה שוב (${tryN}/${MAX_TRIES})…`);
+        await new Promise(r => setTimeout(r, 1200 * tryN));
+        continue;
+      }
+    } else {
+      fd.append('file', file);
+      if (onStatus) onStatus(tryN > 1 ? `מעלה מחדש לשרת (ניסיון ${tryN}/${MAX_TRIES})…` : 'מעלה את הסרט לשרת המאוחד…');
+      try {
+        res = await fetch(base + '/api/items', { method: 'POST', body: fd });
+      } catch (e) {
+        // Connection cut during the upload itself → retry.
+        lastErr = 'ההעלאה נקטעה (' + e.message + ')';
+        if (onStatus) onStatus(`${lastErr} — מנסה שוב (${tryN}/${MAX_TRIES})…`);
+        await new Promise(r => setTimeout(r, 1200 * tryN));
+        continue;
+      }
+    }
+    if (res.status === 413)
+      throw new Error(`הקובץ נדחה ע"י Cloudflare (גדול מ-${CF_BODY_LIMIT_MB}MB). יש לפצל לחלקים קטנים יותר.`);
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.error) {
+      if (res.status >= 500 || res.status === 0) { lastErr = 'שגיאת שרת ' + res.status; await new Promise(r => setTimeout(r, 1200 * tryN)); continue; }
+      throw new Error(j.error || ('שגיאת שרת ' + res.status));
+    }
+    if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
+
+    if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… כמה דקות');
+    const out = await pollUnifiedJob(base, j.jobId, onStatus);
+    if (out.status === 'done') return out.outputName;
+
+    // Job failed. Re-upload only if the file arrived corrupt (tunnel cut);
+    // otherwise it's a real engine error — surface it.
+    lastErr = out.errorText;
+    if (isTruncatedUploadError(out.errorText) && tryN < MAX_TRIES) {
+      if (onStatus) onStatus(`הקובץ הגיע פגום (ההעלאה נקטעה) — מעלה מחדש (${tryN}/${MAX_TRIES})…`);
+      await new Promise(r => setTimeout(r, 1200 * tryN));
+      continue;
+    }
+    throw new Error(out.errorText || 'הניתוח הסתיים בשגיאה בשרת');
+  }
+  throw new Error(`ההעלאה לשרת נכשלה אחרי ${MAX_TRIES} ניסיונות — חיבור ה-tunnel נקטע שוב ושוב. פרט אחרון: ${lastErr}`);
+}
+
+// Fetch a produced catalog's JSON sidecar and map it to the results-model shape
+// the parts-merge consumes (timeline rows, title, summary, duration).
+async function fetchUnifiedRecord(base, outputName) {
+  const jsonUrl = base + '/api/output/' + encodeURIComponent(outputName.replace(/\.html$/i, '.json'));
+  const res = await fetch(jsonUrl);
+  if (!res.ok) throw new Error('שדות הקטלוג (JSON) אינם זמינים — HTTP ' + res.status);
+  return mapUnifiedFilmFields(await res.json());
+}
+
+// =====================================================================
+//  unified-server → editable results section.
+//  The engine writes a fields-JSON sidecar next to the output HTML (same
+//  name, .json extension). Map its template keys (TITLE_HE, SUMMARY_HE,
+//  TIMELINE_SCENES, …) onto the page's results model and reuse fillResults
+//  so the archivist can edit the fields before copying. Fail-soft: old
+//  outputs without a sidecar keep the download links only.
+// =====================================================================
+async function loadUnifiedResults(base, outputName) {
+  const jsonUrl = base + '/api/output/' + encodeURIComponent(outputName.replace(/\.html$/i, '.json'));
+  try {
+    const res = await fetch(jsonUrl);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const fields = await res.json();
+    const result = mapUnifiedFilmFields(fields);
+    state.identification = result;
+    fillResults(result);
+    document.getElementById('results').classList.add('show');
+    document.getElementById('no-results').style.display = 'none';
+    document.getElementById('download-bar').style.display = 'flex';
+    identifyStatus.innerHTML += ' · השדות נטענו למטה לעריכה ✎';
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    console.warn('unified-server: fields JSON unavailable —', err);
+    identifyStatus.innerHTML += ' · <span style="color:var(--muted)">(שדות לעריכה אינם זמינים לפלט זה)</span>';
+  }
+}
+
+// HTML field value → plain text: confidence spans / <h4> subheads stripped,
+// block ends become newlines. "— … —" placeholders are treated as empty.
+// Shared in yv-providers.js (external review 2026-07-12 #7): parses via an
+// INERT DOMParser document, never a live innerHTML sink — AI-produced sidecar
+// HTML must not be able to fire <img onerror> on assignment.
+const unifiedFieldText = v => yvProviders.unifiedFieldText(v);
+
+// TIMELINE_SCENES (HTML <div class="scene"> blocks per templates/film.html)
+// → the page's timeline rows {start, end, description_he/en, confidence}.
+function parseUnifiedScenes(html) {
+  if (typeof html !== 'string' || !html.trim()) return [];
+  // inert parse (review #7) — sidecar HTML never touches a live DOM sink
+  const div = yvProviders.parseInertHtml(html).body;
+  return [...div.querySelectorAll('.scene')].map(s => {
+    const tc = (s.querySelector('.tc')?.textContent || '')
+      .split(/[↓\n]+/).map(t => t.trim()).filter(Boolean);
+    const cellText = sel => {
+      const c = s.querySelector(sel);
+      if (!c) return '';
+      const clone = c.cloneNode(true);
+      clone.querySelectorAll('.scene-num').forEach(n => n.remove());
+      return clone.textContent.replace(/\s+/g, ' ').trim();
+    };
+    // Worst inline V/H mark in the scene → row confidence.
+    const confidence = s.querySelector('.c-low') ? 'low' : s.querySelector('.c-mid') ? 'medium' : 'high';
+    return {
+      start: tc[0] || '00:00:00', end: tc[1] || tc[0] || '00:00:00',
+      description_he: cellText('.he-cell'), description_en: cellText('.en-cell'),
+      confidence,
+    };
+  });
+}
+
+// Sidecar template keys → the results-model shape fillResults expects.
+function mapUnifiedFilmFields(f) {
+  const txt = k => unifiedFieldText(f[k]);
+  const splitList = s => (!s || s === '—') ? [] : s.split(/[;,،]/).map(x => x.trim()).filter(Boolean);
+  return {
+    title_he: txt('TITLE_HE'), title_en: txt('TITLE_EN'),
+    summary_he: txt('SUMMARY_HE'), summary_en: txt('SUMMARY_EN'),
+    duration: txt('DURATION'),
+    archive_id: txt('ARCHIVE_ID'),
+    places_he: txt('PLACES_HE'), places_en: txt('PLACES_EN'),
+    subjects_he: splitList(txt('SUBJECTS_HE')), subjects_en: splitList(txt('SUBJECTS_EN')),
+    persons_he: txt('PERSONS_HE'), persons_en: txt('PERSONS_EN'),
+    events_he: txt('EVENTS_HE'), events_en: txt('EVENTS_EN'),
+    orgs_he: txt('ORGS_HE'), orgs_en: txt('ORGS_EN'),
+    objects_he: txt('OBJECTS_HE'), objects_en: txt('OBJECTS_EN'),
+    dates_he: txt('DATES_HE'), dates_en: txt('DATES_EN'),
+    jewish_timeline_he: txt('JEWISH_TIMELINE_HE'), jewish_timeline_en: txt('JEWISH_TIMELINE_EN'),
+    admin_notes: txt('ADMIN_NOTES'),   // internal uniform-grounding citation (not the public summary)
+    timeline: parseUnifiedScenes(f.TIMELINE_SCENES),
+  };
+}
+
+const fileToBase64 = file => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result.split(',')[1]);
+  r.onerror = reject; r.readAsDataURL(file);
+});
+
+function buildFilmPrompt() {
+  const ctx = contextEl.value.trim();
+  const m = state.filmMeta || {};
+  const dur = formatDuration(m.duration || 0);
+  const thesaurusBrief = (state.thesaurus_top || []).map(t => `${t.he} | ${t.en}`).join('\n');
+  return `אתה מקטלג בכיר במדור התיעוד הוויזואלי של הארכיון. נשלח אליך סרט ארכיוני (משך: ${dur}, רזולוציה: ${m.width}×${m.height}). בצע ניתוח מלא ומקצועי לפי **הנהלים הרשמיים** והחזר JSON תקין בלבד.
+
+🚨🚨🚨 **חוק קריטי — איסור הזיה** 🚨🚨🚨
+
+כל מה שאתה מתאר חייב להיות מבוסס על מה שאתה **רואה בפועל בסרט**.
+
+❌ **אסור**: להמציא סצנות שלא נראות; לנחש שמות אישים בלי כיתוב; להוסיף "אירוע סביר" שלא קורה בסרט; להמציא כותרות ביניים שאינן; להגזים בתיאור.
+
+✅ **מותר**: לתאר תמציתי ויזואלי של מה שרואים; לסמן רמת ודאות; להשאיר שדות ריקים כשאין מידע.
+
+📊 **מערכת ודאות Dual-Axis (חובה)** — ראה \`reference/confidence_dual_axis.md\`
+
+לכל קביעה (סצנה, כותרת ביניים, אדם, מקום, אירוע) קיימים **שני צירי ודאות עצמאיים**:
+- **V (Visual)** = עד כמה הסרט מראה את הקביעה בבירור: ✓ ודאי / ~ סביר / ? השערה.
+- **H (Historical)** = עד כמה הקביעה תואמת היסטוריה מתועדת: ✓ / ~ / ?.
+
+**חוקים:**
+1. ב-JSON: השדה הקיים \`confidence\` ימשיך להחזיק את הציר ההיסטורי (H). הוסף שדה חדש \`v_confidence\` עם "high" | "medium" | "low".
+2. בטקסט שאתה מציע ל-HTML (descriptions וכו') — סמן זוג inline אחרי הקביעה: \`<span class="cv c-mid">V~</span><span class="ch c-high">H✓</span>\`.
+3. אם V וגם H יהיו "low" — **אל תכתוב את הקביעה**. השאר ריק.
+4. דוגמאות: שלט קריא של מקום → V✓ H✓ | מבנה דומה אבל ללא שלט → V~ H✓ | אדם שזיהה המוסר אך פניו מטושטשות → V? H✓.
+
+**עקרון**: שדה ריק עדיף משדה מומצא. אם הסרט קצר ופשוט — תקציר קצר. אם לא ברור מי האנשים — לא להמציא שמות.
+
+
+## כותר (פורמט קבוע)
+\`[City in English], [Country in English], [תוכן], [תאריך]\`
+- \`Brussels, Belgium, חיילים בלגים בפעילויות אזרחיות וצבאיות, 1935\`
+- שמות מקומות באנגלית בלבד (Brussels לא Brussel), גבולות 01/09/1939
+- ארץ ישראל לפני 14/05/1948 → \`Mandatory Palestine\`; אחרי → \`Israel\`
+
+## תאריכים — חוק קריטי 🛑
+
+**אם אין תאריך מדויק על הסרט / בכותרות הביניים / בקונטקסט הסמכותי, ואין דרך מוצקה להסיק אותו → השאר ריק או רק תקופה רחבה. אסור לנחש שנה ספציפית.**
+
+### היררכיה (מהמדויק לכללי):
+1. \`DD/MM/YYYY\` — רק אם כתוב מפורש (כותרת ביניים, שלט מתוארך)
+2. \`חודש + שנה\` — רק עם ראיה
+3. \`שנה בלבד\` — רק עם ראיה (אירוע מתועד, סמל תקופתי ייחודי)
+4. \`טווח שנים\` — מותר אם הוויזואל מצמצם
+5. \`לפני המלחמה\` / \`אחרי המלחמה\` / \`שנות ה-30\` / \`תקופת השואה\` — מותר אם יש בסיס תקופתי
+6. **לא ידוע** → ריק
+
+❌ אסור: לנחש שנה רק כי "נראה תקופתי"; להמציא תאריך מלא מתוך תקופה; לרשום תאריך עם ודאות נמוכה.
+
+## סימוני ודאות (חובה)
+- ✓ Confirmed | ~ Probable | ? Tentative
+- אסור לנחש מקום/אישיות/יחידה ללא ראיה ברורה
+
+## טיימליין — הליבה
+פרק את הסרט לסצנות. לכל סצנה: timecode התחלה→סיום (HH:MM:SS), תיאור עברית של פעולה/אישים/סביבה, ותיאור אנגלית. סצנות 5-90 שניות.
+לכל סצנה: מה רואים, מה הם עושים, כיתובי ביניים/שלטים נראים (תעתק מקור + תרגם), אישים מזוהים אם רלוונטי.
+
+## כיתובים — כותרות ביניים, שלטים, פוסטרים
+תעתק כל טקסט בסרט + תרגם לעברית ולאנגלית. ציין timecode.
+
+**יידיש — הנחיות ספציפיות:**
+- יידיש כתובה באותיות עבריות (RTL). הבחן בין יידיש לעברית — זהה לפי מילים ייחודיות (אַ, פֿאַר, אױך, אױף).
+- שמור על האותיות עם הסימן (אַ אָ פֿ פּ בֿ ױ ײַ ײ) כפי שהן במקור.
+- תעתק לפי תקן YIVO: אַ→a, אָ→o, ױ→oy, ײַ→ay, ײ→ey, ש→sh.
+- מילים עבריות בתוך יידיש (חתונה, שבת, רב) — סמן: \`(Heb.)\`.
+- דיאלקטים אפשריים — Galitsianer (פולין), Litvish (ליטא), Romanian.
+
+## מידע מוקדם
+${ctx || '(אין)'}
+
+## נושאים מתזאורוס
+בחר עד 10 נושאים רלוונטיים **רק מהרשימה הסגורה**:
+\`\`\`
+${thesaurusBrief}
+\`\`\`
+
+## פלט — JSON בלבד:
+\`\`\`json
+{
+  "title_he": "כותר עברית",
+  "title_en": "Title English",
+  "original_title": "",
+  "media_code": "S | V | D",
+  "archive_id": "",
+  "intake_num": "",
+  "original_id": "",
+  "genre": "תיעודי / תעמולה / משפחתי / חדשות / הסברה / ביתי",
+  "duration": "${dur}",
+  "quality": "טובה / בינונית / ירודה",
+  "color": "שחור-לבן | צבעוני",
+  "language": "אילם / גרמנית / וכו׳",
+  "recording_method": "35mm / 16mm / 8mm / Beta / VHS / DV / digital born",
+  "creation_date": "DD/MM/YYYY",
+  "rights": "לא ידוע",
+  "donor_he": "",
+  "donor_en": "",
+  "source_he": "",
+  "source_en": "",
+  "summary_he": "תקציר 4-5 שורות בעברית",
+  "summary_en": "Summary 4-5 lines in English",
+  "timeline": [
+    { "start": "00:00:00", "end": "00:01:30", "description_he": "תיאור בעברית", "description_en": "Description in English", "confidence": "high | medium | low" }
+  ],
+  "persons_he": "תיאור אישים עם רמת ודאות ו-timecode",
+  "persons_en": "Same in English",
+  "inscriptions_he": "כיתובים — תעתיק + שפה + תרגום + timecode",
+  "inscriptions_en": "Same in English",
+  "subjects_he": ["נושא1"],
+  "subjects_en": ["Subject1"],
+  "admin_notes": "הערות פנים-ארכיוניות"
+}
+\`\`\`
+לכל סצנה ב-timeline חובה לציין שדה \`confidence\` המבטא את רמת הוודאות של זיהוי הסצנה: \`high\` (ודאי — זיהוי חד-משמעי על סמך מה שנראה בפועל), \`medium\` (סביר — עקבי עם מספר רמזים אך ללא ראיה מכרעת), \`low\` (משוער — דמיון חזותי או הסקה כללית בלבד). אל תכניס סימוני ודאות לתוך טקסט התיאור — רק בשדה \`confidence\` הנפרד.
+החזר JSON בלבד, ללא code fence.`;
+}
+
+async function callGemini() {
+  if (!state.film) throw new Error('אין סרט');
+  const sizeMB = state.film.size / 1024 / 1024;
+  const INLINE_THRESHOLD_MB = 18;  // inline_data total request limit ~20MB; reserve room for prompt
+  const FILES_API_LIMIT_MB = 2048; // Gemini Files API: up to 2GB per file
+  if (sizeMB > FILES_API_LIMIT_MB) {
+    throw new Error(`סרט גדול מ-2GB (${sizeMB.toFixed(0)}MB) — חרג ממגבלת Files API. דחס/חתוך את הסרט (HandBrake) או השתמש ב-Claude (חילוץ פריימים).`);
+  }
+
+  let videoPart;
+  if (sizeMB <= INLINE_THRESHOLD_MB) {
+    // Small files — inline_data (single request)
+    showStatus(`מקודד את הסרט (${sizeMB.toFixed(1)}MB) ל-base64…`, 'info');
+    const videoB64 = await fileToBase64(state.film);
+    videoPart = { inline_data: { mime_type: state.film.type || 'video/mp4', data: videoB64 } };
+  } else {
+    // Larger files — Gemini Files API (resumable upload)
+    showStatus(`מעלה סרט גדול (${sizeMB.toFixed(1)}MB) ל-Gemini Files API…`, 'info');
+    const uploadedFile = await uploadToGeminiFiles(state.film, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      showStatus(`מעלה ל-Gemini Files API: ${pct}% (${(loaded/1024/1024).toFixed(1)} / ${(total/1024/1024).toFixed(1)} MB)…`, 'info');
+    });
+    showStatus(`הסרט הועלה. ממתין ש-Gemini יעבד אותו (Active state)…`, 'info');
+    await waitForFileActive(uploadedFile.name);
+    showStatus(`הסרט מוכן. שולח לניתוח (זה עשוי לקחת 1–2 דקות לסרטים ארוכים)…`, 'info');
+    videoPart = { file_data: { file_uri: uploadedFile.uri, mime_type: uploadedFile.mimeType || state.film.type || 'video/mp4' } };
+  }
+
+  const model = getActiveModel();
+  const url = geminiBase() + '/v1beta/models/' + model + ':generateContent';
+  // Gemini 2.5 models spend part of the output budget on internal "thinking";
+  // a low cap truncates the JSON mid-string (finishReason MAX_TOKENS) and it
+  // fails to parse. Give each model its real max (2.0 tops out at 8192).
+  const maxOut = model.includes('2.0') ? 8192 : 65536;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [videoPart, { text: buildFilmPrompt() }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: maxOut, responseMimeType: 'application/json' }
+    })
+  });
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
+  const data = await res.json();
+  // Surface the real failure instead of a downstream "invalid JSON".
+  const block = data.promptFeedback?.blockReason;
+  if (block) throw new Error(`Gemini חסם את הבקשה (${block}) — ייתכן בשל תוכן הסרט. נסה ספק אחר או קטע אחר של הסרט.`);
+  const cand = data.candidates?.[0];
+  const finish = cand?.finishReason;
+  const text = (cand?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  if (finish === 'MAX_TOKENS') {
+    throw new Error(`Gemini נקטע באמצע התשובה (חרג מ-${maxOut} טוקנים) — ה-timeline ארוך מדי לתשובה אחת. חתוך את הסרט לסגמנטים (כפתור החיתוך) או השתמש ב-Pipeline/Claude.`);
+  }
+  if (finish && finish !== 'STOP' && !text) {
+    throw new Error(`Gemini הסתיים ללא פלט (finishReason: ${finish}). נסה שוב או בחר מודל/ספק אחר.`);
+  }
+  if (!text) throw new Error('Gemini תגובה ריקה');
+  return parseJson(text, 'Gemini');
+}
+
+// Resumable upload to Gemini Files API.
+// Returns the file metadata: { name: 'files/abc123', uri: 'https://...', mimeType, sizeBytes, state }
+async function uploadToGeminiFiles(file, onProgress) {
+  const apiKey = getActiveApiKey();
+
+  // Step 1: Initiate resumable upload — get the upload URL
+  const startRes = await fetch(geminiBase() + '/upload/v1beta/files', {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': file.size.toString(),
+      'X-Goog-Upload-Header-Content-Type': file.type || 'video/mp4',
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({ file: { display_name: file.name } }),
+  });
+  if (!startRes.ok) {
+    const err = await startRes.json().catch(() => ({}));
+    throw new Error(`Files API התחלה נכשלה: ${err.error?.message || startRes.status}`);
+  }
+  let uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
+  if (!uploadUrl) throw new Error('Files API לא החזיר URL להעלאה');
+  if (state.proxyGemini && state.localServerUrl) {
+    uploadUrl = uploadUrl.replace('https://generativelanguage.googleapis.com', state.localServerUrl + '/api/gemini-proxy');
+  }
+
+  // Step 2: Upload via XHR to track progress
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', uploadUrl);
+    xhr.setRequestHeader('Content-Length', file.size.toString());
+    xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
+    xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+    });
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          resolve(data.file);
+        } catch { reject(new Error('Files API החזיר תגובה לא תקנית')); }
+      } else {
+        reject(new Error(`Files API העלאה נכשלה: HTTP ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Files API: שגיאת רשת בהעלאה'));
+    xhr.send(file);
+  });
+}
+
+// Wait until the uploaded file is in ACTIVE state (Gemini processes video — takes seconds to ~minute)
+async function waitForFileActive(fileName, maxAttempts = 60) {
+  const apiKey = getActiveApiKey();
+  for (let i = 0; i < maxAttempts; i++) {
+    const res = await fetch(geminiBase() + '/v1beta/' + fileName, {
+      headers: { 'x-goog-api-key': apiKey },
+    });
+    if (!res.ok) throw new Error(`בדיקת סטטוס נכשלה: ${res.status}`);
+    const data = await res.json();
+    if (data.state === 'ACTIVE') return data;
+    if (data.state === 'FAILED') throw new Error('Gemini נכשל בעיבוד הסרט: ' + (data.error?.message || 'ללא פרטים'));
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  throw new Error('Timeout — Gemini לא סיים לעבד את הסרט (>2 דקות). נסה שוב, או חתוך לסגמנטים קטנים יותר.');
+}
+
+async function callAnthropic() {
+  showStatus('מחלץ פריימים מהסרט (30 נקודות)…', 'info');
+  const frames = await extractKeyframes(state.film, 30);
+  showStatus('שולח 30 פריימים ל-Claude…', 'info');
+  const content = [{ type: 'text', text: 'הסרט מצורף כ-30 פריימים שחילצתי במרווחים שווים. כל פריים מסומן ב-timecode (HH:MM:SS). נתח את הסרט לפי הפריימים ובנה טיימליין על-בסיס ה-timecodes.' }];
+  for (const f of frames) {
+    content.push({ type: 'text', text: `--- ${f.tc} ---` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.b64 } });
+  }
+  content.push({ type: 'text', text: buildFilmPrompt() });
+  const data = await yvProviders.anthropicJson(state, { model: getActiveModel(), max_tokens: 16000, messages: [{ role: 'user', content }] });
+  return parseJson(data.content?.[0]?.text || '', 'Claude');
+}
+
+// =====================================================================
+//  PIPELINE: Gemini drafts → Claude historically validates
+// =====================================================================
+
+// POST a job to /api/ask-async and poll until done. Async so a long Claude run
+// survives the Cloudflare quick-tunnel ~100s limit (the synchronous /api/ask
+// hits "Failed to fetch" once the tunnel cuts the connection). Returns raw text.
+async function runClaudeJob(prompt, images) {
+  const base = state.localServerUrl;
+  if (!base) throw new Error('מצב Claude CLI דורש URL של שרת מקומי.');
+  const modelSel = document.getElementById('api-model-anthropic');
+  const model = (modelSel && modelSel.value.includes('opus')) ? 'opus' : 'sonnet';
+  let res;
+  try {
+    res = await fetch(base + '/api/ask-async', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, model, images: images || [] }),
+    });
+  } catch (e) {
+    throw new Error(`לא ניתן להגיע לשרת המקומי (${e.message}). ודא ששרת הבית רץ (node server.js), ובגישה מרחוק שגם ה-tunnel פעיל וה-URL מעודכן.`);
+  }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('שרת HTTP ' + res.status + ': ' + (e.error || '').slice(0, 400)); }
+  const { jobId } = await res.json();
+  if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
+  // Shared poll mechanics (yvPollAsk in yv-client-log.js — review 21.7 #21):
+  // the per-screen copy kept only its own status line, cap and timeout wording.
+  if (!window.yvPollAsk) throw new Error('רכיב משותף (yv-client-log) לא נטען — רענן את הדף');
+  const r = await yvPollAsk(base, jobId, { maxMs: 15 * 60 * 1000,
+    onTick: (j, sec) => showStatus('שלב 2/2 · Claude CLI מאמת היסטורית… (' + sec + ' שׄ)', 'info') });
+  if (r.status === 'auth') return;
+  if (r.status === 'done') return r.text;
+  if (r.status === 'error') throw new Error('Claude נכשל: ' + r.error);
+  throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. נסה סרט קצר יותר.');
+}
+
+
+
+async function extractKeyframes(file, count) {
+  const video = document.createElement('video');
+  video.preload = 'metadata';
+  video.muted = true;
+  video.src = URL.createObjectURL(file);
+  // Large files decode/seek slower → scale the per-event timeout with size
+  // (~50ms/MB, 30s–120s) so a big-but-fine file isn't killed prematurely.
+  const sizeMB = (file.size || 0) / 1048576;
+  const TO = Math.min(120000, Math.max(30000, Math.round(sizeMB * 50)));
+  const waitFor = (evt, ms = TO) => new Promise((resolve, reject) => {
+    const cleanup = () => { clearTimeout(to); video.removeEventListener(evt, onOk); video.removeEventListener('error', onErr); };
+    const onOk = () => { cleanup(); resolve(); };
+    const onErr = () => { cleanup(); reject(new Error('שגיאה בטעינת/קריאת הווידאו (קודק לא נתמך או קובץ פגום)')); };
+    const to = setTimeout(() => { cleanup(); reject(new Error(`פג הזמן (${Math.round(ms / 1000)}s) בהמתנה ל-"${evt}" — קובץ ${sizeMB.toFixed(0)}MB. נסה להמיר/לדחוס (HandBrake) או לחתוך את הסרט לחלקים.`)); }, ms);
+    video.addEventListener(evt, onOk, { once: true });
+    video.addEventListener('error', onErr, { once: true });
+  });
+  try {
+    await waitFor('loadedmetadata');
+    let duration = video.duration;
+    // Large / transcoded archival files often report duration = Infinity (or 0)
+    // until forced to seek to the end. Without this, interval = NaN/Infinity and
+    // every seek hangs → the catalog fails on big films. Force the real duration.
+    if (!isFinite(duration) || duration <= 0) {
+      video.currentTime = 1e101;
+      await waitFor('seeked').catch(() => {});
+      duration = video.duration;
+      if (isFinite(duration) && duration > 0) { video.currentTime = 0; await waitFor('seeked').catch(() => {}); }
+    }
+    if (!isFinite(duration) || duration <= 0)
+      throw new Error('לא ניתן לקבוע את אורך הסרט (duration לא תקין). המיר/דחוס את הקובץ (HandBrake) או חתוך אותו לחלקים.');
+    const interval = duration / (count + 1);
+    const canvas = document.createElement('canvas');
+    const targetWidth = 800;
+    canvas.width = targetWidth;
+    canvas.height = Math.round(targetWidth * (video.videoHeight || 9) / (video.videoWidth || 16));
+    const ctx = canvas.getContext('2d');
+    const frames = [];
+    for (let i = 1; i <= count; i++) {
+      const t = i * interval;
+      video.currentTime = t;
+      await waitFor('seeked');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      frames.push({ tc: formatDuration(t), t, b64: dataUrl.split(',')[1] });
+    }
+    return frames;
+  } finally {
+    URL.revokeObjectURL(video.src);
+    video.removeAttribute('src'); video.load();   // release the decoder/memory promptly
+  }
+}
+
+// bracket-count JSON repair — shared in yv-providers.js. detail:true keeps films'
+// error-message variant (appends the parser message, not the "auto-repair" note).
+function parseJson(text, label) { return yvProviders.parseJson(text, label, { detail: true }); }
+
+function fillResults(d) {
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = stripConfidenceMarkup(v); };
+  setVal('r-title-he', d.title_he); setVal('r-title-en', d.title_en); setVal('r-original-title', d.original_title);
+  setVal('r-archive-id', d.archive_id); setVal('r-intake-num', d.intake_num); setVal('r-original-id', d.original_id);
+  setVal('r-genre', d.genre); setVal('r-duration', d.duration); setVal('r-quality', d.quality);
+  setVal('r-language', d.language); setVal('r-recording-method', d.recording_method); setVal('r-creation-date', d.creation_date);
+  setVal('r-rights', d.rights || 'לא ידוע');
+  setVal('r-donor-he', d.donor_he); setVal('r-donor-en', d.donor_en);
+  setVal('r-source-he', d.source_he); setVal('r-source-en', d.source_en);
+  setVal('r-summary-he', d.summary_he); setVal('r-summary-en', d.summary_en);
+  setVal('r-places-he', d.places_he); setVal('r-places-en', d.places_en);
+  setVal('r-jewish-he', d.jewish_timeline_he); setVal('r-jewish-en', d.jewish_timeline_en);
+  setVal('r-persons-he', d.persons_he); setVal('r-persons-en', d.persons_en);
+  setVal('r-events-he', d.events_he); setVal('r-events-en', d.events_en);
+  setVal('r-orgs-he', d.orgs_he); setVal('r-orgs-en', d.orgs_en);
+  setVal('r-objects-he', d.objects_he); setVal('r-objects-en', d.objects_en);
+  setVal('r-dates-he', d.dates_he); setVal('r-dates-en', d.dates_en);
+  setVal('r-inscriptions-he', d.inscriptions_he); setVal('r-inscriptions-en', d.inscriptions_en);
+  setVal('r-admin-notes', d.admin_notes);
+  document.getElementById('r-media-code').value = d.media_code || 'D';
+  document.getElementById('r-color').value = d.color || 'שחור-לבן';
+
+  const tbody = document.getElementById('r-timeline-tbody');
+  tbody.innerHTML = '';
+  (d.timeline || []).forEach(scene => addTimelineRow(scene));
+  if (!(d.timeline || []).length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted); font-style:italic; padding:14px">אין סצנות. הוסף ידנית.</td></tr>';
+  }
+  const subjects = (d.subjects_he || []).map((he, i) => ({ he, en: (d.subjects_en || [])[i] || '' }));
+  renderSubjects(subjects);
+}
+
+// Strip dual-axis confidence markup the model sometimes injects into prose
+// fields (e.g. <span class="cv c-mid">V~</span>, or the malformed
+// 'span class="cv c-high">V✓</span>' with a dropped leading '<'), plus bare
+// V✓/H~/V? tokens. Confidence belongs in the data, never in the copy-paste text.
+function stripConfidenceMarkup(v) {
+  // The model sometimes returns a prose field as an array of lines; coerce so
+  // callers can always rely on a string (and .trim()) without throwing.
+  if (Array.isArray(v)) v = v.filter(x => x != null).join('\n');
+  if (typeof v !== 'string') return v == null ? '' : String(v);
+  return v
+    .replace(/(?:<|&lt;)?\s*\/?\s*span(?:\s[^<>]*)?(?:>|&gt;)/gi, '')
+    .replace(/[VH]\s*[✓~?]/g, '')
+    .replace(/\s*class\s*=\s*"(?:cv|ch)[^"]*"/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +([,.;:)])/g, '$1')
+    .trim();
+}
+
+// Per-scene confidence selector (separate column — never inside the prose).
+function confSelectHTML(val) {
+  const v = (val === 'high' || val === 'medium' || val === 'low') ? val : 'medium';
+  const opt = (value, label) => `<option value="${value}"${v === value ? ' selected' : ''}>${label}</option>`;
+  return `<select class="conf-sel conf-${v}" title="רמת הוודאות של זיהוי הסצנה">`
+    + opt('high', '✓ ודאי') + opt('medium', '~ סביר') + opt('low', '? משוער') + '</select>';
+}
+// Keep the select's color in sync with the chosen level.
+document.getElementById('r-timeline-tbody').addEventListener('change', e => {
+  const sel = e.target.closest('.conf-sel');
+  if (sel) sel.className = 'conf-sel conf-' + sel.value;
+});
+
+function addTimelineRow(scene) {
+  const tbody = document.getElementById('r-timeline-tbody');
+  if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td class="tc-cell"><input type="text" value="${esc(scene?.start || '00:00:00')}"></td><td class="tc-cell"><input type="text" value="${esc(scene?.end || '00:00:00')}"></td><td><textarea rows="2">${esc(stripConfidenceMarkup(scene?.description_he))}</textarea></td><td><textarea rows="2" style="direction:ltr; text-align:left; font-family:Georgia,serif">${esc(stripConfidenceMarkup(scene?.description_en))}</textarea></td><td class="conf-cell">${confSelectHTML(scene?.confidence)}</td><td class="del-cell"><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tbody.appendChild(tr);
+}
+document.getElementById('timeline-add-row').addEventListener('click', () => addTimelineRow());
+
+let activeSubjects = [];
+function renderSubjects(items) {
+  activeSubjects = items;
+  const chips = document.getElementById('r-subjects-chips');
+  if (!items.length) { chips.innerHTML = '<span style="color:var(--muted); font-size:12px; font-style:italic">— אין נושאים —</span>'; return; }
+  chips.innerHTML = items.map((s, i) => `<span class="chip">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}<span class="x" data-idx="${i}">✕</span></span>`).join('');
+  chips.querySelectorAll('.x').forEach(x => x.addEventListener('click', () => { activeSubjects.splice(parseInt(x.dataset.idx), 1); renderSubjects(activeSubjects); }));
+}
+const subjectsAdd = document.getElementById('r-subjects-add');
+subjectsAdd.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const v = subjectsAdd.value.trim();
+    if (v) {
+      const found = state.thesaurus_top.find(t => t.he === v || t.en === v);
+      activeSubjects.push(found ? { he: found.he, en: found.en } : { he: v, en: '' });
+      renderSubjects(activeSubjects); subjectsAdd.value = '';
+    }
+  }
+});
+
+// Per-field copy buttons.
+// Convention: copy button ALWAYS on the LEFT, value ALWAYS on the RIGHT
+// (matches the RTL flow of the Hebrew interface).
+function wrapFieldsWithCopyButtons() {
+  const fields = document.querySelectorAll('#results input[type="text"][id^="r-"], #results textarea[id^="r-"]');
+  fields.forEach(el => {
+    if (el.parentElement?.classList.contains('input-wrap')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'input-wrap';
+    el.parentNode.insertBefore(wrap, el);
+    wrap.appendChild(el);
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'copy-corner'; btn.textContent = '📋';
+    btn.title = 'העתק / Copy'; btn.dataset.copyTarget = el.id;
+    wrap.appendChild(btn);
+  });
+}
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.copy-corner');
+  if (!btn) return;
+  const target = document.getElementById(btn.dataset.copyTarget);
+  if (!target) return;
+  const value = (target.value ?? target.innerText ?? '').trim();
+  try { await navigator.clipboard.writeText(value); }
+  catch { const ta = document.createElement('textarea'); ta.value = value; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  const orig = btn.textContent;
+  btn.textContent = '✓'; btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1100);
+});
+wrapFieldsWithCopyButtons();
+
+// Copy the WHOLE timeline as clean text for direct paste into Sapir: one line per
+// scene, "MM:SS–MM:SS  description" — time + description ONLY, NO confidence markers.
+// lang 'he' → Hebrew description column (textarea idx 2); 'en' → English (idx 3).
+// Reads the editable rows, so any manual edits are included.
+function buildTimelineText(lang) {
+  const di = lang === 'en' ? 3 : 2;
+  const rows = [...document.querySelectorAll('#r-timeline-tbody tr')].map(tr => {
+    const inp = [...tr.querySelectorAll('input, textarea')];
+    if (inp.length < 4) return null;
+    return { start: (inp[0].value || '').trim(), end: (inp[1].value || '').trim(), desc: (inp[di].value || '').trim() };
+  }).filter(s => s && s.desc);
+  if (!rows.length) return null;
+  return rows.map(s => {
+    const tc = (s.end && s.end !== s.start) ? `${s.start}–${s.end}` : (s.start || '');
+    const d = s.desc.replace(/\s*\n\s*/g, ' ');
+    return tc ? `${tc}  ${d}` : d;
+  }).join('\n');
+}
+async function copyTimeline(lang, btnId, okLabel, emptyMsg) {
+  const text = buildTimelineText(lang);
+  if (text === null) { alert(emptyMsg); return; }
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  const b = document.getElementById(btnId); const o = b.textContent;
+  b.textContent = okLabel; setTimeout(() => { b.textContent = o; }, 1300);
+}
+document.getElementById('copy-timeline-he')?.addEventListener('click', () => copyTimeline('he', 'copy-timeline-he', '✓ הועתק', 'אין סצנות בטיימליין להעתקה'));
+document.getElementById('copy-timeline-en')?.addEventListener('click', () => copyTimeline('en', 'copy-timeline-en', '✓ Copied', 'No scenes in the timeline to copy'));
+
+// Download HTML
+function buildFilmHTML() {
+  const get = id => document.getElementById(id).value;
+  const timelineRows = [...document.querySelectorAll('#r-timeline-tbody tr')].map(tr => {
+    const inputs = [...tr.querySelectorAll('input, textarea')];
+    if (inputs.length < 4) return null;
+    return { start: inputs[0].value, end: inputs[1].value, he: inputs[2].value, en: inputs[3].value,
+      confidence: tr.querySelector('.conf-sel')?.value || '' };
+  }).filter(s => s && s.he);
+  // Confidence cell for the exported timeline (separate column, never in prose).
+  const confCell = c => {
+    const map = { high: ['✓ ודאי', '#2e7d32'], medium: ['~ סביר', '#b07000'], low: ['? משוער', '#b22222'] };
+    const [label, color] = map[c] || ['—', '#888'];
+    return `<td class="tc" style="color:${color}; font-weight:700; white-space:nowrap">${label}</td>`;
+  };
+  const tlHE = timelineRows.length
+    ? `<table class="tl"><thead><tr><th>החל</th><th>עד</th><th>תיאור</th><th>ודאות</th></tr></thead><tbody>${timelineRows.map(s => `<tr><td class="tc">${esc(s.start)}</td><td class="tc">${esc(s.end)}</td><td>${esc(s.he).replace(/\n/g, '<br>')}</td>${confCell(s.confidence)}</tr>`).join('')}</tbody></table>`
+    : '<div style="color:#888; font-style:italic">— אין סצנות —</div>';
+  const tlEN = timelineRows.length
+    ? `<table class="tl"><thead><tr><th>Start</th><th>End</th><th>Description</th><th>Conf.</th></tr></thead><tbody>${timelineRows.map(s => `<tr><td class="tc">${esc(s.start)}</td><td class="tc">${esc(s.end)}</td><td>${esc(s.en).replace(/\n/g, '<br>')}</td>${confCell(s.confidence)}</tr>`).join('')}</tbody></table>`
+    : '<div style="color:#888; font-style:italic">— No scenes —</div>';
+  const chipsHTML = activeSubjects.map(s => `<span style="display:inline-block; background:#cee0f3; color:#1d4666; padding:3px 10px; margin:2px; border-radius:12px; font-size:12.5px; border:1px solid #a1bbd9;">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}</span>`).join('');
+  return FILM_TEMPLATE
+    .replace(/\{\{TITLE_HE\}\}/g, esc(get('r-title-he')))
+    .replace(/\{\{TITLE_EN\}\}/g, esc(get('r-title-en')))
+    .replace(/\{\{ORIGINAL_TITLE\}\}/g, esc(get('r-original-title')))
+    .replace(/\{\{MEDIA_CODE\}\}/g, esc(get('r-media-code')))
+    .replace(/\{\{ARCHIVE_ID\}\}/g, esc(get('r-archive-id')))
+    .replace(/\{\{INTAKE_NUM\}\}/g, esc(get('r-intake-num')))
+    .replace(/\{\{ORIGINAL_ID\}\}/g, esc(get('r-original-id')))
+    .replace(/\{\{GENRE\}\}/g, esc(get('r-genre')))
+    .replace(/\{\{DURATION\}\}/g, esc(get('r-duration')))
+    .replace(/\{\{QUALITY\}\}/g, esc(get('r-quality')))
+    .replace(/\{\{COLOR\}\}/g, esc(get('r-color')))
+    .replace(/\{\{LANGUAGE\}\}/g, esc(get('r-language')))
+    .replace(/\{\{RECORDING_METHOD\}\}/g, esc(get('r-recording-method')))
+    .replace(/\{\{CREATION_DATE\}\}/g, esc(get('r-creation-date')))
+    .replace(/\{\{RIGHTS\}\}/g, esc(get('r-rights')))
+    .replace(/\{\{DONOR_HE\}\}/g, esc(get('r-donor-he')))
+    .replace(/\{\{DONOR_EN\}\}/g, esc(get('r-donor-en')))
+    .replace(/\{\{SOURCE_HE\}\}/g, esc(get('r-source-he')))
+    .replace(/\{\{SOURCE_EN\}\}/g, esc(get('r-source-en')))
+    .replace(/\{\{SUMMARY_HE\}\}/g, esc(get('r-summary-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{SUMMARY_EN\}\}/g, esc(get('r-summary-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{TIMELINE_HE\}\}/g, tlHE)
+    .replace(/\{\{TIMELINE_EN\}\}/g, tlEN)
+    .replace(/\{\{PLACES_HE\}\}/g, esc(get('r-places-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{PLACES_EN\}\}/g, esc(get('r-places-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{EVENTS_HE\}\}/g, esc(get('r-events-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{EVENTS_EN\}\}/g, esc(get('r-events-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{ORGS_HE\}\}/g, esc(get('r-orgs-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{ORGS_EN\}\}/g, esc(get('r-orgs-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{OBJECTS_HE\}\}/g, esc(get('r-objects-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{OBJECTS_EN\}\}/g, esc(get('r-objects-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{DATES_HE\}\}/g, esc(get('r-dates-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{DATES_EN\}\}/g, esc(get('r-dates-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{JEWISH_TIMELINE_HE\}\}/g, esc(get('r-jewish-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{JEWISH_TIMELINE_EN\}\}/g, esc(get('r-jewish-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{PERSONS_HE\}\}/g, esc(get('r-persons-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{PERSONS_EN\}\}/g, esc(get('r-persons-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INSCRIPTIONS_HE\}\}/g, esc(get('r-inscriptions-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INSCRIPTIONS_EN\}\}/g, esc(get('r-inscriptions-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{ADMIN_NOTES\}\}/g, esc(get('r-admin-notes')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INTERNET\}\}/g, esc(get('r-internet')))
+    .replace(/\{\{INTRANET\}\}/g, esc(get('r-intranet')))
+    .replace(/\{\{SUBJECTS\}\}/g, chipsHTML)
+    .replace(/\{\{ANALYSIS_DATE\}\}/g, new Date().toLocaleDateString('he-IL'))
+    .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.film?.name || ''));
+}
+
+document.getElementById('download-final-btn').addEventListener('click', () => {
+  const html = buildFilmHTML();
+  const stem = (state.film?.name || 'film').replace(/\.[^.]+$/, '').replace(/[^\w֐-׿.-]/g, '_');
+  const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
+  const fname = `film_${stem}_${today}.html`;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showStatus(`✓ הורד: ${fname}`, 'ok');
+
+  // If we're in batch queue mode, mark this item done and advance to next ready
+  if (state.current_film_queue_index >= 0) {
+    const cur = state.film_queue[state.current_film_queue_index];
+    if (cur) {
+      cur.status = 'done';
+      renderFilmQueuePanel();
+    }
+    // Find next ready/analyzing/pending item
+    let nextIdx = -1;
+    for (let i = state.current_film_queue_index + 1; i < state.film_queue.length; i++) {
+      const it = state.film_queue[i];
+      if (it.status === 'ready' || it.status === 'analyzing' || it.status === 'pending') { nextIdx = i; break; }
+    }
+    if (nextIdx === -1) {
+      for (let i = 0; i < state.current_film_queue_index; i++) {
+        const it = state.film_queue[i];
+        if (it.status === 'ready' || it.status === 'analyzing' || it.status === 'pending') { nextIdx = i; break; }
+      }
+    }
+    if (nextIdx === -1) {
+      state.current_film_queue_index = -1;
+      showStatus('🎉 כל תור הסרטים הסתיים!', 'ok');
+      return;
+    }
+    state.current_film_queue_index = nextIdx;
+    const nextItem = state.film_queue[nextIdx];
+    if (nextItem.status === 'ready') {
+      loadFilmQueueItemIntoUI(nextItem);
+      showStatus(`▶ סרט ${nextIdx + 1}/${state.film_queue.length} — מוכן לסקירה`, 'info');
+    } else {
+      clearFilm();
+      loadFilm(nextItem.file);
+      showStatus(`⏳ סרט ${nextIdx + 1}/${state.film_queue.length} — עדיין בניתוח...`, 'info');
+      const poll = setInterval(() => {
+        if (nextItem.status === 'ready') {
+          clearInterval(poll);
+          loadFilmQueueItemIntoUI(nextItem);
+          showStatus(`▶ סרט ${nextIdx + 1}/${state.film_queue.length} — מוכן`, 'ok');
+        } else if (nextItem.status === 'error') {
+          clearInterval(poll);
+          showStatus(`❌ סרט ${nextIdx + 1} נכשל: ${nextItem.error}`, 'err');
+        }
+      }, 500);
+    }
+  }
+});
+document.getElementById('preview-btn').addEventListener('click', () => {
+  const blob = new Blob([buildFilmHTML()], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+});
+
+const FILM_TEMPLATE = `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="UTF-8"><title>{{TITLE_HE}}</title>
+<style>
+  body{margin:0;font-family:"SBL Hebrew","David",serif;background:#f7f5f0;color:#1a1a1a;line-height:1.55;direction:rtl;text-align:right}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px}
+  header{border-bottom:2px solid #2c5d8a;padding-bottom:14px;margin-bottom:22px}
+  header h1{color:#2c5d8a;font-size:22px;margin:0 0 4px}
+  header .sub{font-size:13px;color:#5a5a5a}
+  .section-bar{background:#2c5d8a;color:#fff;padding:8px 14px;border-radius:4px;font-weight:700;font-size:14px;margin:24px 0 12px;direction:rtl;unicode-bidi:isolate}
+  .field{background:#fff;border:1px solid #d8d4cc;border-radius:8px;margin-bottom:14px;overflow:hidden}
+  .field>.head{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:linear-gradient(180deg,#fbfaf6,#f3efe6);border-bottom:1px solid #d8d4cc;direction:rtl}
+  .field>.head .label{font-weight:700;color:#2c5d8a;font-size:14.5px}
+  .field>.head .label small{color:#5a5a5a;font-weight:400;margin-inline-start:8px;font-size:12px}
+  .copy-btn{background:#2c5d8a;color:#fff;border:none;border-radius:4px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+  .copy-btn:hover{background:#1d4666}.copy-btn.copied{background:#2e7d32}.copy-btn.alt{background:#4a5568}
+  .single{padding:12px 16px;font-size:15px}
+  .single.he{direction:rtl;text-align:right;background:#fbf9f3;unicode-bidi:isolate}
+  .single.en{direction:ltr;text-align:left;background:#f3f6fb;font-family:Georgia,serif}
+  .compact{padding:10px 14px;background:#f0f4ee;font-size:14px;direction:rtl;text-align:right;unicode-bidi:isolate}
+  .bilingual{display:grid;grid-template-columns:1fr 1fr}
+  .bilingual .lang{padding:12px 16px;font-size:14.5px;white-space:pre-wrap}
+  .bilingual .he{background:#fbf9f3;direction:rtl;text-align:right;border-inline-end:1px solid #d8d4cc;unicode-bidi:isolate}
+  .bilingual .en{background:#f3f6fb;direction:ltr;text-align:left;font-family:Georgia,serif}
+  table.tl{width:100%;border-collapse:collapse;font-size:13px;margin:0;table-layout:fixed}
+  table.tl th,table.tl td{border:1px solid #d8d4cc;padding:6px 10px;vertical-align:top;text-align:right;word-wrap:break-word;overflow-wrap:break-word}
+  table.tl th{background:#cee0f3;color:#1d4666;font-weight:700}
+  table.tl th:nth-child(1),table.tl td:nth-child(1),table.tl th:nth-child(2),table.tl td:nth-child(2){width:90px}
+  table.tl .tc{font-family:"SF Mono",Menlo,Consolas,monospace;direction:ltr;text-align:center;color:#1d4666;font-weight:600;white-space:nowrap;padding:6px 4px;letter-spacing:-0.3px;font-size:12px}
+  .toast{position:fixed;bottom:24px;inset-inline-start:50%;transform:translateX(-50%);background:#2e7d32;color:#fff;padding:8px 16px;border-radius:4px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:1000}
+  .toast.show{opacity:1}
+  @media(max-width:760px){.bilingual{grid-template-columns:1fr}}
+  @media print{.copy-btn,.toast{display:none}body{background:#fff}.field{break-inside:avoid}}
+</style></head><body><div class="wrap">
+
+<header><h1>🎞 קטלוג סרט — מערכת ספיר / Sapir Film Catalog</h1><div class="sub">{{ANALYSIS_DATE}} · קובץ: {{SOURCE_FILENAME}}</div></header>
+
+<div class="section-bar">כותר <small>Title</small></div>
+<div class="field"><div class="head"><span class="label">כותר HE</span><button class="copy-btn" data-copy="title-he">העתק</button></div><div id="title-he" class="single he">{{TITLE_HE}}</div></div>
+<div class="field"><div class="head"><span class="label">Title EN</span><button class="copy-btn" data-copy="title-en">Copy</button></div><div id="title-en" class="single en">{{TITLE_EN}}</div></div>
+<div class="field"><div class="head"><span class="label">כותר מקורי</span><button class="copy-btn" data-copy="orig-title">העתק</button></div><div id="orig-title" class="compact">{{ORIGINAL_TITLE}}</div></div>
+
+<div class="section-bar">שדות טכניים</div>
+<div class="field"><div class="head"><span class="label">קוד רישום 1</span><button class="copy-btn" data-copy="media">העתק</button></div><div id="media" class="compact">{{MEDIA_CODE}}</div></div>
+<div class="field"><div class="head"><span class="label">קוד רישום 2</span><button class="copy-btn" data-copy="aid">העתק</button></div><div id="aid" class="compact">{{ARCHIVE_ID}}</div></div>
+<div class="field"><div class="head"><span class="label">מספר נכנסות</span><button class="copy-btn" data-copy="iid">העתק</button></div><div id="iid" class="compact">{{INTAKE_NUM}}</div></div>
+<div class="field"><div class="head"><span class="label">סימול מקורי</span><button class="copy-btn" data-copy="orig-id">העתק</button></div><div id="orig-id" class="compact">{{ORIGINAL_ID}}</div></div>
+<div class="field"><div class="head"><span class="label">זאנר</span><button class="copy-btn" data-copy="genre">העתק</button></div><div id="genre" class="compact">{{GENRE}}</div></div>
+<div class="field"><div class="head"><span class="label">משך (HH:MM:SS)</span><button class="copy-btn" data-copy="dur">העתק</button></div><div id="dur" class="compact">{{DURATION}}</div></div>
+<div class="field"><div class="head"><span class="label">איכות חומר</span><button class="copy-btn" data-copy="qual">העתק</button></div><div id="qual" class="compact">{{QUALITY}}</div></div>
+<div class="field"><div class="head"><span class="label">צבעוניות</span><button class="copy-btn" data-copy="color">העתק</button></div><div id="color" class="compact">{{COLOR}}</div></div>
+<div class="field"><div class="head"><span class="label">שפה</span><button class="copy-btn" data-copy="lang">העתק</button></div><div id="lang" class="compact">{{LANGUAGE}}</div></div>
+<div class="field"><div class="head"><span class="label">שיטת הקלטה</span><button class="copy-btn" data-copy="rec">העתק</button></div><div id="rec" class="compact">{{RECORDING_METHOD}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך יצירה</span><button class="copy-btn" data-copy="cdate">העתק</button></div><div id="cdate" class="compact">{{CREATION_DATE}}</div></div>
+<div class="field"><div class="head"><span class="label">בעל זכויות</span><button class="copy-btn" data-copy="rights">העתק</button></div><div id="rights" class="compact">{{RIGHTS}}</div></div>
+<div class="field"><div class="head"><span class="label">הצגה Internet/Intranet</span><button class="copy-btn" data-copy="show">העתק</button></div><div id="show" class="compact">{{INTERNET}} / {{INTRANET}}</div></div>
+
+<div class="section-bar">מוסר ומקור</div>
+<div class="field"><div class="head"><span class="label">שם מוסר</span><button class="copy-btn" data-copy="donor-he">HE</button><button class="copy-btn alt" data-copy="donor-en">EN</button></div><div class="bilingual"><div id="donor-he" class="lang he">{{DONOR_HE}}</div><div id="donor-en" class="lang en">{{DONOR_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">מקור</span><button class="copy-btn" data-copy="src-he">HE</button><button class="copy-btn alt" data-copy="src-en">EN</button></div><div class="bilingual"><div id="src-he" class="lang he">{{SOURCE_HE}}</div><div id="src-en" class="lang en">{{SOURCE_EN}}</div></div></div>
+
+<div class="section-bar">תקציר</div>
+<div class="field"><div class="head"><span class="label">תקציר</span><button class="copy-btn" data-copy="sum-he">HE</button><button class="copy-btn alt" data-copy="sum-en">EN</button></div><div class="bilingual"><div id="sum-he" class="lang he">{{SUMMARY_HE}}</div><div id="sum-en" class="lang en">{{SUMMARY_EN}}</div></div></div>
+
+<div class="section-bar">מקומות ורשימות זיהוי <small>Places &amp; identification lists</small></div>
+<div class="field"><div class="head"><span class="label">מקומות <small>Places</small></span><button class="copy-btn" data-copy="pl-he">HE</button><button class="copy-btn alt" data-copy="pl-en">EN</button></div><div class="bilingual"><div id="pl-he" class="lang he">{{PLACES_HE}}</div><div id="pl-en" class="lang en">{{PLACES_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">אירועים <small>Events</small></span><button class="copy-btn" data-copy="ev-he">HE</button><button class="copy-btn alt" data-copy="ev-en">EN</button></div><div class="bilingual"><div id="ev-he" class="lang he">{{EVENTS_HE}}</div><div id="ev-en" class="lang en">{{EVENTS_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">ארגונים ויחידות <small>Organizations &amp; units</small></span><button class="copy-btn" data-copy="og-he">HE</button><button class="copy-btn alt" data-copy="og-en">EN</button></div><div class="bilingual"><div id="og-he" class="lang he">{{ORGS_HE}}</div><div id="og-en" class="lang en">{{ORGS_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">אובייקטים <small>Objects</small></span><button class="copy-btn" data-copy="ob-he">HE</button><button class="copy-btn alt" data-copy="ob-en">EN</button></div><div class="bilingual"><div id="ob-he" class="lang he">{{OBJECTS_HE}}</div><div id="ob-en" class="lang en">{{OBJECTS_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">תאריכים <small>Dates</small></span><button class="copy-btn" data-copy="dt-he">HE</button><button class="copy-btn alt" data-copy="dt-en">EN</button></div><div class="bilingual"><div id="dt-he" class="lang he">{{DATES_HE}}</div><div id="dt-en" class="lang en">{{DATES_EN}}</div></div></div>
+
+<div class="section-bar">טיימליין מפורט</div>
+<div class="field"><div class="head"><span class="label">טיימליין HE / EN</span></div><div class="bilingual"><div class="lang he" style="padding:0">{{TIMELINE_HE}}</div><div class="lang en" style="padding:0">{{TIMELINE_EN}}</div></div></div>
+
+<div class="section-bar">תוכן יהודי <small>Jewish content (sub-timeline)</small></div>
+<div class="field"><div class="head"><span class="label">תת-טיימליין יהודי</span><button class="copy-btn" data-copy="jw-he">HE</button><button class="copy-btn alt" data-copy="jw-en">EN</button></div><div class="bilingual"><div id="jw-he" class="lang he">{{JEWISH_TIMELINE_HE}}</div><div id="jw-en" class="lang en">{{JEWISH_TIMELINE_EN}}</div></div></div>
+
+<div class="section-bar">זיהוי אישים</div>
+<div class="field"><div class="head"><span class="label">אישים</span><button class="copy-btn" data-copy="per-he">HE</button><button class="copy-btn alt" data-copy="per-en">EN</button></div><div class="bilingual"><div id="per-he" class="lang he">{{PERSONS_HE}}</div><div id="per-en" class="lang en">{{PERSONS_EN}}</div></div></div>
+
+<div class="section-bar">שלטים וכתובות</div>
+<div class="field"><div class="head"><span class="label">כיתובים</span><button class="copy-btn" data-copy="ins-he">HE</button><button class="copy-btn alt" data-copy="ins-en">EN</button></div><div class="bilingual"><div id="ins-he" class="lang he">{{INSCRIPTIONS_HE}}</div><div id="ins-en" class="lang en">{{INSCRIPTIONS_EN}}</div></div></div>
+
+<div class="section-bar">נושאים</div>
+<div class="field"><div class="head"><span class="label">נושאים מתזאורוס</span></div><div style="padding:10px 14px; background:#fbf9f3; direction:rtl; text-align:right; unicode-bidi:isolate;">{{SUBJECTS}}</div></div>
+
+<div class="section-bar">הערות אדמיניסטרציה</div>
+<div class="field"><div class="head"><span class="label">הערות פנים-ארכיוניות</span></div><div class="single he">{{ADMIN_NOTES}}</div></div>
+
+</div>
+<div id="toast" class="toast">הועתק / Copied</div>
+<script>
+document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
+  b.addEventListener('click',async()=>{
+    const el=document.getElementById(b.getAttribute('data-copy'));if(!el)return;
+    try{await navigator.clipboard.writeText(el.innerText.trim());const o=b.textContent;b.classList.add('copied');b.textContent='✓';document.getElementById('toast').classList.add('show');setTimeout(()=>{b.classList.remove('copied');b.textContent=o;document.getElementById('toast').classList.remove('show');},1100);}catch(e){const t=document.createElement('textarea');t.value=el.innerText.trim();document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
+  });
+});
+<\/script>
+</body></html>`;
+
+function esc(s){ return window.yvEsc ? yvEsc(s) : String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }   // delegates to the ONE canonical escaper (review 21.7 #21); inline fallback covers pre-load calls
+function setMini(el, html, kind) { el.innerHTML = html; el.className = 'mini-status' + (kind ? ' ' + kind : ''); }
+
+// =====================================================================
+//  SPLIT FILM (ffmpeg.wasm — lazy-loaded from CDN)
+// =====================================================================
+const splitModal = document.getElementById('split-modal');
+const openSplitBtn = document.getElementById('open-split-btn');
+const splitMinutes = document.getElementById('split-minutes');
+const splitPartCount = document.getElementById('split-part-count');
+const splitInfo = document.getElementById('split-info');
+const splitGoBtn = document.getElementById('split-go');
+const splitCancelBtn = document.getElementById('split-cancel');
+const splitCloseBtn = document.getElementById('split-modal-close');
+const splitSetup = document.getElementById('split-setup');
+const splitProgressBox = document.getElementById('split-progress-box');
+const splitStatusText = document.getElementById('split-status-text');
+const splitBarFill = document.getElementById('split-bar-fill');
+const splitResultBox = document.getElementById('split-result-box');
+const splitResultCount = document.getElementById('split-result-count');
+const splitPartsList = document.getElementById('split-parts-list');
+
+let ffmpegLib = null;     // {ffmpeg, fetchFile}
+let splitParts = [];      // produced parts after split
+
+openSplitBtn.addEventListener('click', () => {
+  if (!state.film) { alert('יש לטעון סרט תחילה'); return; }
+  // Reset to setup view
+  splitSetup.style.display = 'block';
+  splitProgressBox.style.display = 'none';
+  splitResultBox.style.display = 'none';
+  splitGoBtn.style.display = 'inline-block';
+  splitGoBtn.disabled = false;
+  splitGoBtn.textContent = '✂️ חתוך';
+  const m = state.filmMeta;
+  splitInfo.textContent = `${state.film.name} · ${formatDuration(m.duration)} · ${(m.size_bytes/1024/1024).toFixed(1)} MB`;
+  updateExpectedPartCount();
+  splitModal.classList.add('show');
+});
+splitMinutes.addEventListener('input', updateExpectedPartCount);
+function updateExpectedPartCount() {
+  if (!state.filmMeta) { splitPartCount.value = '?'; return; }
+  const segSec = (parseInt(splitMinutes.value) || 5) * 60;
+  const n = Math.ceil(state.filmMeta.duration / segSec);
+  splitPartCount.value = `${n} חלקים (כל חלק ~${splitMinutes.value} דקות)`;
+}
+splitCancelBtn.addEventListener('click', () => splitModal.classList.remove('show'));
+splitCloseBtn.addEventListener('click', () => splitModal.classList.remove('show'));
+
+splitGoBtn.addEventListener('click', async () => {
+  splitSetup.style.display = 'none';
+  splitProgressBox.style.display = 'block';
+  splitResultBox.style.display = 'none';
+  splitGoBtn.style.display = 'none';
+  splitParts = [];
+  try {
+    const segSec = (parseInt(splitMinutes.value) || 5) * 60;
+    splitParts = await splitFilm(state.film, segSec, msg => {
+      splitStatusText.textContent = msg;
+    }, pct => {
+      splitBarFill.style.width = pct + '%';
+    });
+    showSplitResult();
+  } catch (err) {
+    console.error(err);
+    splitStatusText.textContent = '❌ שגיאה: ' + err.message;
+    splitStatusText.style.color = 'var(--soft)';
+    splitGoBtn.style.display = 'inline-block';
+    splitGoBtn.textContent = 'נסה שוב';
+    splitGoBtn.disabled = false;
+  }
+});
+
+function showSplitResult() {
+  splitProgressBox.style.display = 'none';
+  splitResultBox.style.display = 'block';
+  splitResultCount.textContent = splitParts.length;
+  splitPartsList.innerHTML = splitParts.map((p, i) => `
+    <div class="part-item">
+      <div class="part-info">
+        <b>חלק ${i+1}/${splitParts.length}</b> — ${p.name}
+        <div class="part-meta">${formatDuration(p.startSec)} → ${formatDuration(p.endSec)} · ${(p.size/1024/1024).toFixed(1)} MB</div>
+      </div>
+      <button type="button" data-action="download" data-idx="${i}">📥 הורד</button>
+      <button type="button" class="use-btn" data-action="use" data-idx="${i}">📋 קטלג חלק זה</button>
+    </div>
+  `).join('');
+  splitPartsList.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      const idx = parseInt(btn.dataset.idx);
+      const part = splitParts[idx];
+      if (action === 'download') {
+        downloadBlob(part.blob, part.name);
+      } else if (action === 'use') {
+        usePartForCatalog(part);
+      }
+    });
+  });
+  // Register the parts in the persistent side-rail tracker
+  registerFilmParts(splitParts);
+}
+
+// =====================================================================
+//  FILM PARTS RAIL — catalog one part at a time, then merge them all
+// =====================================================================
+const partsRail = document.getElementById('parts-rail');
+const prList = document.getElementById('pr-list');
+const prCount = document.getElementById('pr-count');
+const prProgress = document.getElementById('pr-progress');
+const prCombineBtn = document.getElementById('pr-combine-btn');
+
+// Build the per-part tracking records from a freshly split film.
+function registerFilmParts(parts) {
+  state.filmParts = parts.map((p, i) => ({
+    idx: i, name: p.name, blob: p.blob,
+    startSec: p.startSec, endSec: p.endSec, size: p.size,
+    status: 'pending', identification: null,
+  }));
+  state.currentPartIdx = -1;
+  renderPartsRail();
+}
+
+function renderPartsRail() {
+  const parts = state.filmParts;
+  if (!parts.length) { partsRail.classList.remove('show'); return; }
+  partsRail.classList.add('show');
+  const doneCount = parts.filter(p => p.status === 'identified').length;
+  prCount.textContent = `${doneCount}/${parts.length} זוהו`;
+  prProgress.textContent = doneCount === parts.length
+    ? '✓ כל החלקים זוהו — ניתן לבצע זיהוי כולל'
+    : `נותרו ${parts.length - doneCount} חלקים לזיהוי`;
+  const BADGES = {
+    identified: '<span class="pr-badge identified">✓ זוהה</span>',
+    analyzing:  '<span class="pr-badge analyzing">🔄 מנתח…</span>',
+    error:      '<span class="pr-badge error">⚠ נכשל</span>',
+    pending:    '<span class="pr-badge pending">○ טרם</span>',
+  };
+  prList.innerHTML = parts.map(p => {
+    const cur = p.idx === state.currentPartIdx ? ' current' : '';
+    const badge = BADGES[p.status] || BADGES.pending;
+    return `<div class="pr-item${cur}" data-idx="${p.idx}">
+      <div class="pr-top"><span class="pr-name">חלק ${p.idx + 1}</span>${badge}</div>
+      <div class="pr-tc">${formatDuration(p.startSec)} → ${formatDuration(p.endSec)}</div>
+    </div>`;
+  }).join('');
+  prList.querySelectorAll('.pr-item').forEach(el => {
+    el.addEventListener('click', () => { if (!state.autoRunning) loadPartIntoUI(parseInt(el.dataset.idx)); });
+  });
+  prCombineBtn.disabled = state.autoRunning || doneCount === 0;
+}
+
+// Load a specific part as the active film and restore its identification.
+function loadPartIntoUI(idx) {
+  const part = state.filmParts[idx];
+  if (!part) return;
+  state.currentPartIdx = idx;
+  const file = new File([part.blob], part.name, { type: part.blob.type || 'video/mp4' });
+  loadFilm(file);
+  if (part.identification) {
+    fillResults(part.identification);
+    document.getElementById('results').classList.add('show');
+    document.getElementById('no-results').style.display = 'none';
+    document.getElementById('download-bar').style.display = 'flex';
+  }
+  renderPartsRail();
+  document.getElementById('film-drop').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Parse "HH:MM:SS" or "MM:SS" timecode into seconds.
+function tcToSec(tc) {
+  if (typeof tc !== 'string') return 0;
+  const parts = tc.trim().split(':').map(Number);
+  if (parts.some(isNaN)) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || 0;
+}
+
+// Merge all identified parts into one combined record (no API call).
+function buildCombinedFilmRecord() {
+  const done = state.filmParts.filter(p => p.status === 'identified' && p.identification);
+  if (!done.length) return null;
+  const first = done[0].identification;
+  const combinedTimeline = [];
+  const personsHe = [], personsEn = [], inscrHe = [], inscrEn = [];
+  done.forEach((part, n) => {
+    const d = part.identification;
+    // Offset each scene's timecodes by the part's absolute start time
+    (d.timeline || []).forEach(scene => {
+      combinedTimeline.push({
+        start: formatDuration(part.startSec + tcToSec(scene.start)),
+        end: formatDuration(part.startSec + tcToSec(scene.end)),
+        description_he: scene.description_he,
+        description_en: scene.description_en,
+        confidence: scene.confidence,
+      });
+    });
+    // No per-part headers — the final record reads as one film.
+    if (d.persons_he) personsHe.push(stripConfidenceMarkup(d.persons_he).trim());
+    if (d.persons_en) personsEn.push(stripConfidenceMarkup(d.persons_en).trim());
+    if (d.inscriptions_he) inscrHe.push(stripConfidenceMarkup(d.inscriptions_he).trim());
+    if (d.inscriptions_en) inscrEn.push(stripConfidenceMarkup(d.inscriptions_en).trim());
+  });
+  // Union of subjects across parts (dedup by Hebrew term).
+  // Tolerate a string-shaped subjects field (model occasionally returns one).
+  const asArr = x => Array.isArray(x) ? x : (x == null || x === '' ? [] : [x]);
+  const subjHe = [], subjEn = [];
+  done.forEach(part => {
+    const sh = asArr(part.identification.subjects_he);
+    const se = asArr(part.identification.subjects_en);
+    sh.forEach((he, i) => {
+      if (he && !subjHe.includes(he)) { subjHe.push(he); subjEn.push(se[i] || ''); }
+    });
+  });
+  const totalDur = state.filmParts.length
+    ? formatDuration(state.filmParts[state.filmParts.length - 1].endSec)
+    : (first.duration || '');
+  return {
+    ...first,
+    title_he: first.title_he,
+    title_en: first.title_en,
+    duration: totalDur,
+    // One continuous film summary — not split by parts.
+    summary_he: done.map(p => stripConfidenceMarkup(p.identification.summary_he || '').trim()).filter(Boolean).join(' '),
+    summary_en: done.map(p => stripConfidenceMarkup(p.identification.summary_en || '').trim()).filter(Boolean).join(' '),
+    persons_he: [...new Set(personsHe.filter(Boolean))].join('\n'),
+    persons_en: [...new Set(personsEn.filter(Boolean))].join('\n'),
+    inscriptions_he: [...new Set(inscrHe.filter(Boolean))].join('\n'),
+    inscriptions_en: [...new Set(inscrEn.filter(Boolean))].join('\n'),
+    timeline: combinedTimeline,
+    subjects_he: subjHe,
+    subjects_en: subjEn,
+  };
+}
+
+// Build the unified single-film record and load it into the results form.
+// `auto` suppresses the "no parts" alert when called automatically.
+// Auto-build the combined whole-film record once EVERY split part is identified,
+// so the archivist gets one registration for the whole film without clicking
+// "זיהוי כולל". Skips during an auto-run (autoIdentifyAllParts merges at its end).
+function maybeAutoCombineParts() {
+  if (state.autoRunning) return;
+  const parts = state.filmParts || [];
+  if (parts.length >= 2 && parts.every(p => p.status === 'identified')) {
+    runCombinedIdentification(true);
+  }
+}
+
+function runCombinedIdentification(auto) {
+  let combined;
+  try {
+    combined = buildCombinedFilmRecord();
+  } catch (e) {
+    console.error('combine failed', e);
+    showStatus('⚠ המיזוג נכשל: ' + e.message + ' — ייתכן שאחד החלקים החזיר נתונים בפורמט לא צפוי.', 'err');
+    return false;
+  }
+  if (!combined) { if (!auto) alert('עדיין לא זוהה אף חלק'); return false; }
+  state.currentPartIdx = -1;
+  state.identification = combined;
+  try {
+    fillResults(combined);
+  } catch (e) {
+    console.error('combine render failed', e);
+    showStatus('⚠ שגיאה בהצגת הסרט המאוחד: ' + e.message, 'err');
+    return false;
+  }
+  document.getElementById('results').classList.add('show');
+  document.getElementById('no-results').style.display = 'none';
+  document.getElementById('download-bar').style.display = 'flex';
+  renderPartsRail();
+  const pending = state.filmParts.filter(p => p.status !== 'identified').length;
+  showStatus(pending
+    ? `✓ סרט מאוחד מ-${state.filmParts.length - pending} חלקים (${pending} עדיין לא זוהו)`
+    : '✓ סרט מאוחד — טיימליין רציף לפי זמן הסרט וסיכום אחד.', 'ok');
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Replace the naive concatenated summary with one coherent whole-film
+  // summary synthesized from all parts (runs in the background; the merged
+  // record is already shown). No-op without a Claude server or with one part.
+  synthesizeWholeFilmSummary(combined).catch(() => {});
+  return true;
+}
+
+// Synthesize ONE continuous summary of the WHOLE film from every part's
+// summary + the merged timeline, and write it into the record + UI in place.
+// The film was only split into parts for technical analysis; the final summary
+// must read as the complete film (the sum of the parts), not part-by-part.
+async function synthesizeWholeFilmSummary(combined) {
+  if (!state.localServerUrl) return;            // keep concatenated fallback
+  const done = state.filmParts.filter(p => p.status === 'identified' && p.identification);
+  if (done.length < 2) return;                  // a single part is already whole
+  const partsBrief = done.map((p, n) =>
+    `— חלק ${n + 1} (${formatDuration(p.startSec)}–${formatDuration(p.endSec)}):\n${(p.identification.summary_he || '').trim()}`
+  ).join('\n\n');
+  const tlBrief = (combined.timeline || []).map(s =>
+    `${s.start}–${s.end}: ${stripConfidenceMarkup(s.description_he || '').trim()}`
+  ).join('\n');
+  const prompt = `סרט ארכיוני אחד פוצל ל-${done.length} חלקים טכניים לצורך ניתוח, וכל חלק נותח בנפרד. כתוב תקציר אחד רציף של **הסרט השלם** — לא תקציר נפרד לכל חלק, אלא טקסט אחד המתאר את הסרט כמכלול מתחילתו ועד סופו, על בסיס סך כל החלקים.
+
+תקצירי החלקים (לפי הסדר הכרונולוגי):
+${partsBrief}
+
+ציר הזמן הרציף המאוחד של הסרט השלם:
+${tlBrief}
+
+הנחיות:
+- כתוב 4–5 שורות בעברית ו-4–5 שורות באנגלית.
+- תאר את הסרט כיחידה אחת רציפה (ההתקדמות, המקומות, האישים, האירועים המרכזיים) — אל תחלק ל"חלק 1/2/3".
+- שמור על סימוני הוודאות (✓ / ~ / ?) שהופיעו בחלקים; אל תעלה ודאות שאינה קיימת.
+- אל תמציא פרטים שלא הופיעו בחלקים.
+- בעת תעתוק שמות/מקומות לעברית — שמור את הכתיב המקורי בלועזית בסוגריים מיד אחרי התעתיק.
+
+החזר JSON בלבד: {"summary_he":"...","summary_en":"..."}`;
+  showStatus('מסכם את הסרט השלם מכלל החלקים דרך Claude…', 'info');
+  let rec;
+  try { rec = parseJson(await runClaudeJob(prompt, []), 'Claude (סיכום סרט שלם)'); }
+  catch (e) { showStatus('הסיכום המאוחד נכשל — מוצג איחוד תקצירי החלקים. ' + e.message, 'info'); return; }
+  if (!rec || (!rec.summary_he && !rec.summary_en)) return;
+  if (rec.summary_he) {
+    state.identification.summary_he = rec.summary_he;
+    const el = document.getElementById('r-summary-he'); if (el) el.value = stripConfidenceMarkup(rec.summary_he);
+  }
+  if (rec.summary_en) {
+    state.identification.summary_en = rec.summary_en;
+    const el = document.getElementById('r-summary-en'); if (el) el.value = stripConfidenceMarkup(rec.summary_en);
+  }
+  showStatus('✓ תקציר הסרט השלם עודכן מכלל החלקים.', 'ok');
+}
+
+prCombineBtn.addEventListener('click', () => runCombinedIdentification(false));
+
+// ── Auto-identify all parts sequentially (one after another) ──────────
+const prAutoBtn = document.getElementById('pr-auto-btn');
+const prCancelBtn = document.getElementById('pr-cancel-btn');
+let autoRunCancel = false;
+
+// Load a part as the active film and resolve once its metadata is ready,
+// so the provider call has correct state.film + state.filmMeta.
+function loadPartAwaitMeta(idx) {
+  return new Promise((resolve, reject) => {
+    const part = state.filmParts[idx];
+    state.currentPartIdx = idx;
+    const file = new File([part.blob], part.name, { type: part.blob.type || 'video/mp4' });
+    // loadFilm sets filmPreview.onloadedmetadata (which sets state.filmMeta);
+    // defer resolve to the next tick so that handler has already run.
+    // Guard with 'error' + timeout so a bad part blob rejects instead of hanging
+    // the auto-identify loop forever.
+    const cleanup = () => { clearTimeout(to); filmPreview.removeEventListener('loadedmetadata', onMeta); filmPreview.removeEventListener('error', onErr); };
+    const onMeta = () => { cleanup(); setTimeout(resolve, 0); };
+    const onErr = () => { cleanup(); reject(new Error('טעינת חלק הסרטון נכשלה')); };
+    const to = setTimeout(() => { cleanup(); reject(new Error('פג הזמן בטעינת חלק הסרטון')); }, 30000);
+    filmPreview.addEventListener('loadedmetadata', onMeta, { once: true });
+    filmPreview.addEventListener('error', onErr, { once: true });
+    loadFilm(file);
+    renderPartsRail();
+  });
+}
+
+async function autoIdentifyAllParts() {
+  if (!state.filmParts.length) return;
+
+  // Unified engine: the split film is ONE film. Pull keyframes from all parts with a
+  // continuous timeline and catalog them in a single pass → one unified record. No
+  // per-part catalogs, no per-part fields, no merge step.
+  if (state.provider === 'unified-server') {
+    const base = await resolveUnifiedBase();
+    if (base === null) { showStatus('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת', 'err'); return; }
+    state.autoRunning = true;
+    prAutoBtn.style.display = 'none'; prCancelBtn.style.display = 'block'; prCancelBtn.disabled = false;
+    prCancelBtn.textContent = '⛔ עצור'; identifyBtn.disabled = true; prCombineBtn.disabled = true;
+    state.filmParts.forEach(p => { p.status = 'analyzing'; }); renderPartsRail();
+    try {
+      const outputName = await catalogPartsAsOneFilm(base, contextEl.value.trim(), msg => showStatus('⚡ ' + msg, 'info'));
+      const url = base + '/api/output/' + encodeURIComponent(outputName);
+      identifyStatus.innerHTML = '✓ כל החלקים קוטלגו כסרט אחד (רשומה מאוחדת) — <a href="' + url + '" download>⬇ הורד</a> · <a href="' + url + '" target="_blank" rel="noopener">↗ פתח בלשונית</a>';
+      identifyStatus.className = 'status-msg show ok';
+      state.currentPartIdx = -1;
+      await loadUnifiedResults(base, outputName);     // fills the one unified record below
+      state.filmParts.forEach(p => { p.status = 'identified'; });
+    } catch (e) {
+      console.error('parts-as-one failed', e);
+      state.filmParts.forEach(p => { if (p.status === 'analyzing') p.status = 'pending'; });
+      showStatus('שגיאה: ' + e.message, 'err');
+    } finally {
+      state.autoRunning = false;
+      prAutoBtn.style.display = 'block'; prCancelBtn.style.display = 'none'; identifyBtn.disabled = false;
+      refreshButtons(); renderPartsRail();
+    }
+    return;
+  }
+
+  if (!hasAllRequiredKeys()) { alert('יש להגדיר API key לפני זיהוי אוטומטי'); return; }
+  const todo = state.filmParts.filter(p => p.status !== 'identified');
+  if (!todo.length) { alert('כל החלקים כבר זוהו'); return; }
+
+  autoRunCancel = false;
+  state.autoRunning = true;
+  prAutoBtn.style.display = 'none';
+  prCancelBtn.style.display = 'block';
+  prCancelBtn.disabled = false;
+  prCancelBtn.textContent = '⛔ עצור';
+  identifyBtn.disabled = true;
+  prCombineBtn.disabled = true;
+
+  let done = 0;
+  for (let i = 0; i < state.filmParts.length; i++) {
+    if (autoRunCancel) break;
+    const part = state.filmParts[i];
+    if (part.status === 'identified') continue;
+    part.status = 'analyzing';
+    renderPartsRail();
+    showStatus(`⚡ זיהוי אוטומטי — חלק ${i + 1}/${state.filmParts.length} דרך ${providerLabel()}…`, 'info');
+    try {
+      await loadPartAwaitMeta(i);
+      const result = await callActiveProvider();
+      part.identification = result;
+      part.status = 'identified';
+      state.identification = result;
+      fillResults(result);
+      document.getElementById('results').classList.add('show');
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('download-bar').style.display = 'flex';
+      done++;
+    } catch (err) {
+      console.error('auto-identify part', i + 1, err);
+      part.status = 'error';
+      part.error = err.message;
+      showStatus(`⚠ חלק ${i + 1} נכשל: ${err.message} — ממשיך לחלק הבא`, 'err');
+    }
+    renderPartsRail();
+    // brief pacing delay between parts to ease rate limits (skip after last)
+    if (i < state.filmParts.length - 1 && !autoRunCancel) await new Promise(r => setTimeout(r, 4000));
+  }
+
+  state.autoRunning = false;
+  prAutoBtn.style.display = 'block';
+  prCancelBtn.style.display = 'none';
+  identifyBtn.disabled = false;
+  refreshButtons();
+  renderPartsRail();
+  const remaining = state.filmParts.filter(p => p.status !== 'identified').length;
+  if (autoRunCancel) {
+    showStatus(`⛔ הופסק. זוהו ${done} חלקים, נותרו ${remaining}.`, 'info');
+  } else if (done > 0) {
+    // Automatically produce the unified single-film record (continuous
+    // timeline by real film time + one summary, not by parts).
+    runCombinedIdentification(true);
+    if (remaining) showStatus(`✓ זיהוי אוטומטי הסתיים ומוזג לסרט אחד. ${remaining} חלקים נכשלו — נסה שוב עליהם.`, 'ok');
+  } else {
+    showStatus('⚠ אף חלק לא זוהה. בדוק את ה-API ונסה שוב.', 'err');
+  }
+}
+
+prAutoBtn.addEventListener('click', autoIdentifyAllParts);
+prCancelBtn.addEventListener('click', () => {
+  autoRunCancel = true;
+  prCancelBtn.disabled = true;
+  prCancelBtn.textContent = 'עוצר…';
+  showStatus('⛔ מבטל — יסתיים אחרי החלק הנוכחי…', 'info');
+});
+
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function usePartForCatalog(part) {
+  splitModal.classList.remove('show');
+  // Route through the rail tracker so per-part identification is persisted.
+  // splitParts and state.filmParts share the same order/indexing.
+  const idx = splitParts.indexOf(part);
+  loadPartIntoUI(idx >= 0 ? idx : 0);
+}
+
+async function ensureFFmpegLoaded(onStatus) {
+  if (ffmpegLib) return ffmpegLib;
+  onStatus('טוען ffmpeg.wasm (~25MB) — בפעם הראשונה זה לוקח 10–60 שניות…');
+  // Load ESM from same origin so the auto-spawned worker.js is also same-origin
+  // (avoids CORP/COEP issues with cross-origin Worker scripts).
+  const ffmpegModule = await import('./vendor/ffmpeg/index.js');
+  const utilModule = await import('./vendor/util/index.js');
+  const ffmpeg = new ffmpegModule.FFmpeg();
+  ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
+  const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+  await ffmpeg.load({
+    coreURL: await utilModule.toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await utilModule.toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+  });
+  ffmpegLib = { ffmpeg, fetchFile: utilModule.fetchFile };
+  return ffmpegLib;
+}
+
+async function splitFilm(file, segmentSeconds, onStatus, onProgress) {
+  const { ffmpeg, fetchFile } = await ensureFFmpegLoaded(onStatus);
+
+  const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
+  const inputName = `input.${ext}`;
+  onStatus(`כותב את הסרט (${(file.size/1024/1024).toFixed(1)} MB) למערכת קבצים וירטואלית של ffmpeg…`);
+  await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+  const duration = state.filmMeta.duration;
+  const partCount = Math.ceil(duration / segmentSeconds);
+  const parts = [];
+
+  for (let i = 0; i < partCount; i++) {
+    const start = i * segmentSeconds;
+    const partLength = Math.min(segmentSeconds, duration - start);
+    const partName = `${file.name.replace(/\.[^.]+$/, '')}_part${String(i+1).padStart(3, '0')}.${ext}`;
+    onStatus(`חותך חלק ${i+1} מתוך ${partCount} (${formatDuration(start)} → ${formatDuration(start + partLength)})…`);
+
+    try {
+      await ffmpeg.exec([
+        '-ss', start.toString(),
+        '-i', inputName,
+        '-t', partLength.toString(),
+        '-c', 'copy',
+        '-avoid_negative_ts', 'make_zero',
+        '-y',
+        partName,
+      ]);
+      const data = await ffmpeg.readFile(partName);
+      // Use the Uint8Array view (data), not data.buffer — the underlying
+      // ArrayBuffer can be larger than the view, which would append garbage.
+      const blob = new Blob([data], { type: file.type || 'video/mp4' });
+      parts.push({
+        name: partName, blob,
+        startSec: start, endSec: start + partLength,
+        size: blob.size,
+      });
+      try { await ffmpeg.deleteFile(partName); } catch {}
+    } catch (e) {
+      console.error('Split error for part', i+1, e);
+      throw new Error(`חיתוך חלק ${i+1} נכשל: ${e.message || e}`);
+    }
+    onProgress(((i + 1) / partCount) * 100);
+  }
+
+  try { await ffmpeg.deleteFile(inputName); } catch {}
+  return parts;
+}
+
+refreshButtons();

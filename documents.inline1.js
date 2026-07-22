@@ -1,0 +1,3049 @@
+const state = {
+  document: null, docMeta: null, identification: null,
+  provider: (['claude-cli','anthropic','gemini'].includes(localStorage.getItem('yv_api_provider')) ? localStorage.getItem('yv_api_provider') : 'claude-cli'),   // review #1: Transkribus removed from the flow
+  apiKeys: {
+    // review #2: no Anthropic entry — the server proxy injects its own key
+    gemini: localStorage.getItem('yv_api_key_gemini') || '',
+  },
+  thesaurus_top: [],
+  // Document type mode: 'institutional' or 'private' (default)
+  doc_mode: localStorage.getItem('yv_doc_mode') || 'private',
+  // Translation mode: 'auto' (default) | 'full' | 'summary'
+  translation_mode: localStorage.getItem('yv_translation_mode') || 'auto',
+  // Batch queue (same pattern as photos.html)
+  doc_queue: [],
+  current_doc_queue_index: -1,
+  doc_queue_processor_running: false,
+};
+
+// Doc-mode toggle behavior — show/hide the private-only section
+function applyDocMode() {
+  document.querySelectorAll('.private-only-section').forEach(el => {
+    el.style.display = state.doc_mode === 'private' ? 'block' : 'none';
+  });
+  // Update visual: which card is highlighted
+  const instCard = document.getElementById('type-inst-card');
+  const privCard = document.getElementById('type-priv-card');
+  if (instCard && privCard) {
+    if (state.doc_mode === 'institutional') {
+      instCard.style.borderColor = 'var(--accent)';
+      instCard.style.background = 'color-mix(in srgb, var(--accent) 12%, var(--card))';
+      privCard.style.borderColor = 'var(--line)';
+      privCard.style.background = 'var(--card)';
+    } else {
+      privCard.style.borderColor = 'var(--accent)';
+      privCard.style.background = 'color-mix(in srgb, var(--accent) 12%, var(--card))';
+      instCard.style.borderColor = 'var(--line)';
+      instCard.style.background = 'var(--card)';
+    }
+  }
+}
+
+// Wire type-selector radio buttons
+document.querySelectorAll('input[name="doc-type-mode"]').forEach(r => {
+  r.checked = (r.value === state.doc_mode);
+  r.addEventListener('change', () => {
+    state.doc_mode = r.value;
+    localStorage.setItem('yv_doc_mode', state.doc_mode);
+    applyDocMode();
+  });
+});
+// Apply initial state on load
+setTimeout(applyDocMode, 50);
+
+// Wire translation mode selector — persist to localStorage
+setTimeout(() => {
+  const sel = document.getElementById('translation-mode');
+  if (!sel) return;
+  sel.value = state.translation_mode;
+  sel.addEventListener('change', () => {
+    state.translation_mode = sel.value;
+    localStorage.setItem('yv_translation_mode', state.translation_mode);
+    // Update label in results form to reflect current mode
+    updateTranslationLabels();
+  });
+}, 50);
+
+// Update field labels to reflect the chosen translation mode
+function updateTranslationLabels() {
+  const mode = state.translation_mode;
+  const heHdr = document.querySelector('#results .field-group h4');
+  // Find specifically the headers for translation fields by walking groups
+  document.querySelectorAll('#results .field-group').forEach(group => {
+    const h4 = group.querySelector('h4');
+    const ta = group.querySelector('textarea');
+    if (!h4 || !ta) return;
+    if (ta.id === 'r-translation-he') {
+      h4.innerHTML = mode === 'summary'
+        ? 'סיכום מורחב בעברית / Hebrew extended summary <small>(מצב: 📑 סיכום)</small>'
+        : mode === 'full'
+          ? 'תרגום לעברית / Hebrew translation <small>(מצב: 📝 מלא)</small>'
+          : 'תרגום / סיכום לעברית <small>(מצב: 🤖 אוטומטי — לפי אורך)</small>';
+    } else if (ta.id === 'r-translation-en') {
+      h4.innerHTML = mode === 'summary'
+        ? 'Extended summary (English) <small>(mode: 📑 summary)</small>'
+        : mode === 'full'
+          ? 'תרגום לאנגלית / English translation <small>(מצב: 📝 מלא)</small>'
+          : 'Translation / Summary (English) <small>(mode: 🤖 auto by length)</small>';
+    }
+  });
+}
+setTimeout(updateTranslationLabels, 100);
+
+// Settings
+const settingsToggle = document.getElementById('settings-toggle');
+const settingsPanel = document.getElementById('settings-panel');
+const providerSel = document.getElementById('api-provider');
+const apiKeyGemini = document.getElementById('api-key-gemini');
+const modelSelAnthropic = document.getElementById('api-model-anthropic');
+const modelSelGemini = document.getElementById('api-model-gemini');
+
+apiKeyGemini.value = state.apiKeys.gemini;
+providerSel.value = state.provider;
+
+// Local server URL (used by claude-cli and as proxy for gemini/docling)
+state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
+state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
+// Auto-config: the dashboard is normally served BY the API server (localhost in
+// dev, films.mf-sr.com via the tunnel) — same origin keeps the Cloudflare Access
+// cookie attached and lets the server proxy Gemini. Adopt the origin unless we're
+// on a static GitHub Pages host (*.pages.dev / *.github.io). Drop stale trycloudflare.
+if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(location.hostname)) {
+  state.localServerUrl = location.origin;
+  state.proxyGemini = true;
+} else if (/trycloudflare\.com/.test(state.localServerUrl)) {
+  state.localServerUrl = '';
+}
+const localServerUrlInput = document.getElementById('local-server-url');
+if (localServerUrlInput) {
+  localServerUrlInput.value = state.localServerUrl;
+  localServerUrlInput.addEventListener('input', () => {
+    state.localServerUrl = localServerUrlInput.value.trim().replace(/\/$/, '');
+    localStorage.setItem('yv_local_server_url', state.localServerUrl);
+    refreshButtons();
+  });
+}
+const proxyGeminiCheckbox = document.getElementById('proxy-gemini-checkbox');
+if (proxyGeminiCheckbox) {
+  proxyGeminiCheckbox.checked = state.proxyGemini;
+  proxyGeminiCheckbox.addEventListener('change', () => {
+    state.proxyGemini = proxyGeminiCheckbox.checked;
+    localStorage.setItem('yv_proxy_gemini', state.proxyGemini ? '1' : '0');
+  });
+}
+// Docling toggle — when set, large PDFs go through the user's local Docling worker
+// instead of being uploaded to Gemini Files API.
+state.useDocling = localStorage.getItem('yv_use_docling') === '1';
+const useDoclingCheckbox = document.getElementById('use-docling-checkbox');
+if (useDoclingCheckbox) {
+  useDoclingCheckbox.checked = state.useDocling;
+  useDoclingCheckbox.addEventListener('change', () => {
+    state.useDocling = useDoclingCheckbox.checked;
+    localStorage.setItem('yv_use_docling', state.useDocling ? '1' : '0');
+  });
+}
+
+// Docling extraction — sends PDF to local server, gets back full markdown.
+// Used as a substitute for geminiOCROnly() when the PDF is too large for Gemini.
+const DOCLING_PDF_THRESHOLD_MB = 50;
+async function doclingExtract(file) {
+  if (!state.localServerUrl) throw new Error('Docling: חסר URL של שרת מקומי');
+  const fd = new FormData();
+  if (window.yvChunk && file.size > yvChunk.THRESHOLD) {
+    // past the tunnel's ~100MB request cap — chunked, assembled server-side
+    fd.append('uploadId', await yvChunk.upload(state.localServerUrl, file,
+      file.name || 'doc.pdf', msg => showStatus('🔬 Docling · ' + msg, 'info')));
+  } else {
+    fd.append('file', file);
+  }
+  const res = await fetch(state.localServerUrl + '/api/docling', { method: 'POST', body: fd });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Docling: HTTP ${res.status} — ${t.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  if (!data.ok) throw new Error(`Docling error: ${data.error || 'unknown'}`);
+  return data;  // {markdown, num_pages, num_chars, has_tables, elapsed_sec}
+}
+// Helper: return the base URL to use for Gemini API.
+// If proxyGemini is enabled AND localServerUrl is set → route through /api/gemini-proxy
+// Otherwise → direct generativelanguage.googleapis.com
+function geminiBase() { return yvProviders.geminiBase(state); }  // shared — see yv-providers.js
+// Copy/fill the active tunnel URL shown in the snippet
+const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
+const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
+const activeTunnelEl = document.getElementById('active-tunnel-url');
+if (copyTunnelBtn && activeTunnelEl) {
+  copyTunnelBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(activeTunnelEl.textContent.trim());
+      const orig = copyTunnelBtn.innerText;
+      copyTunnelBtn.innerText = '✓ הועתק';
+      setTimeout(() => { copyTunnelBtn.innerText = orig; }, 1400);
+    } catch (e) { alert('שגיאה בהעתקה: ' + e.message); }
+  });
+}
+if (fillTunnelBtn && activeTunnelEl && localServerUrlInput) {
+  fillTunnelBtn.addEventListener('click', () => {
+    const url = activeTunnelEl.textContent.trim();
+    localServerUrlInput.value = url;
+    state.localServerUrl = url.replace(/\/$/, '');
+    localStorage.setItem('yv_local_server_url', state.localServerUrl);
+    refreshButtons();
+    const orig = fillTunnelBtn.innerText;
+    fillTunnelBtn.innerText = '✓ הוזן';
+    setTimeout(() => { fillTunnelBtn.innerText = orig; }, 1400);
+  });
+}
+
+// "🔍 בדוק מפתח" — full diagnostic of the Gemini API key
+const testGeminiBtn = document.getElementById('test-gemini-key-btn');
+const testGeminiStatus = document.getElementById('test-gemini-key-status');
+if (testGeminiBtn && testGeminiStatus) {
+  testGeminiBtn.addEventListener('click', async () => {
+    const key = (apiKeyGemini.value || '').trim();
+    testGeminiStatus.innerHTML = '';
+    if (!key) {
+      testGeminiStatus.innerHTML = '<span style="color:var(--error);">❌ אין מפתח. הדבק מפתח בשדה למעלה ונסה שוב.</span>';
+      return;
+    }
+    if (!key.startsWith('AIza')) {
+      testGeminiStatus.innerHTML = '<span style="color:var(--error);">⚠ המפתח לא מתחיל ב-"AIza" — זה לא נראה כמו מפתח Gemini תקין.<br>אולי הדבקת מפתח Anthropic (sk-ant-…) במקום?</span>';
+      return;
+    }
+    testGeminiBtn.disabled = true;
+    testGeminiBtn.innerText = '⏳ בודק…';
+    try {
+      // STEP 1: list models — confirms key is valid + shows which models you have access to
+      testGeminiStatus.innerHTML = '<span style="color:var(--muted);">⏳ שלב 1/2 · מאמת מפתח מול Gemini API…</span>';
+      const listRes = await fetch(geminiBase() + '/v1beta/models?pageSize=50', {
+        headers: { 'x-goog-api-key': key },
+      });
+      const listBody = await listRes.text();
+      if (!listRes.ok) {
+        let parsed = {}; try { parsed = JSON.parse(listBody); } catch {}
+        const reason = parsed.error?.details?.[0]?.reason || '';
+        const msg = parsed.error?.message || listBody.slice(0, 300);
+        let hint = '';
+        if (reason === 'API_KEY_INVALID' || listRes.status === 400) hint = '<br>👉 המפתח לא חוקי או פג. צור חדש ב-<a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com/app/apikey</a>.';
+        else if (listRes.status === 403) hint = '<br>👉 ייתכן ש-Generative Language API לא מופעל בפרויקט שלך. גש ל-<a href="https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com" target="_blank">Google Cloud Console</a> ולחץ "Enable".';
+        else if (listRes.status === 429) hint = '<br>👉 חרגת מ-quota. חכה דקה ונסה שוב, או שדרג ל-paid tier.';
+        // esc() the API-derived error text (audit 2026-07-12 #): a malicious/
+        // compromised proxy at geminiBase() could return HTML that would execute
+        // in this origin (which holds the key + reaches /api/*).
+        testGeminiStatus.innerHTML = `<span style="color:var(--error);">❌ <b>שלב 1 נכשל — HTTP ${esc(String(listRes.status))}</b>${reason ? ' (' + esc(reason) + ')' : ''}<br>${esc(msg)}${hint}</span>`;
+        return;
+      }
+      const listData = JSON.parse(listBody);
+      const allModels = (listData.models || []).map(m => (m.name || '').replace(/^models\//, ''));
+      const flashModels = allModels.filter(n => n.includes('flash')).slice(0, 8);
+      const proModels = allModels.filter(n => n.includes('pro')).slice(0, 5);
+      const selectedModel = modelSelGemini.value;
+      const selectedAvailable = allModels.includes(selectedModel);
+
+      // STEP 2: try a tiny generateContent call with the selected model
+      testGeminiStatus.innerHTML = `<span style="color:var(--muted);">⏳ שלב 2/2 · מנסה לקרוא ל-${esc(selectedModel)}…</span>`;
+      const genRes = await fetch(geminiBase() + '/v1beta/models/' + selectedModel + ':generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Reply with exactly: OK' }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 5 },
+        }),
+      });
+      const genBody = await genRes.text();
+      let resultHtml = `<div style="color:var(--good); font-weight:600;">✓ <b>שלב 1: המפתח תקין.</b> זוהו ${allModels.length} מודלים זמינים.</div>`;
+      resultHtml += `<div style="margin-top:4px; font-size:10.5px; color:var(--muted);"><b>Flash זמינים:</b> ${esc(flashModels.join(', ')) || '— אין —'}</div>`;
+      if (proModels.length) resultHtml += `<div style="font-size:10.5px; color:var(--muted);"><b>Pro זמינים:</b> ${esc(proModels.join(', '))}</div>`;
+      if (genRes.ok) {
+        resultHtml += `<div style="margin-top:6px; color:var(--good); font-weight:600;">✓ <b>שלב 2: ${esc(selectedModel)} עובד תקין!</b> הכל מוכן לשימוש.</div>`;
+      } else {
+        let genParsed = {}; try { genParsed = JSON.parse(genBody); } catch {}
+        const genMsg = genParsed.error?.message || genBody.slice(0, 300);
+        resultHtml += `<div style="margin-top:6px; color:var(--error);">❌ <b>שלב 2 נכשל — HTTP ${esc(String(genRes.status))}</b><br>${esc(genMsg)}</div>`;
+        if (!selectedAvailable && flashModels.length) {
+          resultHtml += `<div style="margin-top:4px; color:var(--warn);">👉 <b>${esc(selectedModel)} לא מופיע ברשימת המודלים הזמינים אצלך.</b> נסה לבחור אחד מהמודלים שכן מופיעים למעלה (למשל ${esc(flashModels[0])}).</div>`;
+        }
+      }
+      testGeminiStatus.innerHTML = resultHtml;
+    } catch (e) {
+      testGeminiStatus.innerHTML = `<span style="color:var(--error);">❌ שגיאת רשת: ${esc(String(e && e.message || e))}<br>אולי חומת אש או VPN חוסמים את generativelanguage.googleapis.com?</span>`;
+    } finally {
+      testGeminiBtn.disabled = false;
+      testGeminiBtn.innerText = '🔍 בדוק מפתח';
+    }
+  });
+}
+
+syncProviderRows();
+
+providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
+try { localStorage.removeItem('yv_api_key_anthropic'); } catch {}   // review #1: purge any persisted Claude key
+apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
+function syncProviderRows() {
+  // Which setting-rows each provider needs visible (by data-provider token).
+  const rowsFor = {
+    'claude-cli': ['claude-cli'],                  // local server URL only — no API key
+    'gemini':     ['gemini'],
+    'anthropic':  ['anthropic'],
+  }[state.provider] || [state.provider];
+  document.querySelectorAll('.provider-row').forEach(row => {
+    row.style.display = rowsFor.includes(row.dataset.provider) ? 'grid' : 'none';
+  });
+  // Managed Gemini key: toggling the provider dropdown must not resurrect the
+  // hidden key row (system review 2026-07-21 #14 — reproducible clobber).
+  if (window.YV_GEMINI_MANAGED) {
+    const _gk = document.getElementById('api-key-gemini') || document.getElementById('key-gemini');
+    const _row = _gk && _gk.closest('.provider-row');
+    if (_row) _row.style.display = 'none';
+  }
+}
+function getActiveApiKey() {
+  // review #1: the Anthropic path goes through the server proxy — a reachable
+  // server IS the credential; the browser holds no Claude key.
+  if (state.provider === 'anthropic') return (state.localServerUrl || location.origin) ? 'via-server-proxy' : '';
+  return state.apiKeys[state.provider] || '';
+}
+function hasClaudeCliReady() {
+  return !!state.localServerUrl;
+}
+function getActiveModel() { return state.provider === 'gemini' ? modelSelGemini.value : modelSelAnthropic.value; }
+
+// review #1: Transkribus removed from the flow (not in use). Purge any
+// credentials a previous version persisted in this browser — including the
+// password. All Transkribus UI/code is deleted; this only cleans old browsers.
+try {
+  localStorage.removeItem('yv_tk_username');
+  localStorage.removeItem('yv_tk_password');
+  localStorage.removeItem('yv_tk_model');
+} catch {}
+settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('open'));
+
+async function loadThesaurus() {
+  try { const r = await fetch('data/thesaurus_top300.json'); if (r.ok) state.thesaurus_top = await r.json(); }
+  catch (e) { console.warn('thesaurus fetch failed', e); }
+}
+loadThesaurus();
+
+// Document upload
+const docDrop = document.getElementById('doc-drop');
+const fileInput = document.getElementById('doc-file-input');
+const docPreview = docDrop.querySelector('img.preview-mini');
+const docFilename = document.getElementById('doc-filename');
+const docMetaBox = document.getElementById('doc-meta');
+const delDocBtn = document.getElementById('delete-doc-btn');
+
+// Click activation is native now: doc-drop is a <label for="doc-file-input">.
+['dragenter', 'dragover'].forEach(evt => docDrop.addEventListener(evt, e => { e.preventDefault(); docDrop.classList.add('dragover'); }));
+['dragleave', 'drop'].forEach(evt => docDrop.addEventListener(evt, e => { e.preventDefault(); docDrop.classList.remove('dragover'); }));
+docDrop.addEventListener('drop', e => { const f = e.dataTransfer.files?.[0]; if (f) loadDoc(f); });
+fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; fileInput.value = ''; if (f) loadDoc(f); });
+delDocBtn.addEventListener('click', e => { e.stopPropagation(); clearDoc(); });
+
+function loadDoc(file) {
+  state.document = file;
+  state.docMeta = { mime: file.type || 'application/pdf', size_bytes: file.size, name: file.name };
+  docFilename.textContent = `${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`;
+  docFilename.style.display = 'block';
+  // Preview: show image directly, or icon for PDF
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = e => { docPreview.src = e.target.result; };
+    reader.readAsDataURL(file);
+  } else {
+    docPreview.src = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%20100%22%3E%3Crect%20x%3D%221%22%20y%3D%221%22%20width%3D%2278%22%20height%3D%2298%22%20fill%3D%22%23fff%22%20stroke%3D%22%23999%22%20stroke-width%3D%221.5%22%20rx%3D%224%22/%3E%3Ctext%20x%3D%2240%22%20y%3D%2256%22%20text-anchor%3D%22middle%22%20font-family%3D%22Arial%22%20font-size%3D%2218%22%20font-weight%3D%22bold%22%20fill%3D%22%232e7d4e%22%3EPDF%3C/text%3E%3C/svg%3E';
+  }
+  renderDocMeta();
+  docDrop.classList.add('has-file');
+  refreshButtons();
+}
+
+function renderDocMeta() {
+  if (!state.docMeta) { docMetaBox.style.display = 'none'; return; }
+  const m = state.docMeta;
+  const sizeMB = (m.size_bytes / 1024 / 1024).toFixed(2);
+  docMetaBox.innerHTML = `<div class="item"><b>שם:</b> <code>${esc(m.name).slice(0, 32)}</code></div><div class="item"><b>גודל:</b> <code>${sizeMB} MB</code></div><div class="item"><b>פורמט:</b> <code>${m.mime}</code></div>`;
+  docMetaBox.style.display = 'grid';
+}
+
+function clearDoc() {
+  state.document = null; state.docMeta = null;
+  // removeAttribute, not src='' — empty src resolves to the page URL and logs a resource error
+  docPreview.removeAttribute('src');
+  docDrop.classList.remove('has-file');
+  docFilename.style.display = 'none';
+  docMetaBox.style.display = 'none';
+  fileInput.value = '';
+  refreshButtons();
+}
+
+// =====================================================================
+//  DOC BATCH QUEUE — up to 20 documents with pre-fetch identification
+// =====================================================================
+const DOC_BATCH_MAX = 20;
+const DOC_QUEUE_STATUSES = {
+  pending:   { icon: '⏳', label: 'ממתין',   color: 'var(--muted)' },
+  analyzing: { icon: '🔄', label: 'מנתח',    color: 'var(--brand)' },
+  ready:     { icon: '✓',  label: 'מוכן',    color: 'var(--good)' },
+  reviewing: { icon: '▶',  label: 'בסקירה',  color: 'var(--accent)' },
+  done:      { icon: '💾', label: 'נשמר',    color: 'var(--good)' },
+  error:     { icon: '❌', label: 'שגיאה',   color: 'var(--error)' },
+};
+
+// doc-batch-add-btn and doc-queue-add-more-btn are native <label for="doc-batch-input"> — no JS click().
+document.getElementById('doc-batch-input').addEventListener('change', e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  addDocsToQueue(files);
+});
+// doc-folder-add-btn is a native <label for="doc-folder-input"> — no JS click().
+document.getElementById('doc-folder-input').addEventListener('change', e => {
+  const files = [...e.target.files]
+    .filter(f => f.type === 'application/pdf' || f.type.startsWith('image/'))
+    .sort((a, b) => (a.webkitRelativePath || a.name)
+      .localeCompare(b.webkitRelativePath || b.name, undefined, { numeric: true }));
+  e.target.value = '';
+  if (!files.length) { alert('לא נמצאו קבצי PDF/תמונה בתיקייה.'); return; }
+  addDocsToQueue(files);
+});
+
+async function addDocsToQueue(files) {
+  if (!files.length) return;
+  if (state.doc_queue.length + files.length > DOC_BATCH_MAX) {
+    const can = DOC_BATCH_MAX - state.doc_queue.length;
+    if (can <= 0) { alert(`התור מלא (${DOC_BATCH_MAX}).`); return; }
+    if (!confirm(`התור יקבל רק ${can} מתוך ${files.length} (מקס ${DOC_BATCH_MAX}). להמשיך?`)) return;
+    files = files.slice(0, can);
+  }
+  for (const file of files) {
+    const id = 'dq' + Date.now() + '_' + state.doc_queue.length;
+    const item = { id, file, status: 'pending', identification: null, error: null, thumb: null };
+    state.doc_queue.push(item);
+    // Generate thumbnail (first page for PDFs would require pdfjs — skip; image: dataurl)
+    if (file.type.startsWith('image/')) {
+      item.thumb = await new Promise(r => {
+        const reader = new FileReader();
+        reader.onload = e => r(e.target.result);
+        // Thumbnail is non-critical: on a bad image resolve to null so the
+        // queue-add loop proceeds instead of hanging forever.
+        reader.onerror = () => r(null);
+        reader.readAsDataURL(file);
+      });
+    }
+  }
+  document.getElementById('doc-queue-panel').style.display = 'block';
+  renderDocQueuePanel();
+  setTimeout(() => startDocQueueProcessor(), 100);
+}
+
+function renderDocQueuePanel() {
+  const list = document.getElementById('doc-queue-list');
+  const summary = document.getElementById('doc-queue-summary');
+  if (!state.doc_queue.length) {
+    document.getElementById('doc-queue-panel').style.display = 'none';
+    persistDocQueue();
+    return;
+  }
+  const counts = { pending: 0, analyzing: 0, ready: 0, reviewing: 0, done: 0, error: 0 };
+  state.doc_queue.forEach(it => counts[it.status]++);
+  // Expected time for the remaining docs: ~3 min (printed/typed) to ~10 min
+  // (dense handwritten/HTR) per unit — live-measured range 2026-07-11 (123–608s
+  // per doc on a real dossier); the old smoke-e2e baseline (2.5–4.5) undershot.
+  // Shown as a range since per-doc type varies. Only model work still ahead
+  // counts: 'ready' items await human review, not compute — the old formula
+  // (len-done-error) showed "~min left" on a fully-restored batch with nothing
+  // running.
+  const remaining = counts.pending + counts.analyzing;
+  const loMin = Math.round(remaining * 180 / 60), hiMin = Math.round(remaining * 600 / 60);
+  summary.textContent = `(${state.doc_queue.length}) · ${counts.done} נשמרו · ${counts.ready} מוכנים · ${counts.analyzing} בניתוח · ${counts.pending} ממתינים${counts.error ? ` · ${counts.error} שגיאה` : ''}${remaining > 0 ? ` · ⏱ ~${loMin}–${hiMin} דק׳ נותרו` : ''}`;
+  // Tik-level record: offered once every deciphered doc is in (≥2 records, nothing
+  // still running) — synthesizes ONE dossier record from the per-document records.
+  const tikBar = document.getElementById('tik-record-bar');
+  if (tikBar) {
+    const identified = state.doc_queue.filter(it => it.identification).length;
+    tikBar.style.display = (identified >= 2 && counts.pending + counts.analyzing === 0) ? 'block' : 'none';
+  }
+  list.innerHTML = state.doc_queue.map((it, idx) => {
+    const s = DOC_QUEUE_STATUSES[it.status] || DOC_QUEUE_STATUSES.pending;
+    const isActive = idx === state.current_doc_queue_index;
+    const isPdf = it.file.type === 'application/pdf';
+    const errTip = it.error ? ` title="${esc(it.error)}"` : '';
+    return `<div class="doc-queue-item" role="button" tabindex="0" data-idx="${idx}"${errTip}
+      style="flex:0 0 auto; width:100px; cursor:pointer; padding:5px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'};">
+      <div style="position:relative; width:90px; height:90px; border-radius:4px; overflow:hidden; background:var(--tint); margin:0 auto; display:flex; align-items:center; justify-content:center;">
+        ${it.thumb ? `<img alt="" src="${it.thumb}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="font-size:36px; opacity:.6;">${isPdf ? '📄' : '🖼'}</div>`}
+        <div style="position:absolute; bottom:0; right:0; left:0; background:rgba(0,0,0,.7); color:#fff; font-size:9px; text-align:center; padding:1px 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(it.file.name)}</div>
+      </div>
+      <div style="text-align:center; margin-top:3px; font-size:10.5px; color:${s.color}; font-weight:600;">${s.icon} ${s.label}</div>
+      ${it.status === 'error' && !it.restored ? `<button type="button" class="dq-retry" data-idx="${idx}"
+        style="display:block; margin:4px auto 0; border:1px solid var(--error); background:transparent; color:var(--error); border-radius:6px; padding:2px 8px; font-size:10.5px; cursor:pointer; font-family:inherit;">↻ פיענוח חוזר</button>` : ''}
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.doc-queue-item').forEach(el =>
+    el.addEventListener('click', () => jumpToDocQueueItem(parseInt(el.dataset.idx))));
+  list.querySelectorAll('.dq-retry').forEach(el =>
+    el.addEventListener('click', e => { e.stopPropagation(); retryDocQueueItem(parseInt(el.dataset.idx)); }));
+  renderDocQueueProgress();
+  persistDocQueue();
+}
+
+// Retry a failed queue item without re-uploading: the File bytes are still in the
+// tab's memory (unless the batch was restored after a refresh — then the blobs are
+// gone and only re-upload can retry). Requeues as 'pending' and pokes the processor.
+function retryDocQueueItem(idx) {
+  const item = state.doc_queue[idx];
+  if (!item || item.status !== 'error') return;
+  if (item.restored || !(item.file instanceof File)) {
+    showStatus('הקובץ המקורי אינו שמור בדפדפן אחרי רענון — העלה את המסמך מחדש לפיענוח חוזר.', 'err');
+    return;
+  }
+  item.status = 'pending'; item.error = null;
+  item.startedAt = null; item.finishedAt = null;
+  renderDocQueuePanel();
+  startDocQueueProcessor();
+}
+
+// =====================================================================
+//  BATCH PROGRESS STRIP — true, time-weighted progress for the queue
+//  (user request 2026-07-11). Percentage is weighted by per-doc DURATION,
+//  not doc count: finished docs contribute their measured time, the running
+//  doc its live elapsed time, and the rest an estimate calibrated from the
+//  docs already measured IN THIS BATCH (fallback: 390s — the live-measured
+//  median). So 3/7 short pages ≠ 43%: the bar reflects real work.
+// =====================================================================
+const DQP_FALLBACK_SEC = 390;
+let dqpTimer = null;
+
+function fmtDur(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0');
+}
+
+function renderDocQueueProgress() {
+  const wrap = document.getElementById('doc-queue-progress');
+  if (!wrap) return;
+  const items = state.doc_queue;
+  if (!items.length) { wrap.style.display = 'none'; return; }
+  const now = Date.now();
+  const measured = items.filter(it => it.startedAt && it.finishedAt);
+  const avgMs = measured.length
+    ? measured.reduce((s, it) => s + (it.finishedAt - it.startedAt), 0) / measured.length
+    : DQP_FALLBACK_SEC * 1000;
+  let doneMs = 0, runMs = 0, remainMs = 0, runningItem = null;
+  const segs = [];
+  for (const it of items) {
+    const dur = (it.startedAt && it.finishedAt) ? (it.finishedAt - it.startedAt) : null;
+    if (it.status === 'analyzing') {
+      runningItem = it;
+      const el = it.startedAt ? now - it.startedAt : 0;
+      runMs += Math.min(el, avgMs * 3);               // a stuck doc can't pin the bar at 99
+      remainMs += Math.max(avgMs - el, avgMs * 0.08); // never claim done while running
+      segs.push({ it, w: Math.max(el, avgMs), cls: ' run', color: 'var(--accent)' });
+    } else if (it.status === 'pending') {
+      remainMs += avgMs;
+      segs.push({ it, w: avgMs, cls: '', color: 'color-mix(in srgb, var(--muted) 30%, transparent)' });
+    } else if (it.status === 'error') {
+      doneMs += dur ?? avgMs;                          // settled — nothing left to run
+      segs.push({ it, w: dur ?? avgMs, cls: '', color: 'var(--error)' });
+    } else {                                           // ready / reviewing / done
+      doneMs += dur ?? avgMs;
+      segs.push({ it, w: dur ?? avgMs, cls: '', color: 'var(--good)' });
+    }
+  }
+  const total = doneMs + runMs + remainMs;
+  const allSettled = !runningItem && !items.some(it => it.status === 'pending');
+  const pct = allSettled ? 100 : (total > 0 ? Math.min(99, Math.round(100 * (doneMs + runMs) / total)) : 0);
+  const starts = items.map(it => it.startedAt).filter(Boolean);
+  const ends = items.map(it => it.finishedAt).filter(Boolean);
+  const batchStart = starts.length ? Math.min(...starts) : null;
+  const elapsed = batchStart ? ((allSettled && ends.length ? Math.max(...ends) : now) - batchStart) : null;
+  wrap.style.display = 'block';
+  document.getElementById('dqp-pct').textContent = pct + '%';
+  const settledCount = items.filter(it => it.status !== 'pending' && it.status !== 'analyzing').length;
+  document.getElementById('dqp-docs').textContent =
+    (runningItem ? 'מסמך ' + (settledCount + 1) + '/' + items.length +
+      ((runningItem.file && runningItem.file.name) ? ' · ' + runningItem.file.name : '')
+      : settledCount + '/' + items.length + ' מסמכים');
+  document.getElementById('dqp-elapsed').textContent = elapsed != null ? fmtDur(elapsed) : '—';
+  const etaWrap = document.getElementById('dqp-eta-wrap');
+  if (allSettled) {
+    etaWrap.innerHTML = '<b style="color:var(--good);">✓ הסתיים</b>';
+  } else {
+    etaWrap.innerHTML = 'נותר: ~<b style="unicode-bidi:isolate;">' + fmtDur(remainMs) + '</b> ' +
+      '<span style="opacity:.75;">(ממוצע ' + fmtDur(avgMs) + ' למסמך' +
+      (measured.length ? ', נמדד באצווה זו' : ', אומדן התחלתי') + ')</span>';
+  }
+  document.getElementById('dqp-bar').innerHTML = segs.map(s => {
+    const nm = (s.it.file && s.it.file.name) || '';
+    const st = s.it.status;
+    const tip = s.it.startedAt && s.it.finishedAt ? nm + ' · ' + fmtDur(s.it.finishedAt - s.it.startedAt)
+      : st === 'analyzing' ? nm + ' · רץ ' + fmtDur(now - (s.it.startedAt || now))
+      : st === 'pending'   ? nm + ' · ממתין'
+      : st === 'error'     ? nm + ' · שגיאה'
+      : nm + ' · מוכן (משך לא נמדד)';
+    return `<div class="dqp-seg${s.cls}" title="${esc(tip)}" style="flex-grow:${Math.max(1, Math.round(s.w / 1000))}; background:${s.color};"></div>`;
+  }).join('');
+}
+
+function jumpToDocQueueItem(idx) {
+  if (idx < 0 || idx >= state.doc_queue.length) return;
+  const item = state.doc_queue[idx];
+  if (state.current_doc_queue_index >= 0 && state.current_doc_queue_index !== idx) {
+    const prev = state.doc_queue[state.current_doc_queue_index];
+    if (prev && prev.status === 'reviewing') prev.status = 'ready';
+  }
+  state.current_doc_queue_index = idx;
+  loadDocQueueItemIntoUI(item);
+  renderDocQueuePanel();
+}
+
+function loadDocQueueItemIntoUI(item) {
+  if (item.restored) {
+    // Restored after a refresh: the original File bytes are gone — show the
+    // saved results (per-field copy + download still work off the form),
+    // without a document preview.
+    clearDoc();
+    if (item.identification) {
+      if (item.status === 'ready') item.status = 'reviewing';
+      fillResults(item.identification);
+      document.getElementById('results').classList.add('show');
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('download-bar').style.display = 'flex';
+      showStatus('שוחזר מאצווה קודמת — הקובץ המקורי לא נטען מחדש; התוצאות זמינות להעתקה ולהורדה.', 'info');
+    } else if (item.status === 'error') {
+      showStatus('המסמך נכשל: ' + (item.error || 'שגיאה'), 'err');
+    }
+    return;
+  }
+  clearDoc();
+  loadDoc(item.file);
+  if (item.status === 'ready' || item.status === 'reviewing') {
+    item.status = 'reviewing';
+    if (item.identification) {
+      fillResults(item.identification);
+      document.getElementById('results').classList.add('show');
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('download-bar').style.display = 'flex';
+    }
+  } else if (item.status === 'error') {
+    showStatus('המסמך נכשל: ' + (item.error || 'שגיאה'), 'err');
+  }
+}
+
+async function startDocQueueProcessor() {
+  if (state.doc_queue_processor_running) return;
+  state.doc_queue_processor_running = true;
+  if (dqpTimer) clearInterval(dqpTimer);
+  dqpTimer = setInterval(renderDocQueueProgress, 1000);
+  try {
+    while (true) {
+      const next = state.doc_queue.find(it => it.status === 'pending');
+      if (!next) break;
+      next.status = 'analyzing';
+      next.startedAt = Date.now(); next.finishedAt = null;
+      renderDocQueuePanel();
+      try {
+        const result = await identifyDocQueueItem(next);
+        next.identification = result;
+        next.finishedAt = Date.now();
+        next.status = 'ready';
+        if (state.current_doc_queue_index < 0) {
+          state.current_doc_queue_index = state.doc_queue.indexOf(next);
+          loadDocQueueItemIntoUI(next);
+        }
+      } catch (err) {
+        next.finishedAt = Date.now();
+        next.status = 'error';
+        next.error = err.message;
+        console.error(`Doc queue item ${next.id} failed:`, err);
+        // Caught here → never reaches window.onerror; report explicitly so the
+        // failure shows in the server's client-log dashboard (the 2026-07-11
+        // parseJson failure was invisible). The hook drops err.rawText.
+        if (window.yvLogError) window.yvLogError(err, 'doc-queue:' + ((next.file && next.file.name) || next.id));
+      }
+      renderDocQueuePanel();
+      await new Promise(r => setTimeout(r, state.provider === 'gemini' ? 7000 : 2000));
+    }
+  } finally {
+    state.doc_queue_processor_running = false;
+    if (dqpTimer) { clearInterval(dqpTimer); dqpTimer = null; }
+    renderDocQueueProgress();
+  }
+}
+
+async function identifyDocQueueItem(item) {
+  const saved = state.document;
+  const savedMeta = state.docMeta;
+  state.document = item.file;
+  state.docMeta = { mime: item.file.type, size_bytes: item.file.size, page_count: 1 };
+  try {
+    if (state.provider === 'claude-cli') return await callClaudeCliDirect();
+    if (state.provider === 'gemini') return await callGemini();
+    return await callAnthropic();
+  } finally {
+    state.document = saved;
+    state.docMeta = savedMeta;
+  }
+}
+
+document.getElementById('doc-queue-clear-btn').addEventListener('click', () => {
+  if (!state.doc_queue.length) return;
+  if (!confirm('למחוק את התור?')) return;
+  state.doc_queue = [];
+  state.current_doc_queue_index = -1;
+  renderDocQueuePanel();
+});
+
+// ---------------------------------------------------------------------
+// Refresh-survival for the batch queue: the File blobs can't be persisted,
+// but COMPLETED results are ~2.5-4.5 min of model work each — persist
+// name+status+identification so a refresh mid-batch doesn't discard finished
+// items. Restored items show their results without a document preview.
+// ---------------------------------------------------------------------
+function persistDocQueue() {
+  try {
+    const items = state.doc_queue
+      .filter(it => it.identification || it.error)
+      .map(it => ({ name: it.file.name, type: it.file.type || '', size: it.file.size || 0,
+                    status: it.status === 'reviewing' ? 'ready' : it.status,
+                    startedAt: it.startedAt || null, finishedAt: it.finishedAt || null,
+                    identification: it.identification, error: it.error }));
+    if (items.length) localStorage.setItem('yv_doc_queue_results', JSON.stringify({ savedAt: Date.now(), items }));
+    else localStorage.removeItem('yv_doc_queue_results');
+  } catch (e) { /* localStorage quota — non-fatal, the live queue keeps working */ }
+}
+
+(function restoreDocQueue() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('yv_doc_queue_results') || 'null'); } catch (e) {}
+  const items = ((saved && saved.items) || []).filter(x => x.identification || x.error);
+  if (!items.length || state.doc_queue.length) return;
+  const panel = document.getElementById('doc-queue-panel');
+  const bar = document.createElement('div');
+  bar.style.cssText = 'background:color-mix(in srgb, var(--warn) 12%, var(--card));border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--ink)';
+  const when = new Date(saved.savedAt || Date.now()).toLocaleString('he-IL');
+  const done = items.filter(x => x.identification).length;
+  const sp = document.createElement('span');
+  sp.innerHTML = '💾 נמצאו תוצאות של <b>' + done + '</b> מסמכים מאצווה קודמת (' + esc(when) + '). הקבצים עצמם אינם נשמרים בדפדפן — התוצאות זמינות לצפייה, להעתקה ולהורדה.';
+  bar.appendChild(sp);
+  const mkBtn = (t, primary) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+    b.style.cssText = 'border-radius:6px;padding:4px 12px;cursor:pointer;font-family:inherit;font-size:12.5px;border:1px solid ' + (primary ? 'var(--accent);background:var(--accent);color:#04160c' : 'var(--line-strong);background:var(--card);color:var(--muted)'); return b; };
+  const rb = mkBtn('שחזר תוצאות', true), xb = mkBtn('מחק', false);
+  rb.addEventListener('click', () => {
+    state.doc_queue = items.map((x, i) => ({ id: 'dqr' + Date.now() + '_' + i, restored: true,
+      file: { name: x.name, type: x.type, size: x.size }, status: x.status,
+      startedAt: x.startedAt || null, finishedAt: x.finishedAt || null,
+      identification: x.identification, error: x.error, thumb: null }));
+    state.current_doc_queue_index = -1;
+    document.getElementById('doc-queue-panel').style.display = 'block';
+    renderDocQueuePanel();
+    bar.remove();
+  });
+  xb.addEventListener('click', () => { try { localStorage.removeItem('yv_doc_queue_results'); } catch (e) {} bar.remove(); });
+  bar.appendChild(rb); bar.appendChild(xb);
+  panel.parentNode.insertBefore(bar, panel);
+})();
+
+// =====================================================================
+//  TIK-LEVEL RECORD — synthesize ONE dossier record from the per-document
+//  records after the whole queue is deciphered (user request 2026-07-11).
+//  Text-only Claude call (the scans are NOT re-read): cheap and fast
+//  relative to the per-page runs. Result is rendered with per-field copy
+//  buttons, downloadable as HTML/JSON, and persisted to localStorage.
+// =====================================================================
+const TIK_FIELD_LABELS = [
+  ['title_he', 'כותר התיק (עברית)'], ['title_en', 'כותר התיק (אנגלית)'],
+  ['summary_he', 'תקציר (עברית)'], ['summary_en', 'תקציר (אנגלית)'],
+  ['scope_he', 'תוכן עיקרי (פסקת תיאור התיק)'],
+  ['related_places', 'מקומות'], ['languages', 'שפות'], ['doc_types', 'סוגי מסמכים'],
+  ['date_start', 'תאריך התחלה'], ['date_end', 'תאריך סיום'],
+  ['content_note', 'הערת תוכן'], ['admin_note', 'הערת אדמיניסטרציה'],
+  ['related_items', 'פריטים קשורים'],
+];
+
+function buildTikRecordPrompt(records) {
+  const docs = records.map((r, i) => {
+    const d = r.identification || {};
+    const pick = {};
+    for (const k of ['title_he', 'title_en', 'doc_type', 'doc_date', 'languages', 'archive_id',
+                     'sender_he', 'recipient_he', 'place_he', 'summary_he', 'summary_en',
+                     'persons_he', 'context_he', 'info_main', 'content_note', 'related_items']) {
+      if (d[k]) pick[k] = d[k];
+    }
+    return `--- מסמך ${i + 1}: ${r.name} ---\n` + JSON.stringify(pick);
+  }).join('\n\n');
+  return `אתה רשם ארכיוני בכיר. לפניך רשומות הקטלוג של ${records.length} מסמכים בודדים שפוענחו מתוך תיק ארכיוני אחד. צור מהן רשומת קטלוג אחת ברמת התיק.
+
+חוקים מחייבים:
+1. אל תמציא דבר — כל עובדה חייבת להופיע באחת מרשומות המסמכים. שדה שאין לו מקור נשאר ריק ("").
+2. ספקות מסומנים [?] ברשומות המקור נשארים מסומנים כך גם ברשומת התיק.
+3. תאריכים — רק אם מפורשים ברשומות; טווח התיק = המוקדם והמאוחר שבין המסמכים.
+4. names_index: אחד את מופעי אותו אדם מכמה מסמכים לשורה אחת (שמור סימוני [?]), וציין באילו מסמכים הוא מופיע.
+5. עברית ארכיונית ניטרלית; אל תעתיק רשומת מסמך אחת כלשונה — סנתז.
+
+רשומות המסמכים:
+${docs}
+
+החזר JSON תקין בלבד, ללא code-fence וללא טקסט נוסף, בסכימה הזו בדיוק:
+{"title_he":"","title_en":"","summary_he":"עד 5 שורות","summary_en":"up to 5 lines","scope_he":"פסקת תיאור התיק — קבוצות המסמכים ותוכנם","related_places":[],"languages":[],"doc_types":[],"date_start":"","date_end":"","names_index":[{"name_he":"","name_orig":"","role":"","place":"","docs":""}],"content_note":"","admin_note":"","related_items":""}`;
+}
+
+function renderTikRecord(rec, savedAt) {
+  const panel = document.getElementById('tik-record-panel');
+  if (!panel) return;
+  const val = v => Array.isArray(v) ? v.filter(Boolean).join(' · ') : String(v ?? '');
+  const fieldRows = TIK_FIELD_LABELS
+    .filter(([k]) => val(rec[k]).trim() !== '')
+    .map(([k, lab]) => `
+      <div style="background:var(--tint); border:1px solid var(--line); border-radius:7px; padding:8px 12px; margin:7px 0; direction:rtl; text-align:right;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <span style="font-weight:700; font-size:12.5px; color:var(--accent);">${esc(lab)}</span>
+          <button type="button" class="tik-copy" data-k="${esc(k)}" style="border:1px solid var(--line-strong); background:var(--card); color:var(--muted); border-radius:6px; padding:2px 9px; font-size:11.5px; cursor:pointer; font-family:inherit;">📋 העתק</button>
+        </div>
+        <div id="tik-v-${esc(k)}" style="margin-top:5px; white-space:pre-wrap; font-size:13.5px; unicode-bidi:isolate;">${esc(val(rec[k]))}</div>
+      </div>`).join('');
+  const names = Array.isArray(rec.names_index) ? rec.names_index.filter(n => n && (n.name_he || n.name_orig)) : [];
+  const namesTable = names.length ? `
+    <div style="font-weight:700; font-size:12.5px; color:var(--accent); margin-top:12px;">מפתח שמות (${names.length})</div>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse; width:100%; font-size:12.5px; margin-top:5px; direction:rtl;">
+      <thead><tr>${['שם', 'שם במקור', 'תפקיד/הקשר', 'מקום', 'מסמכים'].map(h => `<th style="border:1px solid var(--line-strong); padding:4px 8px; text-align:right; background:var(--tint);">${h}</th>`).join('')}</tr></thead>
+      <tbody>${names.map(n => `<tr>${[n.name_he, n.name_orig, n.role, n.place, n.docs].map(c => `<td style="border:1px solid var(--line); padding:4px 8px; text-align:right; unicode-bidi:isolate;">${esc(c || '')}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>` : '';
+  panel.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div style="font-weight:700; color:var(--accent); font-size:14px;">🗂 רשומת התיק המסכמת <span style="font-weight:400; font-size:11.5px; color:var(--muted);">(${new Date(savedAt).toLocaleString('he-IL')})</span></div>
+      <div style="display:flex; gap:6px;">
+        <button type="button" id="tik-record-dl-html" class="ghost" style="padding:3px 10px; font-size:11.5px;">⬇ הורד HTML</button>
+        <button type="button" id="tik-record-dl-json" class="ghost" style="padding:3px 10px; font-size:11.5px;">⬇ הורד JSON</button>
+      </div>
+    </div>
+    ${fieldRows}${namesTable}`;
+  panel.style.display = 'block';
+  panel.querySelectorAll('.tik-copy').forEach(b => b.addEventListener('click', async () => {
+    const t = document.getElementById('tik-v-' + b.dataset.k).textContent;
+    try { await navigator.clipboard.writeText(t); b.textContent = '✓ הועתק'; setTimeout(() => { b.textContent = '📋 העתק'; }, 1400); } catch (e) {}
+  }));
+  const dl = (content, mime, fname) => {
+    const url = URL.createObjectURL(new Blob([content], { type: mime }));
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  document.getElementById('tik-record-dl-json').addEventListener('click', () =>
+    dl(JSON.stringify(rec, null, 2), 'application/json;charset=utf-8', `tik_record_${today}.json`));
+  document.getElementById('tik-record-dl-html').addEventListener('click', () =>
+    dl(buildTikRecordHTML(rec), 'text/html;charset=utf-8', `tik_record_${today}.html`));
+}
+
+function buildTikRecordHTML(rec) {
+  const val = v => Array.isArray(v) ? v.filter(Boolean).join(' · ') : String(v ?? '');
+  const rows = TIK_FIELD_LABELS.filter(([k]) => val(rec[k]).trim() !== '')
+    .map(([k, lab]) => `<div class="f"><div class="l">${esc(lab)}</div><div class="v">${esc(val(rec[k]))}</div></div>`).join('\n');
+  const names = Array.isArray(rec.names_index) ? rec.names_index.filter(n => n && (n.name_he || n.name_orig)) : [];
+  const namesHtml = names.length ? `<h2>מפתח שמות</h2><table><thead><tr><th>שם</th><th>שם במקור</th><th>תפקיד/הקשר</th><th>מקום</th><th>מסמכים</th></tr></thead><tbody>${
+    names.map(n => `<tr><td>${esc(n.name_he || '')}</td><td>${esc(n.name_orig || '')}</td><td>${esc(n.role || '')}</td><td>${esc(n.place || '')}</td><td>${esc(n.docs || '')}</td></tr>`).join('')}</tbody></table>` : '';
+  return `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="utf-8"><title>${esc(rec.title_he || 'רשומת תיק')}</title>
+<style>
+  body{font-family:-apple-system,"Segoe UI",Arial,sans-serif;background:#f6f3ed;color:#222;direction:rtl;text-align:right;max-width:880px;margin:24px auto;padding:0 16px;line-height:1.6}
+  h1{font-size:20px;color:#5a4632} h2{font-size:15px;color:#5a4632;margin-top:20px}
+  .f{background:#fff;border:1px solid #ddd;border-radius:8px;padding:9px 13px;margin:8px 0;direction:rtl;text-align:right}
+  .l{font-weight:700;font-size:12.5px;color:#5a4632} .v{margin-top:4px;white-space:pre-wrap;font-size:14px;unicode-bidi:isolate}
+  table{border-collapse:collapse;width:100%;font-size:13px;direction:rtl} th,td{border:1px solid #d8cfc0;padding:5px 9px;text-align:right;unicode-bidi:isolate} th{background:#efe8db}
+</style></head>
+<body><h1>🗂 ${esc(rec.title_he || 'רשומת תיק')}</h1>${rows}${namesHtml}</body></html>`;
+}
+
+async function generateTikRecord() {
+  const btn = document.getElementById('tik-record-btn');
+  const records = state.doc_queue
+    .filter(it => it.identification)
+    .map(it => ({ name: it.file.name, identification: it.identification }));
+  if (records.length < 2) { showStatus('נדרשות לפחות 2 רשומות מסמכים מפוענחות', 'err'); return; }
+  if (localStorage.getItem('yv_tik_record') &&
+      !confirm('כבר קיימת רשומת תיק. ליצור מחדש ולדרוס אותה?')) return;
+  btn.disabled = true; btn.textContent = '⏳ מסנתז רשומת תיק…';
+  try {
+    let text = await runClaudeJobDocs(buildTikRecordPrompt(records), []);
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const rec = parseJson(text, 'Claude (רשומת תיק)');
+    const savedAt = Date.now();
+    try { localStorage.setItem('yv_tik_record', JSON.stringify({ savedAt, rec })); } catch (e) {}
+    renderTikRecord(rec, savedAt);
+    showStatus('✓ רשומת התיק נוצרה מ-' + records.length + ' מסמכים', 'ok');
+    document.getElementById('tik-record-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    showStatus('יצירת רשומת התיק נכשלה: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '🗂 צור רשומת תיק מכל המסמכים';
+  }
+}
+document.getElementById('tik-record-btn').addEventListener('click', generateTikRecord);
+
+// Restore a previously-generated tik record after a refresh.
+(function restoreTikRecord() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('yv_tik_record') || 'null'); } catch (e) {}
+  if (saved && saved.rec) renderTikRecord(saved.rec, saved.savedAt || Date.now());
+})();
+
+// =====================================================================
+//  JPG → PDF MERGER (in-browser, via jsPDF)
+//  Use case: archivist has 5-10 JPGs that are pages of ONE document,
+//  wants to upload them as a single PDF for unified cataloging.
+// =====================================================================
+state.merge_files = [];
+
+// merge-jpgs-btn is a native <label for="merge-jpgs-input"> — no JS click().
+document.getElementById('merge-jpgs-input').addEventListener('change', e => {
+  const files = [...e.target.files].filter(f => f.type.startsWith('image/'));
+  e.target.value = '';
+  if (!files.length) { alert('יש לבחור לפחות תמונה אחת'); return; }
+  // Sort alphabetically by default (most archives use _p01.jpg, _p02.jpg…)
+  state.merge_files = files.sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  openMergeModal();
+});
+
+// ⬇ הורד תיק כ-PDF — download the whole תיק that is loaded in the queue as ONE
+// PDF file: a single queued PDF is downloaded as-is; page scans are merged via
+// the existing jsPDF modal, in queue order (= the תיק's page order).
+document.getElementById('doc-queue-download-pdf-btn').addEventListener('click', () => {
+  if (!state.doc_queue.length) { alert('התור ריק — העלה את דפי התיק קודם.'); return; }
+  const withBlob = state.doc_queue.filter(it => it.file);
+  const restored = state.doc_queue.length - withBlob.length;
+  const pdfItems = withBlob.filter(it => it.file.type === 'application/pdf');
+  const imgs = withBlob.filter(it => it.file.type.startsWith('image/')).map(it => it.file);
+  if (pdfItems.length === 1 && !imgs.length) { // התיק הוא קובץ PDF יחיד — מורידים כמו שהוא
+    const f = pdfItems[0].file;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(f);
+    a.download = f.name || 'tik.pdf';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    showStatus(`✓ הורד: ${f.name || 'tik.pdf'}`, 'ok');
+    return;
+  }
+  if (!imgs.length) {
+    alert(restored
+      ? 'הקבצים המקוריים אינם זמינים אחרי רענון הדף — העלה את דפי התיק מחדש כדי לאחד אותם ל-PDF.'
+      : 'בתור אין סריקות תמונה לאיחוד. איחוד של כמה קובצי PDF אינו נתמך בדפדפן.');
+    return;
+  }
+  const notes = [];
+  if (pdfItems.length) notes.push(`${pdfItems.length} קובצי PDF שבתור לא ייכללו באיחוד (נתמכות סריקות תמונה בלבד)`);
+  if (restored) notes.push(`${restored} פריטים ששוחזרו מרענון — הקובץ המקורי שלהם אינו זמין ולא ייכללו`);
+  state.merge_files = imgs; // סדר התור = סדר הדפים בתיק — לא ממיינים מחדש
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  openMergeModal({
+    title: '⬇ הורדת התיק כקובץ PDF אחד',
+    orderNote: 'הדפים בסדר התור.',
+    name: `tik_${today}.pdf`,
+    note: notes.join(' · '),
+  });
+});
+
+function openMergeModal(opts = {}) {
+  // Reuse the existing modal-overlay style by building inline
+  const overlay = document.createElement('div');
+  overlay.id = 'merge-modal-overlay';
+  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px;';
+  const totalSizeMB = (state.merge_files.reduce((s, f) => s + f.size, 0) / 1024 / 1024).toFixed(1);
+  overlay.innerHTML = `
+    <div style="background:var(--card); border:1px solid var(--line-strong); border-radius:8px; max-width:780px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 30px 70px -20px rgba(0,0,0,.8);">
+      <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="margin:0; font-size:16px; color:var(--accent);">${opts.title || '🔗 איחוד JPGs לקובץ PDF אחד'}</h3>
+        <button type="button" id="merge-cancel-x" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
+      </div>
+      <div style="padding:16px 18px;">
+        <div style="background:color-mix(in srgb, var(--accent) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; color:var(--accent);">
+          <b>${state.merge_files.length} קבצים</b> · סה״כ <b>${totalSizeMB} MB</b>. ${opts.orderNote || 'מיון אלפביתי אוטומטי.'} תוכל לסדר מחדש (↑/↓) או להסיר (✕).
+        </div>
+        ${opts.note ? `<div style="background:color-mix(in srgb, var(--warn) 12%, var(--card)); border:1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius:6px; padding:8px 12px; margin-bottom:14px; font-size:12.5px; color:var(--warn);">⚠ ${opts.note}</div>` : ''}
+        <div style="margin-bottom:10px;">
+          <label class="label">שם הקובץ המאוחד</label>
+          <input type="text" id="merge-output-name" value="${opts.name || 'merged_document.pdf'}" style="font-family:'SF Mono',monospace; direction:ltr; text-align:left;">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="label">גודל עמוד</label>
+          <select id="merge-page-size">
+            <option value="a4" selected>A4 (אנכי)</option>
+            <option value="a4-landscape">A4 (אופקי)</option>
+            <option value="letter">Letter</option>
+            <option value="fit">התאמה לכל תמונה (גודל פריים זהה לתמונה)</option>
+          </select>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="label">איכות / דחיסה <small>(טובה=PDF גדול, OCR מצוין · בינונית=מאוזן · קטנה=PDF קטן, OCR טוב)</small></label>
+          <select id="merge-quality">
+            <option value="original">איכות מקור — לא דוחס (PDF הכי גדול, OCR הכי טוב)</option>
+            <option value="high" selected>איכות גבוהה (90%) — מומלץ למסמכים מורכבים</option>
+            <option value="medium">בינונית (75%) — מאוזן (חצי גודל, OCR טוב)</option>
+            <option value="low">קטנה (60%) — לסריקות גדולות (PDF קטן)</option>
+            <option value="auto">🤖 אוטומטי — דוחס רק אם סה״כ מעל 18MB</option>
+          </select>
+        </div>
+        <label class="label">סדר הדפים (התמונה הראשונה תהיה עמוד 1)</label>
+        <div id="merge-list" style="margin-top:6px; border:1px solid var(--line); border-radius:6px; max-height:400px; overflow-y:auto;"></div>
+      </div>
+      <div style="padding:12px 18px; border-top:1px solid var(--line); display:flex; gap:8px; justify-content:space-between; align-items:center;">
+        <span id="merge-progress" style="font-size:12.5px; color:var(--muted);"></span>
+        <div style="display:flex; gap:8px;">
+          <button type="button" id="merge-cancel" class="ghost">ביטול</button>
+          <button type="button" id="merge-go" class="primary" style="background:var(--accent); color:#04160c;">📥 צור PDF</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  renderMergeList();
+  const cancel = () => overlay.remove();
+  overlay.querySelector('#merge-cancel').onclick = cancel;
+  overlay.querySelector('#merge-cancel-x').onclick = cancel;
+  overlay.querySelector('#merge-go').onclick = performMerge;
+}
+
+function renderMergeList() {
+  const list = document.querySelector('#merge-list');
+  if (!list) return;
+  list.innerHTML = state.merge_files.map((f, i) => `
+    <div class="merge-item" data-idx="${i}" style="display:flex; align-items:center; gap:10px; padding:6px 10px; border-bottom:1px solid var(--line);">
+      <div style="font-family:'SF Mono',monospace; font-size:11px; color:var(--muted); min-width:30px; text-align:center;">${i + 1}</div>
+      <div style="flex:1; direction:ltr; unicode-bidi:isolate; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(f.name)}">${esc(f.name)}</div>
+      <div style="font-size:11px; color:var(--muted); white-space:nowrap;">${(f.size/1024/1024).toFixed(1)} MB</div>
+      <div style="display:flex; gap:4px;">
+        <button type="button" class="merge-up ghost" style="padding:2px 7px; font-size:11px;" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button type="button" class="merge-down ghost" style="padding:2px 7px; font-size:11px;" ${i === state.merge_files.length - 1 ? 'disabled' : ''}>↓</button>
+        <button type="button" class="merge-remove ghost" style="padding:2px 7px; font-size:11px; color:var(--error); border-color:var(--error);">✕</button>
+      </div>
+    </div>
+  `).join('');
+  list.querySelectorAll('.merge-up').forEach((b, i) => b.onclick = () => moveMerge(i, -1));
+  list.querySelectorAll('.merge-down').forEach((b, i) => b.onclick = () => moveMerge(i, 1));
+  list.querySelectorAll('.merge-remove').forEach((b, i) => b.onclick = () => removeMerge(i));
+}
+function moveMerge(idx, dir) {
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= state.merge_files.length) return;
+  [state.merge_files[idx], state.merge_files[newIdx]] = [state.merge_files[newIdx], state.merge_files[idx]];
+  renderMergeList();
+}
+function removeMerge(idx) {
+  state.merge_files.splice(idx, 1);
+  if (!state.merge_files.length) { document.getElementById('merge-modal-overlay')?.remove(); return; }
+  renderMergeList();
+}
+
+async function performMerge() {
+  window.yvDebug&&console.log('[merge] performMerge called, files:', state.merge_files.length);
+  if (!state.merge_files.length) { alert('אין קבצים למיזוג'); return; }
+  if (!window.jspdf?.jsPDF) {
+    alert('ספריית jsPDF לא נטענה. נסה לרענן את הדף (Cmd+Shift+R) ושים לב לשגיאות ב-DevTools Console.');
+    return;
+  }
+  const overlay = document.getElementById('merge-modal-overlay');
+  const goBtn = document.getElementById('merge-go');
+  const cancelBtn = document.getElementById('merge-cancel');
+  const progressEl = document.getElementById('merge-progress');
+  goBtn.disabled = true;
+  cancelBtn.disabled = true;
+  goBtn.innerHTML = '<span class="spinner"></span>ממזג…';
+  const pageSize = document.getElementById('merge-page-size').value;
+  const qualitySetting = document.getElementById('merge-quality').value;
+  const outputName = (document.getElementById('merge-output-name').value.trim() || 'merged_document.pdf').replace(/\.pdf$/i, '') + '.pdf';
+
+  // Determine compression quality (0-1, or null = original)
+  const totalSizeMB = state.merge_files.reduce((s, f) => s + f.size, 0) / 1024 / 1024;
+  let qualityValue;  // null = pass through original; number = re-encode at this quality
+  if (qualitySetting === 'original') qualityValue = null;
+  else if (qualitySetting === 'high') qualityValue = 0.90;
+  else if (qualitySetting === 'medium') qualityValue = 0.75;
+  else if (qualitySetting === 'low') qualityValue = 0.60;
+  else if (qualitySetting === 'auto') qualityValue = totalSizeMB > 18 ? 0.75 : null;
+
+  window.yvDebug&&console.log('[merge] starting:', { fileCount: state.merge_files.length, pageSize, outputName, qualitySetting, qualityValue, totalSizeMB });
+
+  try {
+    const { jsPDF } = window.jspdf;
+    let doc = null;
+
+    for (let i = 0; i < state.merge_files.length; i++) {
+      const file = state.merge_files[i];
+      progressEl.textContent = `מעבד ${i + 1}/${state.merge_files.length}: ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)…`;
+      window.yvDebug&&console.log(`[merge] page ${i+1}/${state.merge_files.length}:`, file.name, file.type, `${(file.size/1024/1024).toFixed(1)}MB`);
+
+      // Read file as data URL
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = e => res(e.target.result);
+        r.onerror = () => rej(new Error('קריאת קובץ נכשלה: ' + file.name));
+        r.readAsDataURL(file);
+      });
+
+      // Load image element to get dimensions
+      const img = await new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im);
+        im.onerror = () => rej(new Error('טעינת תמונה נכשלה (אולי פגומה): ' + file.name));
+        im.src = dataUrl;
+      });
+      window.yvDebug&&console.log(`[merge]   loaded image: ${img.width}×${img.height}`);
+
+      // Compress if quality is set
+      let finalDataUrl = dataUrl;
+      let fmt = dataUrl.startsWith('data:image/png') ? 'PNG' :
+                dataUrl.startsWith('data:image/webp') ? 'WEBP' :
+                'JPEG';
+      if (qualityValue !== null) {
+        // Re-encode as JPEG at the requested quality (smaller file, slight loss)
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        finalDataUrl = canvas.toDataURL('image/jpeg', qualityValue);
+        fmt = 'JPEG';
+        const beforeKB = (file.size / 1024).toFixed(0);
+        const afterKB = (finalDataUrl.length * 0.75 / 1024).toFixed(0);  // base64→bytes ≈ ×0.75
+        window.yvDebug&&console.log(`[merge]   compressed @${qualityValue}: ${beforeKB}KB → ${afterKB}KB`);
+      }
+
+      if (pageSize === 'fit') {
+        // Each page = image dimensions
+        const orientation = img.width > img.height ? 'l' : 'p';
+        if (i === 0) {
+          doc = new jsPDF({ unit: 'px', format: [img.width, img.height], orientation });
+        } else {
+          doc.addPage([img.width, img.height], orientation);
+        }
+        doc.addImage(finalDataUrl, fmt, 0, 0, img.width, img.height);
+      } else {
+        // Fixed page size — fit image with maintained aspect ratio
+        if (i === 0) {
+          doc = new jsPDF({
+            unit: 'mm',
+            format: pageSize === 'letter' ? 'letter' : 'a4',
+            orientation: pageSize === 'a4-landscape' ? 'l' : 'p',
+          });
+        } else {
+          doc.addPage();
+        }
+        const pw = doc.internal.pageSize.getWidth();
+        const ph = doc.internal.pageSize.getHeight();
+        const margin = 5;
+        const availW = pw - margin * 2;
+        const availH = ph - margin * 2;
+        const imgRatio = img.width / img.height;
+        let w = availW, h = availW / imgRatio;
+        if (h > availH) { h = availH; w = availH * imgRatio; }
+        const x = (pw - w) / 2;
+        const y = (ph - h) / 2;
+        doc.addImage(finalDataUrl, fmt, x, y, w, h);
+      }
+      window.yvDebug&&console.log(`[merge]   page ${i+1} added`);
+    }
+
+    progressEl.textContent = 'מייצר קובץ PDF — רגע…';
+    window.yvDebug&&console.log('[merge] generating blob');
+    const pdfBlob = doc.output('blob');
+    const pdfFile = new File([pdfBlob], outputName, { type: 'application/pdf' });
+    window.yvDebug&&console.log(`[merge] DONE: ${outputName}, ${(pdfBlob.size/1024/1024).toFixed(1)}MB`);
+
+    // BUILD SUCCESS PANE (replace the modal body entirely — safer than innerHTML+=)
+    const modalContainer = overlay.querySelector('div'); // First child div = the modal container
+    modalContainer.innerHTML = `
+      <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="margin:0; font-size:16px; color:var(--good);">✓ ה-PDF נוצר בהצלחה</h3>
+        <button type="button" id="merge-close-x" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
+      </div>
+      <div style="padding:30px 18px; text-align:center;">
+        <div style="font-size:48px; line-height:1; margin-bottom:10px;">📄✓</div>
+        <div style="font-size:16px; color:var(--good); font-weight:700; margin-bottom:6px; direction:ltr; unicode-bidi:isolate;">${esc(outputName)}</div>
+        <div style="font-size:13px; color:var(--muted); margin-bottom:24px;">${state.merge_files.length} עמודים · ${(pdfBlob.size/1024/1024).toFixed(1)} MB</div>
+        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+          <button type="button" id="merge-load" class="primary" style="background:var(--accent); color:#04160c; padding:10px 18px; font-size:14px;">📥 טען לפיענוח כעת</button>
+          <button type="button" id="merge-download" class="ghost" style="padding:10px 18px; font-size:14px;">⬇ הורד למחשב</button>
+          <button type="button" id="merge-both" class="ghost" style="padding:10px 18px; font-size:14px;">⬇📥 גם וגם</button>
+        </div>
+      </div>
+      <div style="padding:12px 18px; border-top:1px solid var(--line); display:flex; justify-content:flex-end;">
+        <button type="button" id="merge-success-close" class="ghost">סגור</button>
+      </div>`;
+
+    const loadFn = () => {
+      try {
+        clearDoc();
+        loadDoc(pdfFile);
+        overlay.remove();
+        showStatus(`✓ ${outputName} נטען (${state.merge_files.length} עמודים, ${(pdfBlob.size/1024/1024).toFixed(1)} MB). לחץ "פענח" להמשך.`, 'ok');
+        // Clear the merge_files for next session
+        state.merge_files = [];
+      } catch (e) {
+        console.error('[merge] load failed:', e);
+        alert('שגיאה בטעינה: ' + e.message);
+      }
+    };
+    const downloadFn = () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(pdfBlob);
+      a.download = outputName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    const closeFn = () => { overlay.remove(); state.merge_files = []; };
+
+    document.getElementById('merge-load').onclick = loadFn;
+    document.getElementById('merge-download').onclick = () => { downloadFn(); /* keep modal open so user can also Load if they want */ };
+    document.getElementById('merge-both').onclick = () => { downloadFn(); loadFn(); };
+    document.getElementById('merge-close-x').onclick = closeFn;
+    document.getElementById('merge-success-close').onclick = closeFn;
+
+  } catch (err) {
+    console.error('[merge] FAILED:', err);
+    progressEl.textContent = '';
+    goBtn.disabled = false;
+    cancelBtn.disabled = false;
+    goBtn.innerHTML = '📥 צור PDF';
+    alert('שגיאה במיזוג: ' + err.message + '\n\nבדוק את DevTools Console (Cmd+Option+J) לפרטים נוספים.');
+  }
+}
+
+// Context
+const contextEl = document.getElementById('context-input');
+// ctx-file-btn is a native <label for="ctx-file-input"> — no JS click().
+const ctxInput = document.getElementById('ctx-file-input');
+const ctxStatus = document.getElementById('ctx-file-status');
+ctxInput.addEventListener('change', () => { const f = ctxInput.files?.[0]; if (f) { ctxInput.value = ''; extractContext(f); } });
+
+// Upload an accompanying document (donor letter, cover page, background doc) →
+// the archive server's AI pulls the archivally-relevant facts into the
+// מידע-מוקדם box for review. PDFs (incl. SCANNED) + images go straight to the
+// server (Gemini reads + OCRs); office/text is read in-browser then distilled by
+// the same AI. Never a raw dump — only the relevant context.
+async function extractContext(file) {
+  const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+  const isImg = /\.(jpe?g|png|webp|tiff?|gif)$/i.test(file.name);
+  setMini(ctxStatus, '<span class="dot"></span>מחלץ מידע מ־' + esc(file.name) + '… (עד דקה)', 'working');
+  try {
+    let payload, sendName;
+    if (ext === '.pdf' || isImg) { payload = file; sendName = file.name; }
+    else {
+      let text = '';
+      if (ext === '.docx') { const r = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() }); text = r.value.trim(); }
+      else if (['.txt','.md','.markdown','.rtf','.log'].includes(ext)) text = await file.text();
+      else throw new Error('סוג לא נתמך: ' + ext);
+      if (!text.trim()) throw new Error('לא נמצא טקסט בקובץ');
+      payload = new Blob([text], { type: 'text/plain' }); sendName = 'extracted.txt';
+    }
+    let base = location.origin;
+    try { if (typeof serverBase === 'function' && serverBase()) base = serverBase(); } catch (e) {}
+    if (typeof state !== 'undefined' && state && state.localServerUrl) base = state.localServerUrl;
+    const fd = new FormData(); fd.append('file', payload, sendName);
+    const r = await fetch(base + '/api/context-extract', { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'חילוץ נכשל');
+    const existing = contextEl.value.trim();
+    const sep = existing ? '\n\n――――――――――――――――\n\n' : '';
+    contextEl.value = existing + sep + (j.context || '').trim();
+    contextEl.dispatchEvent(new Event('input', { bubbles: true }));
+    setMini(ctxStatus, '<span class="dot"></span>✓ המידע חולץ מ־' + esc(file.name) + ' — בדקו וערכו לפי הצורך', 'ok');
+  } catch (err) { setMini(ctxStatus, '<span class="dot"></span>שגיאה: ' + err.message, 'err'); }
+}
+
+// ── Claude CLI direct read ──────────────────────────────────────────────
+// ── Claude CLI direct read ──────────────────────────────────────────────
+// Claude reads the document image/PDF DIRECTLY via the local server's
+// /api/ask-async endpoint (the server writes the bytes to a temp file and has
+// Claude Read them). No Gemini → no PROHIBITED_CONTENT block on Holocaust
+// material. One pass: Claude both reads the scan and produces the Sapir record.
+// Downscale a single image client-side so the base64 payload stays under the
+// server's 25MB JSON limit. PDFs are sent as-is (server handles page ranges).
+function docDownscaleImageB64(file, maxEdge = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(cv.toDataURL('image/jpeg', quality).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('טעינת התמונה נכשלה')); };
+    img.src = url;
+  });
+}
+
+// POST a job to /api/ask-async and poll until done — async so a long Claude run
+// survives the Cloudflare quick-tunnel ~100s limit.
+async function runClaudeJobDocs(prompt, images) {
+  const base = state.localServerUrl;
+  if (!base) throw new Error('מצב Claude CLI דורש URL של שרת מקומי.');
+  const model = (modelSelAnthropic?.value || '').includes('opus') ? 'opus' : 'sonnet';
+  let res;
+  try {
+    res = await fetch(base + '/api/ask-async', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, model, images: images || [] }),
+    });
+  } catch (e) {
+    throw new Error(`לא ניתן להגיע לשרת המקומי (${e.message}). ודא ששרת הבית רץ (node server.js), ובגישה מרחוק שגם ה-tunnel פעיל וה-URL מעודכן.`);
+  }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('שרת HTTP ' + res.status + ': ' + (e.error || '').slice(0, 400)); }
+  const { jobId } = await res.json();
+  if (!jobId) throw new Error('השרת לא החזיר jobId. ודא שגרסת השרת תומכת ב-/api/ask-async.');
+  // 30 min wall-clock: dense handwritten pages measured 2–10.1 min live (2026-07-11,
+  // trend rising with page density) — the old 15-min cap was one long page away from
+  // aborting a healthy run. The server has its own idle watchdog, so a hung job
+  // still dies server-side; on cap-hit the result usually EXISTS in the server's
+  // jobs list — say so instead of implying the work is lost.
+  // Shared poll mechanics (yvPollAsk in yv-client-log.js — review 21.7 #21):
+  // the per-screen copy kept only its own status line, cap and timeout wording.
+  if (!window.yvPollAsk) throw new Error('רכיב משותף (yv-client-log) לא נטען — רענן את הדף');
+  const r = await yvPollAsk(base, jobId, { maxMs: 30 * 60 * 1000,
+    onTick: (j, sec) => showStatus('Claude קורא את המסמך ומפיק את הרישום… (' + sec + ' שׄ)', 'info') });
+  if (r.status === 'auth') return;
+  if (r.status === 'done') return r.text;
+  if (r.status === 'error') throw new Error('Claude נכשל: ' + r.error);
+  throw new Error('הריצה נמשכה מעל 30 דקות ולא הסתיימה. ייתכן שהשרת עוד מסיים אותה ברקע — התוצאה תישמר ברשימת הג׳ובים של השרת (jobId ' + jobId + '); אפשר גם לנסות מסמך קצר יותר.');
+}
+
+async function callClaudeCliDirect() {
+  if (!state.document) throw new Error('אין מסמך');
+  if (!state.localServerUrl) throw new Error('מצב Claude CLI דורש URL של שרת מקומי.');
+  const isPdf = state.document.type === 'application/pdf' || /\.pdf$/i.test(state.document.name || '');
+  let images;
+  if (isPdf) {
+    showStatus('מקודד את המסמך ושולח ל-Claude…', 'info');
+    images = [{ mime: 'application/pdf', data: await fileToBase64(state.document) }];
+  } else {
+    showStatus('מקטין ומקודד את הסריקה ושולח ל-Claude…', 'info');
+    images = [{ mime: 'image/jpeg', data: await docDownscaleImageB64(state.document) }];
+  }
+  // Guard the server's ~25MB JSON limit (base64 inflates ~33%).
+  const approxMB = images.reduce((n, im) => n + (im.data.length * 0.75), 0) / 1024 / 1024;
+  if (approxMB > 24) {
+    throw new Error(`המסמך גדול מדי לשליחה ישירה (${approxMB.toFixed(0)}MB אחרי קידוד). חלק אותו או הקטן את הסריקה.`);
+  }
+  const prompt = buildDocPrompt() +
+    '\n\n🛑 הקובץ המצורף הוא סריקה אמיתית של מסמך היסטורי מהארכיון — קרא אותו במלואו. אם זה PDF רב-עמודים, קרא את כל העמודים (בטווחים אם צריך, למשל pages:"1-10") ואל תעצור אחרי העמוד הראשון. הפק את רשומת ספיר לפי הסכימה.\n\n⚠ החזר JSON תקין בלבד ללא code-fence ובלי טקסט הקדמה.';
+  let text = await runClaudeJobDocs(prompt, images);
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  return parseJson(text, 'Claude CLI');
+}
+
+async function geminiOCROnly() {
+  if (!state.document) throw new Error('אין מסמך');
+  const sizeMB = state.document.size / 1024 / 1024;
+  const INLINE_THRESHOLD_MB = 14;        // Gemini inline_data total request limit ~20MB; base64 adds 33%, so raw must be ≤14MB
+  const FILES_API_LIMIT_MB = 2048;       // Gemini Files API limit (2GB)
+  if (sizeMB > FILES_API_LIMIT_MB) {
+    throw new Error(`מסמך גדול מ-2GB (${sizeMB.toFixed(0)}MB). חתוך לחלקים או דחס לפני העלאה.`);
+  }
+
+  const langs = (document.getElementById('lang-hints').value || 'auto').trim();
+  const writingType = document.getElementById('writing-type').value;
+  const writingTypeMap = { auto: 'זיהוי אוטומטי', typewritten: 'מכונת כתיבה', handwritten: 'כתב יד', mixed: 'מעורב', printed: 'דפוס' };
+
+  const ocrPrompt = `אתה מבצע OCR קפדני של מסמך היסטורי מהארכיון.
+
+**רמזים מוקדמים**:
+- שפות צפויות: ${langs || 'זיהוי אוטומטי'}
+- סוג כתיבה: ${writingTypeMap[writingType]}
+
+**משימתך הבלעדית**: לקרוא את המסמך מילה במילה. אסור לפרש, לתרגם, להוסיף או להמציא.
+
+**חוקי קריטיים**:
+1. תעתק רק מה שאתה רואה בבירור גמור.
+2. למילה לא ברורה: סמן \`[?]\` במקום המילה.
+3. לקטע לא קריא של מספר מילים: סמן \`[לא קריא — N מילים]\`.
+4. לעמוד פגום מאוד: סמן \`[עמוד לא קריא]\`.
+5. שמור על שורות מקוריות (אל תאחד שורות).
+6. לעמוד חדש: הוסף \`━━ עמוד N ━━\` בין עמודים.
+7. **אם המסמך בכתב לא-לטיני** (עברית, יידיש, רוסית, וכו׳): תעתיק במקור + הוסף תעתיק לטיני אחרי, במבנה הבא:
+   \`\`\`
+   [שורת מקור בעברית/יידיש]
+   ↳ [תעתיק לטיני באותיות לטיניות]
+   \`\`\`
+8. שפות לזיהוי: אם זיהית שפה שונה ממה שצוין ברמז, ציין זאת בראש (לדוגמה: "Language detected: Yiddish in Hebrew script").
+
+**החזר טקסט פשוט, לא JSON, לא code fence.**
+
+מבנה הפלט:
+\`\`\`
+[שפה(ות) שזוהו — בעברית]
+
+━━ עמוד 1 ━━
+[שורה 1 כפי שכתובה במסמך]
+[שורה 2]
+...
+
+━━ עמוד 2 ━━
+...
+\`\`\`
+
+⚠ אסור להוסיף תיאור, סיכום, או פרשנות. **רק הטקסט הגולמי כפי שמופיע במסמך.**
+
+⚠ עדיף שדה ריק / [?] / [לא קריא] על המצאת מילים. **אפס סובלנות להזיות.**`;
+
+  // Force a valid MIME type — Gemini rejects application/octet-stream for content processing
+  let mime = state.document.type || '';
+  if (!mime || mime === 'application/octet-stream') {
+    const lname = (state.document.name || '').toLowerCase();
+    if (lname.endsWith('.pdf')) mime = 'application/pdf';
+    else if (lname.endsWith('.jpg') || lname.endsWith('.jpeg')) mime = 'image/jpeg';
+    else if (lname.endsWith('.png')) mime = 'image/png';
+    else if (lname.endsWith('.tiff') || lname.endsWith('.tif')) mime = 'image/tiff';
+    else if (lname.endsWith('.webp')) mime = 'image/webp';
+    else mime = 'application/pdf'; // default for unknown — most archive docs are PDFs
+  }
+  window.yvDebug&&console.log('[Gemini OCR] doc MIME:', mime, 'size:', sizeMB.toFixed(1) + 'MB', 'name:', state.document.name);
+
+  // Build docPart (inline_data for small, file_data for large via Files API)
+  let docPart;
+  if (sizeMB <= INLINE_THRESHOLD_MB) {
+    // Small file path — inline
+    showStatus(`שלב 1/2 · מקודד את המסמך (${sizeMB.toFixed(1)}MB)…`, 'info');
+    const docB64 = await fileToBase64(state.document);
+    docPart = { inline_data: { mime_type: mime, data: docB64 } };
+  } else {
+    // Large file path — Gemini Files API (resumable upload + ACTIVE wait)
+    showStatus(`שלב 1/2 · מעלה מסמך גדול (${sizeMB.toFixed(1)}MB) ל-Gemini Files API…`, 'info');
+    const uploadedFile = await uploadToGeminiFiles(state.document, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      showStatus(`שלב 1/2 · העלאה: ${pct}% (${(loaded/1024/1024).toFixed(1)}/${(total/1024/1024).toFixed(1)} MB)…`, 'info');
+    }, state.apiKeys.gemini);
+    showStatus(`שלב 1/2 · ממתין ש-Gemini יעבד את המסמך…`, 'info');
+    await waitForGeminiFileActive(uploadedFile.name, state.apiKeys.gemini);
+    showStatus(`שלב 1/2 · המסמך מוכן. Gemini מבצע OCR…`, 'info');
+    // Google's docs are inconsistent — some examples use uploadedFile.uri (full URL),
+    // others use uploadedFile.name (e.g. 'files/abc-123'). Use the FULL URI which is
+    // what newer v1beta examples show, but fall back to name on failure.
+    docPart = { file_data: { file_uri: uploadedFile.uri || (geminiBase() + '/v1beta/' + uploadedFile.name), mime_type: uploadedFile.mimeType || mime } };
+    state._lastUploadedFile = uploadedFile; // save for fallback retry
+  }
+
+  const url = geminiBase() + '/v1beta/models/' + modelSelGemini.value + ':generateContent';
+  window.yvDebug&&console.log('[Gemini OCR] POST', url);
+  window.yvDebug&&console.log('[Gemini OCR] docPart kind:', docPart.inline_data ? 'inline_data' : 'file_data', 'mime:',
+    docPart.inline_data?.mime_type || docPart.file_data?.mime_type,
+    docPart.file_data ? 'uri:' + docPart.file_data.file_uri : `data:${(docPart.inline_data?.data?.length || 0)} chars`);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [ docPart, { text: ocrPrompt } ]}],
+      generationConfig: { temperature: 0, maxOutputTokens: 8192 }
+    })
+  });
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error('[Gemini OCR] HTTP', res.status, 'RAW BODY:', errBody);
+
+    // RETRY with alternative file_uri format (just 'files/abc' instead of full URL)
+    // if this was a 400 with Files API and we haven't retried yet
+    if (res.status === 400 && docPart.file_data && state._lastUploadedFile && !state._fileUriRetried) {
+      window.yvDebug&&console.log('[Gemini OCR] 400 with Files API — retrying with shortname file_uri');
+      state._fileUriRetried = true;
+      showStatus('שלב 1/2 · נסיון שני עם פורמט URI אלטרנטיבי…', 'info');
+      docPart = { file_data: { file_uri: state._lastUploadedFile.name, mime_type: state._lastUploadedFile.mimeType || mime } };
+      window.yvDebug&&console.log('[Gemini OCR] retry docPart:', docPart);
+      const res2 = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [ docPart, { text: ocrPrompt } ]}],
+          generationConfig: { temperature: 0, maxOutputTokens: 8192 }
+        })
+      });
+      state._fileUriRetried = false;
+      if (res2.ok) {
+        const data2 = await res2.json();
+        const text2 = (data2.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+        if (text2) {
+          window.yvDebug&&console.log('[Gemini OCR] retry SUCCESS');
+          return text2;
+        }
+      }
+      // Capture the retry error for display
+      const errBody2 = await res2.text().catch(() => '');
+      console.error('[Gemini OCR] retry also failed. RAW:', errBody2);
+    }
+
+    let err = {};
+    try { err = JSON.parse(errBody); } catch {}
+    console.error('[Gemini OCR] PARSED ERROR:', err);
+    const errMsg = err.error?.message || errBody.slice(0, 500);
+    const detailsStr = err.error?.details ? '\n\n=== פרטים מ-Google ===\n' + JSON.stringify(err.error.details, null, 2) : '';
+    const fullErr = `Gemini OCR HTTP ${res.status}: ${errMsg}${detailsStr}\n\n=== הגוף המלא ===\n${errBody.slice(0, 1500)}`;
+    const e = new Error(fullErr);
+    e.rawBody = errBody;
+    throw e;
+  }
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  if (!text) throw new Error('Gemini החזיר OCR ריק');
+  return text;
+}
+
+// =====================================================================
+//  Gemini Files API helpers (supports up to 2GB per file)
+//  Required for documents > 20MB (inline_data hard limit)
+// =====================================================================
+function fileToBase64(file) {
+  return new Promise((r, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => r(e.target.result.split(',')[1]);
+    reader.onerror = () => reject(reader.error || new Error('קריאת הקובץ נכשלה'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadToGeminiFiles(file, onProgress, apiKey) {
+  console.log('[Files API] Upload start:', file.name, file.size, file.type);
+  // Step 1: Initiate resumable upload — get the upload URL
+  // Note: Gemini requires a valid MIME type. application/octet-stream is rejected
+  // for image/PDF processing. Force application/pdf for unknown PDF files.
+  let mime = file.type || '';
+  if (!mime && file.name.toLowerCase().endsWith('.pdf')) mime = 'application/pdf';
+  if (!mime) mime = 'application/pdf'; // safe default for our use case
+  console.log('[Files API] Using MIME:', mime);
+
+  const startRes = await fetch(geminiBase() + '/upload/v1beta/files', {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': file.size.toString(),
+      'X-Goog-Upload-Header-Content-Type': mime,
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({ file: { display_name: file.name } }),
+  });
+  if (!startRes.ok) {
+    const err = await startRes.json().catch(() => ({}));
+    throw new Error(`Files API התחלה נכשלה: ${err.error?.message || startRes.status}`);
+  }
+  let uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
+  if (!uploadUrl) throw new Error('Files API לא החזיר URL להעלאה');
+  // When proxying, rewrite the upload URL to also go through our proxy
+  // (Google returns a direct googleapis.com URL that the firewall would block)
+  if (state.proxyGemini && state.localServerUrl) {
+    uploadUrl = uploadUrl.replace('https://generativelanguage.googleapis.com', state.localServerUrl + '/api/gemini-proxy');
+  }
+
+  // Step 2: Upload via XHR (so we can track progress)
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', uploadUrl);
+    xhr.setRequestHeader('Content-Length', file.size.toString());
+    xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
+    xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total);
+    });
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          console.log('[Files API] Upload complete. File:', data.file);
+          resolve(data.file);
+        } catch (e) { reject(new Error('Files API החזיר תגובה לא תקנית: ' + e.message)); }
+      } else {
+        console.error('[Files API] Upload HTTP', xhr.status, xhr.responseText);
+        reject(new Error(`Files API העלאה נכשלה: HTTP ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Files API: שגיאת רשת בהעלאה'));
+    xhr.send(file);
+  });
+}
+
+async function waitForGeminiFileActive(fileName, apiKey, maxAttempts = 60) {
+  console.log('[Files API] Polling for ACTIVE state:', fileName);
+  for (let i = 0; i < maxAttempts; i++) {
+    const res = await fetch(geminiBase() + '/v1beta/' + fileName, {
+      headers: { 'x-goog-api-key': apiKey },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('[Files API] Status check failed:', errText);
+      throw new Error(`בדיקת סטטוס Files API נכשלה: ${res.status} — ${errText.slice(0, 150)}`);
+    }
+    const data = await res.json();
+    if (i === 0 || i % 5 === 0) console.log(`[Files API] poll ${i+1}: state=${data.state}`);
+    if (data.state === 'ACTIVE') {
+      console.log('[Files API] File ACTIVE:', data);
+      return data;
+    }
+    if (data.state === 'FAILED') {
+      console.error('[Files API] File FAILED:', data);
+      throw new Error('Gemini נכשל בעיבוד הקובץ: ' + (data.error?.message || JSON.stringify(data.error || {})));
+    }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  throw new Error('Timeout — Gemini לא סיים לעבד את המסמך תוך 2 דקות.');
+}
+
+async function claudeStructureFromOCR(ocrText) {
+  const rulesPrompt = buildDocPrompt();
+  const ctxText = contextEl.value.trim();
+
+  const claudeContent = [
+    { type: 'text', text: `אני שולח לך **OCR שכבר בוצע ע"י Gemini** של מסמך היסטורי מהארכיון. תפקידך: לקחת את הטקסט הזה + מידע מוקדם + חוקי הקטלוג של ספיר → להפיק JSON מובנה לפי הסכימה.
+
+⚠ חשוב: אינך רואה את המסמך עצמו, רק את ה-OCR. אל תוסיף מידע מעבר למה שמופיע ב-OCR. אם Gemini סימן \`[?]\` או \`[לא קריא]\` — שמור על זה. אסור לנחש או להמציא.
+
+## OCR של Gemini
+
+\`\`\`
+${ocrText}
+\`\`\`
+
+## מידע מוקדם
+
+${ctxText || '(אין)'}
+
+## חוקי קטלוג + סכימת JSON
+
+${rulesPrompt}
+
+⚠ הערה: בשדה \`original_text\` השתמש בטקסט שלמעלה כפי שהוא — אל תשנה, אל תתקן, אל תוסיף.
+
+החזר JSON תקין בלבד.`}
+  ];
+
+  const res = await yvProviders.anthropicFetch(state, {
+    model: modelSelAnthropic.value,
+    max_tokens: 32000,
+    messages: [{ role: 'user', content: claudeContent }],
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Claude (שלב 2) HTTP ${res.status}: ${err.error?.message || ''}`);
+  }
+  const data = await res.json();
+  const text = (data.content?.[0]?.text || '').trim();
+  return parseJson(text, 'Claude');
+}
+
+// Identify
+const identifyBtn = document.getElementById('identify-btn');
+const identifyStatus = document.getElementById('identify-status');
+
+function refreshButtons() {
+  const hasDoc = !!state.document;
+  let hasKey, missingMsg = '';
+  if (state.provider === 'claude-cli') {
+    hasKey = hasClaudeCliReady();
+    if (!hasKey) missingMsg = 'מצב Claude CLI דורש URL של שרת מקומי (בהרצה מ-localhost מוגדר אוטומטית)';
+  } else {
+    hasKey = !!getActiveApiKey();
+    if (!hasKey) missingMsg = 'יש להגדיר API key';
+  }
+  identifyBtn.disabled = !(hasDoc && hasKey);
+  identifyBtn.title = !hasDoc ? 'יש להעלות מסמך' : (!hasKey ? missingMsg : '');
+  identifyBtn.innerHTML = state.provider === 'claude-cli'
+    ? '🔍 פענח (Claude קורא ישירות)'
+    : state.provider === 'gemini' ? '🔍 פענח (Gemini)' : '🔍 פענח (Claude)';
+}
+
+identifyBtn.addEventListener('click', async () => {
+  identifyBtn.disabled = true;
+  const providerLabel = state.provider === 'claude-cli' ? 'Claude (קריאה ישירה)' : state.provider === 'gemini' ? 'Gemini' : 'Claude';
+  identifyBtn.innerHTML = '<span class="spinner"></span>מפענח דרך ' + providerLabel + '…';
+  showStatus('שולח את המסמך ל-' + providerLabel + ' לפיענוח (30-90 שניות)…', 'info');
+  try {
+    const result = state.provider === 'claude-cli' ? await callClaudeCliDirect()
+      : state.provider === 'gemini' ? await callGemini() : await callAnthropic();
+    state.identification = result;
+    fillResults(result);
+    document.getElementById('results').classList.add('show');
+    document.getElementById('no-results').style.display = 'none';
+    document.getElementById('download-bar').style.display = 'flex';
+    showStatus('✓ הפיענוח הושלם.', 'ok');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    console.error(err);
+    if (err.rawText) {
+      showRawResponseError(err);
+    } else {
+      showStatus('שגיאה: ' + err.message, 'err');
+    }
+  } finally {
+    identifyBtn.disabled = false;
+    identifyBtn.innerHTML = '🔍 פענח מסמך';
+    refreshButtons();
+  }
+});
+
+function showRawResponseError(err) {
+  const status = identifyStatus;
+  const safeRaw = esc(err.rawText || '');
+  const safeParse = esc(err.parseError || '');
+  status.innerHTML = `
+    <div style="font-weight:700; margin-bottom:6px">❌ ${esc(err.message)}</div>
+    <div style="font-size:12px; margin-bottom:10px">פירוט שגיאת JSON: <code style="background:var(--card-hover); color:var(--ink); padding:2px 6px; border-radius:3px; direction:ltr; unicode-bidi:isolate;">${safeParse}</code></div>
+    <details>
+      <summary style="cursor:pointer; font-weight:600; padding:6px 0">▸ הצג את התגובה הגולמית של ${esc(err.label || 'AI')} (להעתקה / תיקון ידני)</summary>
+      <textarea id="raw-response-area" readonly style="width:100%; min-height:240px; margin-top:8px; font-family:'SF Mono',Menlo,monospace; font-size:11.5px; direction:ltr; text-align:left; line-height:1.4;">${safeRaw}</textarea>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+        <button type="button" id="copy-raw-btn" class="ghost" style="padding:5px 12px; font-size:12px">📋 העתק תגובה</button>
+        <button type="button" id="retry-parse-btn" class="ghost" style="padding:5px 12px; font-size:12px">🔧 ערוך ונסה לפענח ידנית</button>
+      </div>
+      <div style="font-size:11px; color:var(--muted); margin-top:6px">💡 אם התגובה חתוכה באמצע — סימן ש-max_tokens נגמר. נסה מסמך קצר יותר או חלק את המסמך.</div>
+    </details>
+  `;
+  status.className = 'status-msg show err';
+  document.getElementById('copy-raw-btn').addEventListener('click', () => {
+    const ta = document.getElementById('raw-response-area');
+    navigator.clipboard.writeText(ta.value).then(() => {
+      const btn = document.getElementById('copy-raw-btn');
+      const orig = btn.textContent;
+      btn.textContent = '✓ הועתק';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    });
+  });
+  document.getElementById('retry-parse-btn').addEventListener('click', () => {
+    const ta = document.getElementById('raw-response-area');
+    ta.removeAttribute('readonly');
+    ta.style.background = 'color-mix(in srgb, var(--warn) 16%, var(--card))';
+    ta.focus();
+    const btn = document.getElementById('retry-parse-btn');
+    btn.textContent = '✓ פענח את הערוך';
+    btn.onclick = () => {
+      try {
+        const fixed = JSON.parse(ta.value.trim());
+        state.identification = fixed;
+        fillResults(fixed);
+        document.getElementById('results').classList.add('show');
+        document.getElementById('no-results').style.display = 'none';
+        document.getElementById('download-bar').style.display = 'flex';
+        showStatus('✓ נטען מ-JSON הערוך.', 'ok');
+        document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) {
+        alert('JSON עדיין לא תקין: ' + e.message);
+      }
+    };
+  });
+}
+
+function showStatus(msg, kind) { identifyStatus.textContent = msg; identifyStatus.className = 'status-msg show ' + (kind || ''); }
+
+// (fileToBase64 is defined further down — used by Gemini Files API path)
+
+// Build private-only rules block — injected only when state.doc_mode === 'private'
+function buildPrivateModeRules() {
+  if (state.doc_mode !== 'private') return '';
+  return `
+
+═══════════════════════════════════════════════════════════════
+📋 **חוקים ייחודיים לקטלוג מקור פרטי** (לפי נהלי ספיר)
+═══════════════════════════════════════════════════════════════
+
+המסמך מקוטלג כחלק מתיק/אוסף ממקור פרטי (משפחה, אספן). פעל לפי הנהלים:
+
+### א. עקרונות ניסוח כותר (title_he):
+- שיקוף **התוכן העיקרי**: סוג המסמך + נושא מרכזי + דמויות + טווח שנים
+- ללא נקודות. רק פסיקים במקרה הצורך
+- ללא כפילות עם "מידע נוסף"
+- שמות פרטיים/משפחה/מקומות — בצורה הנפוצה ביותר
+- טווח שנים בלבד (לא תאריכים ספציפיים)
+- דוגמה טובה: "מכתבים שנשלחו אל לסלו וייס בפלוגות עבודה בהונגריה בידי בני משפחה וחברים בבודפשט ב-1943–1944"
+
+### ב. מבנה "מידע נוסף":
+- פסקה 1 (info_main): תוכן עיקרי של התיק. מסמכים ייחודיים — בולטים בראש פסקה.
+- פסקה "בתיק גם:" (info_also): רשימה קצרה של מסמכים משניים, נקודה אחת לכל אחד.
+- "הערות מוסר החומר" (info_donor): בסוף בלבד. נרטיב רציף בגוף שלישי. רק מה שקשור לתיק.
+- אל תחזור על מה שכבר בכותר.
+
+### ג. שילוב מקור חיצוני:
+- ברירת מחדל: רק מידע מהמסמכים עצמם.
+- חריג: זהויות בדויות → "ככל הנראה X"; גורל אנשים → ציין במידע נוסף עם הפניה לפריט נלווה.
+- "ככל הנראה" חיוני להבחנה בין ודאות להשלמה.
+
+### ד. מסמכים ייחודיים:
+- זהה "יהלומים" — תעודות ספציפיות, מכתבי גורל, יומנים, רשימות נספים — וקטלג אותם כפריט תוכן בנפרד (גם אם נשאר פיזית בתיק).
+- ציין במפורש בכותר/מידע נוסף ראשון.
+
+### ה. תאריכים אותנטי + משוחזר:
+- date_start_authentic: כפי שכתוב במסמך (שנה / חודש שנה / מלא)
+- date_start_reconstructed: תאריך מלא DD/MM/YYYY מבוסס על הקשר
+- אם רק שנה ידועה → 01/01/YYYY לתחילה, 31/12/YYYY לסיום
+
+### ו. מקוריות (originality):
+- "מקורי" — כתב יד, דפוס מקור, מכונת כתיבה, פוטוקופיה מהתקופה
+- "לא מקורי" — הדפסה מודרנית, סריקה, צילום, מקובץ דיגיטלי
+
+### ז. שדות יוצרים:
+- creator_person: שם האדם שיצר את התוכן (כותב, מחבר)
+- creator_org: שם הארגון אם רלוונטי (אם זה אוסף מארגון)
+
+### ח. סיווג (classification):
+- "בלתי מסווג" (ברירת מחדל) — פתוח לציבור
+- "מוגבל" — רק באולם העיון
+- "שמור" — אישור בלבד
+- אם "מוגבל" או "שמור" — חובה classification_reason
+
+### ט. מיועד להקלדת שמות (names_typing):
+- "כן" אם המסמך כולל שמות מלאים של נספים/מגורשים/תושבים יהודיים בתקופת השואה
+- "לא" אחרת
+
+### י. פריטים נלווים (related_items):
+- עד 5, רק קשורים ישירות לתיק (לאדם/למשפחה/לגוף)
+- העדף מאגרי הארכיון (דפי עד, עדויות)
+
+`;
+}
+
+function buildDocPrompt() {
+  const privateRules = buildPrivateModeRules();
+  const ctx = contextEl.value.trim();
+  const langHints = document.getElementById('lang-hints').value.trim();
+  const writingType = document.getElementById('writing-type').value;
+  const writingTypeMap = { auto: 'זיהוי אוטומטי', typewritten: 'מכונת כתיבה', handwritten: 'כתב יד', mixed: 'מעורב', printed: 'דפוס' };
+  const thesaurusBrief = (state.thesaurus_top || []).map(t => `${t.he} | ${t.en}`).join('\n');
+  const translationMode = document.getElementById('translation-mode')?.value || 'auto';
+
+  // Translation mode rules — controls how translation_he/translation_en should look
+  let translationModeBlock = '';
+  if (translationMode === 'auto') {
+    translationModeBlock = `
+═══════════════════════════════════════════════════════════════
+📝 **אופן תרגום — אוטומטי לפי אורך**
+═══════════════════════════════════════════════════════════════
+
+- **טקסט קצר** (~עד 500 מילים, כ-1–2 עמודים): תרגום מלא ל-translation_he ו-translation_en.
+- **טקסט ארוך** (מעל 500 מילים): **אין לתרגם מילולית את כל הטקסט.** במקום זה, ב-translation_he ו-translation_en כתוב **סיכום מובנה** של 8–20 שורות שמכסה את כל הנושאים המרכזיים בסדר שלהם, עם שמות, תאריכים, מקומות ופרטים חשובים. שמור עברית/אנגלית בקובץ מקצועי-ארכיוני.
+- summary_he ו-summary_en נשארים כתקציר קצר (3-5 שורות) — נפרד מ-translation שיכול להיות סיכום מורחב.
+
+**חוק לטקסט ארוך**: אל תיצור פסקאות תרגום של עמודים שלמים. ארכיונאי יודע לקרוא את המקור (original_text). תפקיד התרגום במצב זה: לאפשר חיפוש ושליפה ע"פ נושאים, לא לשכפל את כל הטקסט.`;
+  } else if (translationMode === 'summary') {
+    translationModeBlock = `
+═══════════════════════════════════════════════════════════════
+📑 **אופן תרגום — סיכום מורחב בלבד**
+═══════════════════════════════════════════════════════════════
+
+- **אסור** לתרגם את הטקסט מילה במילה.
+- ב-translation_he ו-translation_en כתוב **סיכום מובנה** של 8–25 שורות:
+  * מכסה את כל הנושאים בסדר שלהם
+  * כולל שמות, תאריכים, מקומות, אירועים, אישים מרכזיים
+  * שומר על דיוק עובדתי — מה שלא ברור = "[?]"
+  * עברית/אנגלית מקצועית-ארכיונית
+- summary_he ו-summary_en נשארים תקציר קצר (3-5 שורות).`;
+  } else {
+    translationModeBlock = `
+═══════════════════════════════════════════════════════════════
+📝 **אופן תרגום — מלא**
+═══════════════════════════════════════════════════════════════
+
+- תרגם את כל הטקסט במלואו ל-translation_he ול-translation_en.
+- אסור לדלג על קטעים.
+- אם הטקסט גדול מאוד וייתכן חיתוך בפלט — תעדיף לחלק לפסקאות עם שורת ריק ביניהן.`;
+  }
+
+  return `אתה מקטלג בכיר במדור המסמכים של הארכיון, מומחה לפיענוח מסמכים היסטוריים מהתקופה 1900–1948.
+
+**סוג רישום:** ${state.doc_mode === 'private' ? '👤 מסמך ממקור פרטי (נוהל ספיר מורחב)' : '🏛 מסמך מוסדי (רישום סטנדרטי)'}
+${privateRules}
+${translationModeBlock}
+
+═══════════════════════════════════════════════════════════════
+🛑🛑🛑 **חוק עליון — אפס סובלנות להזיות** 🛑🛑🛑
+═══════════════════════════════════════════════════════════════
+
+תפקידך **היחיד והבלעדי**: לקרוא מה שכתוב בבירור במסמך. לא יותר, לא פחות.
+
+**אם אינך קורא משהו בוודאות מוחלטת — אסור לכתוב אותו.**
+
+דמיין: ארכיונאי מנוסה לידך אומר: "תקרא לי מה כתוב בדיוק. אם אתה לא בטוח — תגיד 'לא ברור' או 'לא קריא'. אסור לנחש." זאת המשימה.
+
+═══════════════════════════════════════════════════════════════
+📊 **רמת ודאות — חובה לכל שדה**
+═══════════════════════════════════════════════════════════════
+
+לכל שדה שאתה ממלא, החזר גם רמת ודאות:
+- \`"✓"\` — **ודאי**: אתה רואה כל אות/ספרה בבירור גמור
+- \`"~"\` — **סביר**: רוב הטקסט קריא, חלק קטן לא ברור (סמן \`[?]\` במקום הבעייתי)
+- \`"?"\` — **השערה**: אתה מנחש בהתבסס על קונטקסט/חלק חלקי
+- \`""\` (ריק) — **לא ידוע / לא קיים**: השדה לא במסמך או לא קריא בכלל
+
+**אם רמת הודאות תהיה "?" — תחשוב שוב: האם באמת ראית את זה? אם לא — מחק והשאר ריק.**
+
+═══════════════════════════════════════════════════════════════
+📊 **Dual-Axis: V (Visual) + H (Historical) — חובה**
+═══════════════════════════════════════════════════════════════
+ראה \`reference/confidence_dual_axis.md\`.
+
+המערכת הקיימת (✓/~/?) מודדת רק את ציר ה-V (כמה ברור קריא במסמך).
+מעכשיו, **לכל שדה תחזיר גם H** = עד כמה המידע תואם היסטוריה מתועדת.
+
+**מבנה ב-JSON (חובה):**
+- שדה הוודאות הקיים (\`*_conf\` / \`confidence\`) ← נשאר ציר ה-V.
+- הוסף שדה מקביל \`*_h_conf\` (או \`h_confidence\`) עם הערכים: \`"✓"\` / \`"~"\` / \`"?"\` / \`""\`.
+
+**בטקסט להזרקה ל-HTML:** סמן זוג inline אחרי כל קביעה — \`<span class="cv c-mid">V~</span><span class="ch c-high">H✓</span>\`.
+
+**חוק קריטי:** אם V וגם H = "?" → אל תכתוב את הקביעה. השאר ריק.
+
+**דוגמאות:**
+- תאריך כתוב בבירור "1942" → V✓ H✓
+- תאריך בכתב יד דהוי שניתן לקרוא כ-"1942" → V~ H✓
+- שם משפחה שאתה מצליח לקרוא חלקית, ותואם משפחה מוכרת בארכיון → V~ H✓
+- שם פרטי לא קריא בכלל אך המוסר כתב מי זה → V? H✓
+- חתימה שנראית "אולי X" ללא תיעוד אחר → V~ H? (סף תחתון — שקול להשאיר ריק)
+
+═══════════════════════════════════════════════════════════════
+❌ **רשימת איסורים מוחלטים**
+═══════════════════════════════════════════════════════════════
+
+1. **אסור** "להשלים" מילים שלא רואים — אפילו אם ההקשר ברור
+2. **אסור** להמציא שמות אישים שלא כתובים במפורש
+3. **אסור** לנחש תאריכים — אם רואים רק "194?" כתוב "194?" ואל תכתוב "1942"
+4. **אסור** לנחש שולח/נמען מתוכן המכתב
+5. **אסור** לתרגם מילים שלא קראת (השאר \`[חסר]\`)
+6. **אסור** להוסיף "תוכן צפוי" של מסמך מהתקופה
+7. **אסור** ל"שיפור" טקסט פגום — תעתיק כפי שהוא, פגום
+8. **אסור** להמציא ביוגרפיה / קונטקסט בלי שיש בסיס במסמך
+9. **אסור** להחזיר שדה מלא עם confidence "?" — או שיש בסיס מ-OCR (✓/~), או שריק
+
+═══════════════════════════════════════════════════════════════
+✅ **מה כן לעשות**
+═══════════════════════════════════════════════════════════════
+
+- כל שדה קצר → או בודק כל אות (✓), או סבור (~), או ריק
+- בטקסט הארוך → סמן \`[?]\` בתוך המילים הלא ברורות, \`[לא קריא — N מילים]\` לחלקים שלמים
+- בתרגום → \`[חסר]\` במקום מילים לא קראות
+- בשדות מטא-דאטה (שולח/נמען/תאריך/מקום) → רק אם **כתוב במפורש** במסמך
+- אם המסמך כל-כך פגום שאתה לא קורא כלום — החזר רוב השדות ריקים. **זאת תוצאה לגיטימית.**
+
+═══════════════════════════════════════════════════════════════
+
+## משימה: OCR + תרגום + קטלוג
+
+### א. שפות צפויות (לפי הרמז)
+${langHints || 'אין רמז — זהה אוטומטית. שפות אפשריות: גרמנית (כולל Fraktur/Sütterlin), יידיש, פולנית, רוסית (כולל פרה-מהפכנית — ѣ, ъ בסוף מילים), אוקראינית, צ\'כית, סלובקית, הונגרית, רומנית, יוונית, ליטאית, לטבית, אסטונית, עברית, אנגלית, צרפתית, איטלקית, ספרדית, הולנדית, נורווגית.'}
+
+### א.1 יידיש — הוראות ספציפיות (חשוב!)
+- **כתב המקור**: יידיש כתובה כמעט תמיד באותיות עבריות (מימין לשמאל). אל תבלבל בין יידיש לעברית מודרנית — הם נראים דומים אבל המילים שונות (יידיש: "אַ", "פֿאַר", "אױך"; עברית: "א", "בעבור", "גם").
+- **דיאלקטים**: זהה דיאלקט אם אפשר — Polish/Galitsianer (גליצי), Litvish (ליטאי), Romanian (רומני), Ukrainian. סמן בהערות.
+- **אורתוגרפיה תקנית**: שמור על האות עם הסימן (אַ, אָ, פֿ, פּ, בֿ, בּ, ױ, ײַ) כפי שהיא במקור. אל "תתקן" ל-YIVO אם זה ב-orthography ישן.
+- **תעתיק YIVO**: תמיד תעתק לפי תקן YIVO (מכון יידישער ייִוואָ): פֿאָלקסבלאַט → \`folksblat\`; ייִדיש → \`yidish\`; אַ → \`a\`; אָ → \`o\`; ע → \`e\`; ױ → \`oy\`; ײַ → \`ay\`; ײ → \`ey\`; שׁ → \`sh\`; טש → \`tsh\` או \`ch\`.
+- **מילים עבריות (ל"ק=לשון קודש)**: בתוך טקסט יידי, מילים שמקורן בעברית (תורה, חתונה, רב, שבת) מקבלות תעתיק עברי-מסורתי, לא YIVO. סמן: \`khasene\` (חתונה — תעתיק YIVO) או \`hasene\` (תעתיק עברי).
+- **כתב יד יידי**: הכתב הקורסיבי דומה לכתב יד עברי אבל עם תכונות ייחודיות. אם לא ברור — סמן \`[?]\`.
+- **תרגום**: תרגם לעברית מודרנית בצורה זורמת, לא מילולית מדי. שמור על משמעות תרבותית (גוואַלד! → "אוי וויי!" / "הצילו!").
+
+
+### ב. סוג הכתיבה
+${writingTypeMap[writingType]}
+
+### ג. שלבי הביצוע
+1. **OCR מלא** — תעתק את כל הטקסט הנראה במסמך (כל העמודים אם רב-עמודים)
+   - שמור על הצורות האורתוגרפיות המקוריות (כולל ѣ, ъ, ß, ä, ö, ü ב-Fraktur, וכו׳)
+   - לכתב יד: אם משהו לא ברור — סמן \`[?]\` או \`[לא קריא]\`
+   - לטקסט מכמה שפות באותו מסמך — סמן את השפה לפני כל קטע: \`[גרמנית]\`, \`[יידיש]\`, וכו׳
+2. **תעתיק** — אם הטקסט בכתב לא-לטיני (יידיש, רוסית, יוונית), הוסף תעתיק לאותיות לטיניות
+3. **תרגום לעברית** — תרגום מודרני וזורם, שומר על משמעות מקורית
+4. **תרגום לאנגלית** — אותו דבר באנגלית
+
+### ד. קטלוג ב-JSON
+- כותר HE + EN (פורמט: סוג מסמך, תיאור קצר, מקום, תאריך)
+- סוג מסמך (מכתב / גלויה / תעודה / רשימה / הצהרה / יומן / מנשר / פוסטר / חוזה / וכו׳)
+- שולח, נמען, מקום, תאריך
+- שפות מזוהות
+- אישים מוזכרים (עם רמת ודאות ✓/~/?)
+- קונטקסט היסטורי
+
+### ה. תאריכים — חוק קריטי 🛑
+
+**אם אין תאריך מדויק כתוב במסמך, ואין דרך מוצקה להסיק אותו → השאר ריק או רק תקופה.**
+
+היררכיה:
+1. \`DD/MM/YYYY\` מלא — רק אם כתוב במפורש
+2. \`חודש + שנה\` או \`שנה בלבד\` — רק עם ראיה ישירה
+3. \`טווח שנים\` או \`תקופה\` (\`לפני המלחמה\`, \`שנות ה-30\`) — מותר אם יש בסיס
+4. **לא ידוע** → השאר את doc_date ריק. עדיף על המצאה.
+
+❌ אסור: לנחש שנה ספציפית מהאסתטיקה של המסמך לבד; להמציא תאריך מלא מתוך תקופה.
+
+### ארץ ישראל
+לפני 14/05/1948 → \`Mandatory Palestine\`
+
+### ו. מידע מוקדם שניתן
+${ctx || '(אין מידע מוקדם)'}
+
+### ז. נושאים מהתזאורוס (עד 10, רק מהרשימה הסגורה)
+\`\`\`
+${thesaurusBrief}
+\`\`\`
+
+## פלט נדרש — JSON תקין בלבד (ללא code fences)
+
+לכל שדה תוכן (כותר, מטא-דאטה, תקציר, וכו׳) — תחזיר זוג: הערך + רמת ודאות.
+
+\`\`\`json
+{
+  "title_he":            "...",   "title_he_conf":           "✓ | ~ | ? | \"\"",
+  "title_en":            "...",   "title_en_conf":           "...",
+  "doc_type":            "...",   "doc_type_conf":           "...",
+  "archive_id":          "",      "archive_id_conf":         "...",
+  "intake_num":          "",      "intake_num_conf":         "...",
+  "doc_date":            "",      "doc_date_conf":           "...",
+  "languages":           "",      "languages_conf":          "...",
+  "writing_type":        "",      "writing_type_conf":       "...",
+  "pages_count":         "",      "pages_count_conf":        "...",
+  "sender_he":           "",      "sender_he_conf":          "...",
+  "sender_en":           "",      "sender_en_conf":          "...",
+  "recipient_he":        "",      "recipient_he_conf":       "...",
+  "recipient_en":        "",      "recipient_en_conf":       "...",
+  "place_he":            "",      "place_he_conf":           "...",
+  "place_en":            "",      "place_en_conf":           "...",
+  "summary_he":          "",      "summary_he_conf":         "...",
+  "summary_en":          "",      "summary_en_conf":         "...",
+  "original_text":       "",      "original_text_conf":      "...",
+  "transliteration":     "",      "transliteration_conf":    "...",
+  "translation_he":      "",      "translation_he_conf":     "...",
+  "translation_en":      "",      "translation_en_conf":     "...",
+  "persons_he":          "",      "persons_he_conf":         "...",
+  "persons_en":          "",      "persons_en_conf":         "...",
+  "context_he":          "",      "context_he_conf":         "...",
+  "context_en":          "",      "context_en_conf":         "...",
+  "decipher_notes":      "",
+  "subjects_he":         [],
+  "subjects_en":         [],
+  "overall_readability": "✓ ברור | ~ חלקי קריא | ? קריא חלקית מאוד | × לא קריא כמעט",
+  "unreadable_count":    0
+}
+\`\`\`
+
+**חוקי קריטיים לפלט**:
+- אם הטקסט המקורי כולל \`[?]\` → confidence הוא לא יותר מ-\`~\`
+- אם הטקסט המקורי כולל \`[לא קריא]\` → confidence הוא לא יותר מ-\`~\`
+- אם בכלל לא קראת מילה → השדה ריק, \`_conf: ""\`
+- שדה עם confidence \`"?"\` חייב להיות בסיסי-ביותר. אם אתה לא יכול להצדיק את זה → תחזיר ריק
+- \`overall_readability\` הוא הערכה כללית של איכות הסריקה
+- \`unreadable_count\` הוא מספר משוער של מילים שלא הצלחת לקרוא בכלל
+
+**עיקרון אחרון**: אם אתה לא בטוח אם להחזיר ערך — **אל תחזיר.** ארכיונאי אנושי יראה את התוצאה ויחליט אם להוסיף ידע מקצועי. אסור שתחליט במקומו על בסיס ניחוש.
+
+${state.doc_mode === 'private' ? `
+### שדות נוספים שחובה להחזיר במצב מקור פרטי:
+
+\`\`\`json
+{
+  "division_name": "שם / סימול חטיבה (למשל O.93)",
+  "item_type": "פריט תוכן | מסמך-רשימה | מסמך ייחודי",
+  "prev_division": "סימול חטיבה קודם (אם הועבר)",
+  "prev_file": "סימול תיק קודם",
+  "creator_person": "שם יוצר התוכן (אדם)",
+  "creator_org": "ארגון/גוף שיצר את החומר",
+  "date_start_authentic": "תאריך תחילה כפי שכתוב (חלקי או מלא)",
+  "date_start_reconstructed": "DD/MM/YYYY מלא",
+  "date_end_authentic": "תאריך סיום כפי שכתוב",
+  "date_end_reconstructed": "DD/MM/YYYY מלא",
+  "originality": "מקורי | לא מקורי",
+  "info_main": "פסקת תוכן עיקרי של 'מידע נוסף'",
+  "info_also": "תוכן 'בתיק גם:' — מסמכים משניים, נקודה לכל אחד",
+  "info_donor": "הערות מוסר החומר — נרטיב רציף בגוף שלישי, רק חלקים שקשורים למסמכים",
+  "content_note": "הערת תוכן — הבהרות תוכניות, סתירות, מקורות חיצוניים",
+  "admin_note": "הערת אדמיניסטרציה — פנימי",
+  "names_typing": "כן | לא",
+  "related_items": "פריטים נלווים (עד 5, מהארכיון בלבד אם אפשר)",
+  "classification": "בלתי מסווג | מוגבל | שמור",
+  "classification_reason": "נימוק (חובה אם 'מוגבל' או 'שמור')",
+  "show_intranet": "Yes | No"
+}
+\`\`\`
+
+⚠ כללים מיוחדים למקור פרטי:
+- כל שדה לא ידוע → ריק ("")
+- info_main + info_also + info_donor אסור שיחזרו על מידע מהכותר
+- "ככל הנראה" חיוני בכל ניחוש פרשני (אבל עדיין: רק עם בסיס)
+- creator_person/creator_org נפרדים — לא לערבב
+- date_start_reconstructed תמיד מלא DD/MM/YYYY (שלם)
+` : ''}
+
+החזר JSON בלבד.`;
+}
+
+async function callGemini() {
+  if (!state.document) throw new Error('אין מסמך');
+  const sizeMB = state.document.size / 1024 / 1024;
+  const INLINE_THRESHOLD_MB = 14;        // base64 adds 33%, request limit ~20MB
+  const FILES_API_LIMIT_MB = 2048;
+  if (sizeMB > FILES_API_LIMIT_MB) {
+    throw new Error(`מסמך גדול מ-2GB (${sizeMB.toFixed(0)}MB). חתוך לחלקים.`);
+  }
+
+  const mime = state.document.type === 'application/pdf' ? 'application/pdf' : state.document.type;
+  let part;
+  if (sizeMB <= INLINE_THRESHOLD_MB) {
+    showStatus(`מקודד את המסמך (${sizeMB.toFixed(1)}MB)…`, 'info');
+    const docB64 = await fileToBase64(state.document);
+    part = { inline_data: { mime_type: mime, data: docB64 } };
+  } else {
+    // Use Gemini Files API for >18MB files
+    showStatus(`מעלה מסמך גדול (${sizeMB.toFixed(1)}MB) ל-Gemini Files API…`, 'info');
+    const uploadedFile = await uploadToGeminiFiles(state.document, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      showStatus(`העלאה: ${pct}% (${(loaded/1024/1024).toFixed(1)}/${(total/1024/1024).toFixed(1)} MB)…`, 'info');
+    }, getActiveApiKey());
+    showStatus(`ממתין ש-Gemini יעבד את המסמך…`, 'info');
+    await waitForGeminiFileActive(uploadedFile.name, getActiveApiKey());
+    showStatus(`מבצע פיענוח…`, 'info');
+    part = { file_data: { file_uri: uploadedFile.uri, mime_type: uploadedFile.mimeType || mime } };
+  }
+
+  const url = geminiBase() + '/v1beta/models/' + getActiveModel() + ':generateContent';
+  console.log('[callGemini] POST', url);
+  console.log('[callGemini] part kind:', part.inline_data ? 'inline_data' : 'file_data', 'mime:',
+    part.inline_data?.mime_type || part.file_data?.mime_type,
+    part.file_data ? 'uri:' + part.file_data.file_uri : `data:${(part.inline_data?.data?.length || 0)} chars`);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [part, { text: buildDocPrompt() + '\n\n⚠ החזר JSON תקין בלבד ללא code-fence ולא טקסט הקדמה.' }] }],
+      // maxOutputTokens 8192 = Gemini 2.5 Flash hard limit; responseMimeType removed
+      // (it triggers 400 on some model+file_data combinations)
+      generationConfig: { temperature: 0, maxOutputTokens: 8192 }
+    })
+  });
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error('[Gemini callGemini] HTTP', res.status, 'RAW BODY:', errBody);
+    // Auto-log to local server so the developer can read it without copy-paste
+    if (state.localServerUrl) {
+      const diagPayload = {
+        when: new Date().toISOString(),
+        where: 'callGemini',
+        http_status: res.status,
+        request_url: url,
+        model: getActiveModel(),
+        part_kind: part.inline_data ? 'inline_data' : 'file_data',
+        mime: part.inline_data?.mime_type || part.file_data?.mime_type,
+        file_size_mb: sizeMB.toFixed(2),
+        file_name: state.document.name,
+        file_uri: part.file_data?.file_uri || null,
+        response_body: errBody.slice(0, 4000),
+      };
+      fetch(state.localServerUrl + '/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: '__DIAGNOSTIC_LOG__\n' + JSON.stringify(diagPayload, null, 2) }),
+      }).catch(() => {});
+    }
+    let err = {}; try { err = JSON.parse(errBody); } catch {}
+    const details = err.error?.details ? '\n\nפרטים:\n' + JSON.stringify(err.error.details, null, 2) : '';
+    throw new Error(`Gemini HTTP ${res.status}: ${err.error?.message || errBody.slice(0, 200)}${details}\n\n=== גוף מלא ===\n${errBody.slice(0, 1500)}\n\n(פתח DevTools Console לפרטים)`);
+  }
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+  if (!text) throw new Error('Gemini תגובה ריקה');
+  return parseJson(text, 'Gemini');
+}
+
+async function callAnthropic() {
+  if (!state.document) throw new Error('אין מסמך');
+  // Remote access rides Cloudflare, which cuts a single HTTP response at ~100s —
+  // a full Sapir decipher measures 2–10 min, so this path 502s mid-run (live
+  // 2026-07-11, 120s abort). The job-polling path (Claude CLI/שרת) is immune.
+  if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+    showStatus('⚠ פענוח מלא דרך Anthropic API בגישה מרחוק עלול להיקטע אחרי ~100 שנ׳ (מגבלת Cloudflare) — מומלץ לבחור "Claude CLI (שרת)" שרץ ברקע ולא נקטע', 'info');
+  }
+  const sizeMB = state.document.size / 1024 / 1024;
+  if (sizeMB > 30) throw new Error(`מסמך גדול מ-30MB (${sizeMB.toFixed(1)}MB).`);
+  const docB64 = await fileToBase64(state.document);
+  const isPdf = state.document.type === 'application/pdf';
+  const docPart = isPdf
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: docB64 } }
+    : { type: 'image', source: { type: 'base64', media_type: state.document.type, data: docB64 } };
+
+  const data = await yvProviders.anthropicJson(state, {
+    model: getActiveModel(),
+    max_tokens: 32000,
+    messages: [{ role: 'user', content: [docPart, { type: 'text', text: buildDocPrompt() }] }]
+  });
+  return parseJson(data.content?.[0]?.text || '', 'Claude');
+}
+
+// bracket-count JSON repair — shared in yv-providers.js (default error-message variant).
+function parseJson(text, label) { return yvProviders.parseJson(text, label); }
+
+// Map confidence symbol to badge class + label
+function confInfo(c) {
+  switch ((c || '').trim()) {
+    case '✓': return { cls: 'high',   label: '✓ ודאי' };
+    case '~': return { cls: 'medium', label: '~ סביר' };
+    case '?': return { cls: 'low',    label: '? השערה' };
+    default:  return { cls: 'empty',  label: '— ריק' };
+  }
+}
+
+// Map field id → confidence key in JSON
+const FIELD_CONF_MAP = {
+  'r-title-he':       'title_he_conf',
+  'r-title-en':       'title_en_conf',
+  'r-doc-type':       'doc_type_conf',
+  'r-archive-id':     'archive_id_conf',
+  'r-intake-num':     'intake_num_conf',
+  'r-doc-date':       'doc_date_conf',
+  'r-languages':      'languages_conf',
+  'r-writing-type':   'writing_type_conf',
+  'r-pages-count':    'pages_count_conf',
+  'r-sender-he':      'sender_he_conf',
+  'r-sender-en':      'sender_en_conf',
+  'r-recipient-he':   'recipient_he_conf',
+  'r-recipient-en':   'recipient_en_conf',
+  'r-place-he':       'place_he_conf',
+  'r-place-en':       'place_en_conf',
+  'r-summary-he':     'summary_he_conf',
+  'r-summary-en':     'summary_en_conf',
+  'r-original-text':  'original_text_conf',
+  'r-transliteration':'transliteration_conf',
+  'r-translation-he': 'translation_he_conf',
+  'r-translation-en': 'translation_en_conf',
+  'r-persons-he':     'persons_he_conf',
+  'r-persons-en':     'persons_en_conf',
+  'r-context-he':     'context_he_conf',
+  'r-context-en':     'context_en_conf',
+};
+
+function paintConfidenceFor(id, conf) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  // Only mark if there's a value (otherwise no badge needed)
+  el.dataset.conf = el.value.trim() ? (conf || '') : '';
+
+  // Find the label/header for this field — look up the chain
+  // Look for nearest .compact-row label (preferred) or .lang-tag (preferred for bilingual rows)
+  let labelEl = null;
+  if (el.parentElement?.parentElement?.classList.contains('compact-row')) {
+    labelEl = el.parentElement.parentElement.querySelector('label');
+  }
+  if (!labelEl) {
+    // Look for a sibling lang-tag (for bilingual rows)
+    let parent = el.parentElement;
+    while (parent && !parent.querySelector('.lang-tag')) parent = parent.parentElement;
+    if (parent) labelEl = parent.querySelector('.lang-tag');
+  }
+  if (!labelEl) {
+    // Look for h4 ancestor
+    let p = el.parentElement;
+    while (p && !p.querySelector('h4')) p = p.parentElement;
+    if (p) labelEl = p.querySelector('h4');
+  }
+  if (!labelEl) return;
+
+  // Remove old badge for THIS field if any
+  const oldBadge = labelEl.querySelector('.conf-badge[data-for="' + id + '"]');
+  if (oldBadge) oldBadge.remove();
+
+  // Don't add a badge for empty fields with empty conf
+  if (!el.value.trim() && (!conf || conf === '')) return;
+
+  const info = confInfo(conf);
+  const badge = document.createElement('span');
+  badge.className = 'conf-badge ' + info.cls;
+  badge.textContent = info.label;
+  badge.dataset.for = id;
+  badge.title = info.cls === 'high' ? 'AI סימן: ראיתי כל אות בבירור' :
+                info.cls === 'medium' ? 'AI סימן: רוב הטקסט קריא, חלק קטן לא ברור' :
+                info.cls === 'low' ? 'AI סימן: השערה — מומלץ לוודא ידנית' :
+                'AI סימן: לא קיים או לא קריא במסמך';
+  labelEl.appendChild(badge);
+}
+
+// Strip dual-axis confidence markup the model sometimes injects into prose
+// fields (e.g. <span class="cv c-mid">V~</span>, or the malformed
+// 'span class="cv c-high">V✓</span>' with a dropped leading '<'), plus bare
+// V✓/H~/V? tokens. Confidence belongs in the data, never in the copy-paste text.
+function stripConfidenceMarkup(v) {
+  // The model sometimes returns a prose field as an array of lines; coerce so
+  // the strip runs on a string instead of passing the raw array (with markup) through.
+  if (Array.isArray(v)) v = v.filter(x => x != null).join('\n');
+  if (typeof v !== 'string') return v == null ? '' : String(v);
+  return v
+    .replace(/(?:<|&lt;)?\s*\/?\s*span(?:\s[^<>]*)?(?:>|&gt;)/gi, '')
+    .replace(/[VH]\s*[✓~?]/g, '')
+    .replace(/\s*class\s*=\s*"(?:cv|ch)[^"]*"/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +([,.;:)])/g, '$1')
+    .trim();
+}
+
+// Content-direction for transcription/translation fields: a Cyrillic/Latin page
+// must read left-to-right even on this RTL screen (user request 2026-07-11, after
+// a Russian transcription rendered right-aligned). dir="auto" (first strong char)
+// is not enough — the model often opens with a Hebrew note like "[רוסית — עמוד 2]"
+// — so the MAJORITY of strong characters decides.
+const CONTENT_DIR_FIELDS = ['r-title-en', 'r-sender-en', 'r-recipient-en', 'r-place-en',
+  'r-summary-en', 'r-original-text', 'r-transliteration', 'r-translation-he',
+  'r-translation-en', 'r-persons-en', 'r-context-en'];
+function applyContentDir(el) {
+  const v = el.value || '';
+  const rtl = (v.match(/[֐-׿؀-ۿ]/g) || []).length;
+  const ltr = (v.match(/[A-Za-zЀ-ӿ]/g) || []).length;
+  el.dir = ltr > rtl ? 'ltr' : 'rtl';
+}
+CONTENT_DIR_FIELDS.forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => applyContentDir(el));
+});
+
+function fillResults(d) {
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = stripConfidenceMarkup(v); };
+  setVal('r-title-he', d.title_he); setVal('r-title-en', d.title_en);
+  setVal('r-doc-type', d.doc_type); setVal('r-archive-id', d.archive_id); setVal('r-intake-num', d.intake_num);
+  setVal('r-doc-date', d.doc_date); setVal('r-languages', d.languages); setVal('r-writing-type', d.writing_type);
+  setVal('r-pages-count', d.pages_count);
+  setVal('r-sender-he', d.sender_he); setVal('r-sender-en', d.sender_en);
+  setVal('r-recipient-he', d.recipient_he); setVal('r-recipient-en', d.recipient_en);
+  setVal('r-place-he', d.place_he); setVal('r-place-en', d.place_en);
+  setVal('r-summary-he', d.summary_he); setVal('r-summary-en', d.summary_en);
+  setVal('r-original-text', d.original_text);
+  setVal('r-transliteration', d.transliteration);
+  setVal('r-translation-he', d.translation_he);
+  setVal('r-translation-en', d.translation_en);
+  setVal('r-persons-he', d.persons_he); setVal('r-persons-en', d.persons_en);
+  setVal('r-context-he', d.context_he); setVal('r-context-en', d.context_en);
+  setVal('r-notes', d.decipher_notes);
+  CONTENT_DIR_FIELDS.forEach(id => { const el = document.getElementById(id); if (el) applyContentDir(el); });
+
+  // Private-only fields
+  if (state.doc_mode === 'private') {
+    setVal('r-division-name',     d.division_name);
+    if (d.item_type) document.getElementById('r-item-type').value = d.item_type;
+    setVal('r-prev-division',     d.prev_division);
+    setVal('r-prev-file',         d.prev_file);
+    setVal('r-creator-person',    d.creator_person);
+    setVal('r-creator-org',       d.creator_org);
+    setVal('r-date-start-auth',   d.date_start_authentic);
+    setVal('r-date-start-recon',  d.date_start_reconstructed);
+    setVal('r-date-end-auth',     d.date_end_authentic);
+    setVal('r-date-end-recon',    d.date_end_reconstructed);
+    if (d.originality) document.getElementById('r-originality').value = d.originality;
+    setVal('r-info-main',         d.info_main);
+    setVal('r-info-also',         d.info_also);
+    setVal('r-info-donor',        d.info_donor);
+    setVal('r-content-note',      d.content_note);
+    setVal('r-admin-note',        d.admin_note);
+    if (d.names_typing) document.getElementById('r-names-typing').value = d.names_typing;
+    setVal('r-related-items',     d.related_items);
+    if (d.classification) document.getElementById('r-classification').value = d.classification;
+    setVal('r-classification-reason', d.classification_reason);
+    if (d.show_intranet) document.getElementById('r-show-intranet').value = d.show_intranet;
+  }
+
+  // Apply confidence badges to all known fields
+  for (const [id, key] of Object.entries(FIELD_CONF_MAP)) {
+    paintConfidenceFor(id, d[key] || '');
+  }
+
+  // Overall readability banner
+  const banner = document.getElementById('overall-readability');
+  if (d.overall_readability) {
+    let cls = 'r-good';
+    if (d.overall_readability.includes('×') || d.overall_readability.includes('לא קריא כמעט')) cls = 'r-bad';
+    else if (d.overall_readability.includes('?') || d.overall_readability.includes('חלקית מאוד')) cls = 'r-poor';
+    else if (d.overall_readability.includes('~') || d.overall_readability.includes('חלקי')) cls = 'r-fair';
+    banner.className = 'show ' + cls;
+    const unread = d.unreadable_count != null && d.unreadable_count > 0
+      ? ` · כ-${d.unreadable_count} מילים לא קריאות`
+      : '';
+    banner.textContent = `איכות פיענוח כוללת: ${d.overall_readability}${unread}`;
+  } else {
+    banner.className = '';
+    banner.textContent = '';
+  }
+
+  const subjects = (d.subjects_he || []).map((he, i) => ({ he, en: (d.subjects_en || [])[i] || '' }));
+  renderSubjects(subjects);
+}
+
+let activeSubjects = [];
+function renderSubjects(items) {
+  activeSubjects = items;
+  const chips = document.getElementById('r-subjects-chips');
+  if (!items.length) { chips.innerHTML = '<span style="color:var(--muted); font-size:12px; font-style:italic">— אין נושאים —</span>'; return; }
+  chips.innerHTML = items.map((s, i) => `<span class="chip">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}<span class="x" data-idx="${i}">✕</span></span>`).join('');
+  chips.querySelectorAll('.x').forEach(x => x.addEventListener('click', () => { activeSubjects.splice(parseInt(x.dataset.idx), 1); renderSubjects(activeSubjects); }));
+}
+const subjectsAdd = document.getElementById('r-subjects-add');
+subjectsAdd.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const v = subjectsAdd.value.trim();
+    if (v) {
+      const found = state.thesaurus_top.find(t => t.he === v || t.en === v);
+      activeSubjects.push(found ? { he: found.he, en: found.en } : { he: v, en: '' });
+      renderSubjects(activeSubjects); subjectsAdd.value = '';
+    }
+  }
+});
+
+// Per-field copy buttons
+function wrapFieldsWithCopyButtons() {
+  const fields = document.querySelectorAll('#results input[type="text"][id^="r-"], #results textarea[id^="r-"]');
+  fields.forEach(el => {
+    if (el.parentElement?.classList.contains('input-wrap')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'input-wrap';
+    el.parentNode.insertBefore(wrap, el);
+    wrap.appendChild(el);
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'copy-corner'; btn.textContent = '📋';
+    btn.title = 'העתק / Copy'; btn.dataset.copyTarget = el.id;
+    wrap.appendChild(btn);
+  });
+}
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.copy-corner');
+  if (!btn) return;
+  const target = document.getElementById(btn.dataset.copyTarget);
+  if (!target) return;
+  const value = (target.value ?? target.innerText ?? '').trim();
+  try { await navigator.clipboard.writeText(value); }
+  catch { const ta = document.createElement('textarea'); ta.value = value; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  const orig = btn.textContent;
+  btn.textContent = '✓'; btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1100);
+});
+wrapFieldsWithCopyButtons();
+
+// Download HTML
+function buildDocHTML() {
+  const get = id => document.getElementById(id).value;
+  const chipsHTML = activeSubjects.map(s => `<span style="display:inline-block; background:#c8e0d0; color:#1f5c38; padding:3px 10px; margin:2px; border-radius:12px; font-size:12.5px; border:1px solid #98be9f;">${esc(s.he)}${s.en ? ' / ' + esc(s.en) : ''}</span>`).join('');
+  // Institutional mode: the private-source section (and its placeholders) is
+  // dropped entirely; in private mode every filled field reaches the artifact —
+  // the form must never hold data the downloaded HTML silently omits.
+  let tpl = DOC_TEMPLATE;
+  if (state.doc_mode !== 'private') {
+    tpl = tpl.replace(/<!--PRIVATE_ONLY_START-->[\s\S]*?<!--PRIVATE_ONLY_END-->/, '');
+  }
+  return tpl
+    .replace(/\{\{DIVISION_NAME\}\}/g, esc(get('r-division-name')))
+    .replace(/\{\{ITEM_TYPE\}\}/g, esc(get('r-item-type')))
+    .replace(/\{\{PREV_DIVISION\}\}/g, esc(get('r-prev-division')))
+    .replace(/\{\{PREV_FILE\}\}/g, esc(get('r-prev-file')))
+    .replace(/\{\{CREATOR_PERSON\}\}/g, esc(get('r-creator-person')))
+    .replace(/\{\{CREATOR_ORG\}\}/g, esc(get('r-creator-org')))
+    .replace(/\{\{DATE_START_AUTH\}\}/g, esc(get('r-date-start-auth')))
+    .replace(/\{\{DATE_START_RECON\}\}/g, esc(get('r-date-start-recon')))
+    .replace(/\{\{DATE_END_AUTH\}\}/g, esc(get('r-date-end-auth')))
+    .replace(/\{\{DATE_END_RECON\}\}/g, esc(get('r-date-end-recon')))
+    .replace(/\{\{ORIGINALITY\}\}/g, esc(get('r-originality')))
+    .replace(/\{\{INFO_MAIN\}\}/g, esc(get('r-info-main')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INFO_ALSO\}\}/g, esc(get('r-info-also')).replace(/\n/g, '<br>'))
+    .replace(/\{\{INFO_DONOR\}\}/g, esc(get('r-info-donor')).replace(/\n/g, '<br>'))
+    .replace(/\{\{CONTENT_NOTE\}\}/g, esc(get('r-content-note')).replace(/\n/g, '<br>'))
+    .replace(/\{\{ADMIN_NOTE\}\}/g, esc(get('r-admin-note')).replace(/\n/g, '<br>'))
+    .replace(/\{\{NAMES_TYPING\}\}/g, esc(get('r-names-typing')))
+    .replace(/\{\{RELATED_ITEMS\}\}/g, esc(get('r-related-items')).replace(/\n/g, '<br>'))
+    .replace(/\{\{CLASSIFICATION\}\}/g, esc(get('r-classification')))
+    .replace(/\{\{CLASSIFICATION_REASON\}\}/g, esc(get('r-classification-reason')))
+    .replace(/\{\{SHOW_INTRANET\}\}/g, esc(get('r-show-intranet')))
+    .replace(/\{\{CATALOGER\}\}/g, esc(get('r-cataloger')))
+    .replace(/\{\{REGISTER_DATE\}\}/g, esc(get('r-register-date')))
+    .replace(/\{\{TITLE_HE\}\}/g, esc(get('r-title-he')))
+    .replace(/\{\{TITLE_EN\}\}/g, esc(get('r-title-en')))
+    .replace(/\{\{DOC_TYPE\}\}/g, esc(get('r-doc-type')))
+    .replace(/\{\{ARCHIVE_ID\}\}/g, esc(get('r-archive-id')))
+    .replace(/\{\{INTAKE_NUM\}\}/g, esc(get('r-intake-num')))
+    .replace(/\{\{DOC_DATE\}\}/g, esc(get('r-doc-date')))
+    .replace(/\{\{LANGUAGES\}\}/g, esc(get('r-languages')))
+    .replace(/\{\{WRITING_TYPE\}\}/g, esc(get('r-writing-type')))
+    .replace(/\{\{PAGES_COUNT\}\}/g, esc(get('r-pages-count')))
+    .replace(/\{\{SENDER_HE\}\}/g, esc(get('r-sender-he')))
+    .replace(/\{\{SENDER_EN\}\}/g, esc(get('r-sender-en')))
+    .replace(/\{\{RECIPIENT_HE\}\}/g, esc(get('r-recipient-he')))
+    .replace(/\{\{RECIPIENT_EN\}\}/g, esc(get('r-recipient-en')))
+    .replace(/\{\{PLACE_HE\}\}/g, esc(get('r-place-he')))
+    .replace(/\{\{PLACE_EN\}\}/g, esc(get('r-place-en')))
+    .replace(/\{\{SUMMARY_HE\}\}/g, esc(get('r-summary-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{SUMMARY_EN\}\}/g, esc(get('r-summary-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{ORIGINAL_TEXT\}\}/g, esc(get('r-original-text')).replace(/\n/g, '<br>'))
+    .replace(/\{\{TRANSLITERATION\}\}/g, esc(get('r-transliteration')).replace(/\n/g, '<br>'))
+    .replace(/\{\{TRANSLATION_HE\}\}/g, esc(get('r-translation-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{TRANSLATION_EN\}\}/g, esc(get('r-translation-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{PERSONS_HE\}\}/g, esc(get('r-persons-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{PERSONS_EN\}\}/g, esc(get('r-persons-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{CONTEXT_HE\}\}/g, esc(get('r-context-he')).replace(/\n/g, '<br>'))
+    .replace(/\{\{CONTEXT_EN\}\}/g, esc(get('r-context-en')).replace(/\n/g, '<br>'))
+    .replace(/\{\{NOTES\}\}/g, esc(get('r-notes')).replace(/\n/g, '<br>'))
+    .replace(/\{\{SUBJECTS\}\}/g, chipsHTML)
+    .replace(/\{\{ANALYSIS_DATE\}\}/g, new Date().toLocaleDateString('he-IL'))
+    .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.document?.name || ''));
+}
+
+// =====================================================================
+//  ACADEMIC VALIDATION — runs a 2nd-pass AI review of catalog vs source
+//  Methodology adapted from the academic-validation Claude Code skill:
+//  - Per-claim verdict: confirmed / inferred / unsupported / hallucinated
+//  - Specific evidence required for every CONFIRMED claim
+//  - Categorize problems by severity and field
+//  - Output is a STRUCTURED REPORT, never a rewrite (cataloger decides)
+// =====================================================================
+
+document.getElementById('validate-btn').addEventListener('click', async () => {
+  if (!state.identification) {
+    alert('אין תוצאות לבדיקה. הפעל "פענח מסמך" קודם.');
+    return;
+  }
+  if (!state.document) {
+    alert('המסמך המקורי לא זמין. נסה לטעון מחדש.');
+    return;
+  }
+  // Pick which API to use for validation:
+  // - If the server proxy is reachable → use Claude (best for reasoning);
+  //   review #2: the server holds the key, so a reachable server IS the credential
+  // - Else fall back to Gemini
+  const useAnthropic = !!(state.localServerUrl || '');
+  const useGemini = !!state.apiKeys.gemini;
+  if (!useAnthropic && !useGemini) {
+    alert('דרושה גישה לשרת המקומי (Claude) או מפתח Gemini לבדיקה.');
+    return;
+  }
+
+  const validateBtn = document.getElementById('validate-btn');
+  validateBtn.disabled = true;
+  validateBtn.innerHTML = '<span class="spinner"></span>בקרה…';
+
+  try {
+    const report = await runAcademicValidation(useAnthropic);
+    showValidationReport(report);
+  } catch (err) {
+    console.error('[validation] failed:', err);
+    alert('שגיאה בבקרה: ' + err.message);
+  } finally {
+    validateBtn.disabled = false;
+    validateBtn.innerHTML = '🔬 בקרה אקדמית';
+  }
+});
+
+function buildValidationPrompt() {
+  const cat = state.identification;
+  return `אתה מבקר אקדמי בכיר במדור הקטלוג של הארכיון. תפקידך: לבצע **academic validation** של קטלוג שהופק ע"י AI, מול המסמך המקורי.
+
+═══════════════════════════════════════════════════════════════
+🎯 **המתודולוגיה** (מבוססת על academic-validation methodology)
+═══════════════════════════════════════════════════════════════
+
+לכל טענה בקטלוג, סווג אותה לאחת מארבע רמות:
+
+1. **CONFIRMED** ✓ — הטענה נתמכת ישירות במסמך
+   - יש לצטט את הטקסט המדויק מהמסמך שתומך בה
+   - לתאריך/שם: צריך להיות כתוב במפורש במסמך
+
+2. **INFERRED** ~ — ניתן להסיק מקונטקסט, אבל לא כתוב במפורש
+   - יש להסביר את הקו ההגיוני
+   - מקובל אם זה הסקה סבירה, אבל לציין
+
+3. **UNSUPPORTED** ⚠ — לא נמצא בסיס במסמך
+   - הטענה אולי נכונה היסטורית, אבל אינה ניתנת לאימות מהמקור
+   - דורש מקור חיצוני שלא צוין
+
+4. **HALLUCINATED** ❌ — סותר את המסמך, או ממוצא לא ידוע
+   - בעיה חמורה — צריך לתקן
+   - לדוגמה: AI כתב "1942" כשבמסמך כתוב בבירור "1937"
+
+═══════════════════════════════════════════════════════════════
+📊 **Dual-Axis בבדיקה — V vs H**
+═══════════════════════════════════════════════════════════════
+ראה \`reference/confidence_dual_axis.md\`.
+
+ה-4 רמות שלמעלה מסווגות **את ציר ה-V בלבד** (עד כמה המסמך תומך בקביעה).
+תפקידך בנוסף: לסווג **את ציר ה-H** (עד כמה הקביעה תואמת היסטוריה מתועדת):
+- **H✓** = פרט מבוסס היסטורית (תאריך/מקום/אישיות שמתועדים במקור אחר)
+- **H~** = פרט סביר היסטורית אבל לא ודאי
+- **H?** = פרט אנכרוניסטי/חשוד/בלתי-ודאי היסטורית
+
+**אם V וגם H = ? — סימן ל-HALLUCINATED או UNSUPPORTED.** דרוש תיקון.
+**אם V=✓ אבל H=? — הקביעה אמיתית במסמך אבל המסמך עצמו אולי שגוי.** מצב נדיר — סמן ב-notes.
+
+**פלט הבדיקה — הוסף לכל ממצא:**
+- \`v_confidence\` ← הציר הוויזואלי (CONFIRMED/INFERRED/UNSUPPORTED/HALLUCINATED מקובע)
+- \`h_confidence\` ← הציר ההיסטורי ("✓" / "~" / "?")
+
+═══════════════════════════════════════════════════════════════
+📋 **דברים לבדוק קפדנית**
+═══════════════════════════════════════════════════════════════
+
+1. **כותר** (title_he, title_en): האם משקף את התוכן הויזואלי + הטקסטואלי של המסמך?
+2. **תאריכים** (doc_date, creation_date, וכו'): האם מבוססים על משהו שכתוב במסמך, או על "הקשר" חיצוני?
+3. **שמות אישים** (sender, recipient, persons): האם נכתבו במפורש?
+4. **מקומות** (place): האם נכתבו במפורש או הוסקו?
+5. **תרגום/סיכום** (translation_he/en, summary_he/en): האם נאמן למקור? יש קטעים שהאריך מעבר למה שכתוב?
+6. **טקסט מקורי** (original_text): האם ה-OCR נכון? יש מילים מומצאות במקום [?]?
+7. **קונטקסט היסטורי**: האם תואם תקופה ומקום, או הוסק שלא בהצדקה?
+8. **מטא-דאטה פרטית** (creator, division, classification, וכו'): בסיס?
+
+═══════════════════════════════════════════════════════════════
+📤 **פלט נדרש — JSON תקין בלבד**
+═══════════════════════════════════════════════════════════════
+
+\`\`\`json
+{
+  "overall_verdict": "OK | NEEDS_REVISION | CRITICAL_ISSUES",
+  "confirmed_count": 5,
+  "inferred_count": 3,
+  "unsupported_count": 2,
+  "hallucinated_count": 0,
+  "field_verdicts": [
+    {
+      "field": "title_he",
+      "verdict": "CONFIRMED | INFERRED | UNSUPPORTED | HALLUCINATED",
+      "value": "הערך הנוכחי בקטלוג",
+      "evidence": "ציטוט מדויק מהמסמך אם CONFIRMED, או הסבר אחר",
+      "issue": "פירוט הבעיה אם UNSUPPORTED/HALLUCINATED — null אחרת",
+      "suggested_fix": "תיקון מוצע — null אם הכל בסדר"
+    }
+  ],
+  "critical_issues": ["רשימת בעיות חמורות שדורשות תיקון מיידי"],
+  "recommendations": ["המלצות כלליות לשיפור"]
+}
+\`\`\`
+
+⚠ חוקים:
+- היה קפדן: עדיף לסמן UNSUPPORTED מאשר לאשר טענה לא מבוססת
+- evidence חובה בכל CONFIRMED — צטט טקסט מדויק
+- אם הקטלוג מצוין → confirmed_count גבוה, hallucinated_count=0, overall_verdict=OK
+- אסור לכתוב catalog מתוקן — רק לדווח. הרושם יחליט.
+
+═══════════════════════════════════════════════════════════════
+📦 **הקטלוג לבדיקה**
+═══════════════════════════════════════════════════════════════
+
+\`\`\`json
+${JSON.stringify(cat, null, 2)}
+\`\`\`
+
+המסמך המקורי מצורף לבקשה הזו. השווה כל טענה אליו וצור את הדוח.`;
+}
+
+async function runAcademicValidation(useAnthropic) {
+  const prompt = buildValidationPrompt();
+  const mime = state.document.type || 'application/pdf';
+
+  if (useAnthropic) {
+    // Claude — supports PDF documents directly
+    const docB64 = await fileToBase64(state.document);
+    const isPdf = mime === 'application/pdf';
+    const docPart = isPdf
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: docB64 } }
+      : { type: 'image', source: { type: 'base64', media_type: mime, data: docB64 } };
+    const res = await yvProviders.anthropicFetch(state, {
+      model: modelSelAnthropic.value,
+      max_tokens: 16000,
+      messages: [{ role: 'user', content: [docPart, { type: 'text', text: prompt }] }],
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Claude validation HTTP ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    return parseJson(data.content?.[0]?.text || '', 'Claude validator');
+  } else {
+    // Gemini fallback
+    const sizeMB = state.document.size / 1024 / 1024;
+    let docPart;
+    if (sizeMB > 18) {
+      const uploaded = state._lastUploadedFile;
+      if (uploaded) {
+        docPart = { file_data: { file_uri: uploaded.uri || uploaded.name, mime_type: uploaded.mimeType || mime } };
+      } else {
+        throw new Error('המסמך גדול מ-18MB וטרם הועלה ל-Files API. הפעל "פענח" קודם.');
+      }
+    } else {
+      const docB64 = await fileToBase64(state.document);
+      docPart = { inline_data: { mime_type: mime, data: docB64 } };
+    }
+    const res = await fetch(geminiBase() + '/v1beta/models/' + modelSelGemini.value + ':generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [docPart, { text: prompt }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' }
+      })
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Gemini validation HTTP ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+    return parseJson(text, 'Gemini validator');
+  }
+}
+
+function showValidationReport(report) {
+  const verdictColors = {
+    OK: { bg: 'color-mix(in srgb, var(--good) 16%, var(--card))', border: 'color-mix(in srgb, var(--good) 40%, transparent)', color: 'var(--good)', label: '✓ הקטלוג תקין' },
+    NEEDS_REVISION: { bg: 'color-mix(in srgb, var(--warn) 16%, var(--card))', border: 'color-mix(in srgb, var(--warn) 40%, transparent)', color: 'var(--warn)', label: '⚠ נדרשת בדיקה' },
+    CRITICAL_ISSUES: { bg: 'color-mix(in srgb, var(--error) 16%, var(--card))', border: 'color-mix(in srgb, var(--error) 40%, transparent)', color: 'var(--error)', label: '❌ בעיות חמורות' },
+  };
+  const v = verdictColors[report.overall_verdict] || verdictColors.NEEDS_REVISION;
+  const fieldVerdictColors = {
+    CONFIRMED:    { icon: '✓', color: 'var(--good)', bg: 'color-mix(in srgb, var(--good) 10%, var(--card))' },
+    INFERRED:     { icon: '~', color: 'var(--warn)', bg: 'color-mix(in srgb, var(--warn) 10%, var(--card))' },
+    UNSUPPORTED:  { icon: '⚠', color: 'var(--error)', bg: 'color-mix(in srgb, var(--error) 10%, var(--card))' },
+    HALLUCINATED: { icon: '❌', color: 'var(--error)', bg: 'color-mix(in srgb, var(--error) 16%, var(--card))' },
+  };
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px;';
+  overlay.innerHTML = `
+    <div style="background:var(--card); border:1px solid var(--line-strong); border-radius:8px; max-width:920px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 30px 70px -20px rgba(0,0,0,.8);">
+      <div style="padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="margin:0; font-size:16px; color:var(--tik);">🔬 דוח בקרה אקדמית</h3>
+        <button type="button" id="val-close-x" style="background:transparent; border:none; font-size:20px; cursor:pointer; color:var(--muted);">✕</button>
+      </div>
+      <div style="padding:16px 18px; overflow-y:auto; flex:1;">
+        <div style="background:${v.bg}; border:1px solid ${v.border}; border-radius:8px; padding:14px; margin-bottom:14px;">
+          <div style="font-size:16px; font-weight:700; color:${v.color}; margin-bottom:8px;">${v.label}</div>
+          <div style="font-size:13px; color:${v.color}; display:flex; gap:14px; flex-wrap:wrap;">
+            <span>✓ Confirmed: <b>${report.confirmed_count || 0}</b></span>
+            <span>~ Inferred: <b>${report.inferred_count || 0}</b></span>
+            <span>⚠ Unsupported: <b>${report.unsupported_count || 0}</b></span>
+            <span>❌ Hallucinated: <b>${report.hallucinated_count || 0}</b></span>
+          </div>
+        </div>
+
+        ${(report.critical_issues || []).length ? `
+          <div style="background:color-mix(in srgb, var(--error) 14%, var(--card)); border:1px solid color-mix(in srgb, var(--error) 45%, transparent); border-radius:6px; padding:10px 14px; margin-bottom:12px;">
+            <div style="font-weight:700; color:var(--error); margin-bottom:6px;">🚨 בעיות חמורות</div>
+            <ul style="margin:0; padding-inline-start:20px; color:var(--error); font-size:13px;">
+              ${report.critical_issues.map(i => `<li>${esc(i)}</li>`).join('')}
+            </ul>
+          </div>` : ''}
+
+        <h4 style="margin:14px 0 8px; color:var(--accent); font-size:14px;">📋 פירוט לפי שדה</h4>
+        <div style="border:1px solid var(--line); border-radius:6px; overflow:hidden;">
+          ${(report.field_verdicts || []).map(fv => {
+            const c = fieldVerdictColors[fv.verdict] || fieldVerdictColors.INFERRED;
+            return `
+              <div style="border-bottom:1px solid var(--line); padding:10px 14px; background:${c.bg};">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:4px;">
+                  <div style="font-weight:700; color:${c.color}; font-size:13px;">
+                    <span style="font-size:15px;">${c.icon}</span> ${esc(fv.field)}
+                    <span style="font-weight:400; color:var(--muted); margin-inline-start:6px;">[${fv.verdict}]</span>
+                  </div>
+                </div>
+                <div style="font-size:12.5px; color:var(--ink); margin-bottom:3px;"><b>ערך:</b> ${esc(fv.value || '—')}</div>
+                ${fv.evidence ? `<div style="font-size:12px; color:var(--muted); margin-bottom:3px;"><b>ראיה:</b> ${esc(fv.evidence)}</div>` : ''}
+                ${fv.issue ? `<div style="font-size:12px; color:var(--error); margin-top:4px;"><b>🚨 בעיה:</b> ${esc(fv.issue)}</div>` : ''}
+                ${fv.suggested_fix ? `<div style="font-size:12px; color:var(--good); margin-top:4px;"><b>💡 הצעת תיקון:</b> ${esc(fv.suggested_fix)}</div>` : ''}
+              </div>`;
+          }).join('')}
+        </div>
+
+        ${(report.recommendations || []).length ? `
+          <h4 style="margin:14px 0 8px; color:var(--accent); font-size:14px;">💡 המלצות</h4>
+          <ul style="margin:0; padding-inline-start:20px; color:var(--ink); font-size:13px;">
+            ${report.recommendations.map(r => `<li style="margin-bottom:4px;">${esc(r)}</li>`).join('')}
+          </ul>` : ''}
+      </div>
+      <div style="padding:12px 18px; border-top:1px solid var(--line); display:flex; gap:8px; justify-content:flex-end;">
+        <button type="button" id="val-close" class="ghost">סגור</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#val-close').onclick = close;
+  overlay.querySelector('#val-close-x').onclick = close;
+}
+
+// Hook into download: if batch active, mark done + advance to next ready
+function _docBatchAdvance() {
+  if (state.current_doc_queue_index < 0) return false;
+  const cur = state.doc_queue[state.current_doc_queue_index];
+  if (cur) { cur.status = 'done'; renderDocQueuePanel(); }
+  let nextIdx = -1;
+  for (let i = state.current_doc_queue_index + 1; i < state.doc_queue.length; i++) {
+    const it = state.doc_queue[i];
+    if (['ready','analyzing','pending'].includes(it.status)) { nextIdx = i; break; }
+  }
+  if (nextIdx === -1) {
+    for (let i = 0; i < state.current_doc_queue_index; i++) {
+      const it = state.doc_queue[i];
+      if (['ready','analyzing','pending'].includes(it.status)) { nextIdx = i; break; }
+    }
+  }
+  if (nextIdx === -1) {
+    state.current_doc_queue_index = -1;
+    showStatus('🎉 כל תור המסמכים הסתיים!', 'ok');
+    return true;
+  }
+  state.current_doc_queue_index = nextIdx;
+  const next = state.doc_queue[nextIdx];
+  if (next.status === 'ready') {
+    loadDocQueueItemIntoUI(next);
+    showStatus(`▶ מסמך ${nextIdx + 1}/${state.doc_queue.length} — מוכן`, 'info');
+  } else {
+    clearDoc(); loadDoc(next.file);
+    showStatus(`⏳ מסמך ${nextIdx + 1}/${state.doc_queue.length} — עדיין בניתוח...`, 'info');
+    const poll = setInterval(() => {
+      if (next.status === 'ready') { clearInterval(poll); loadDocQueueItemIntoUI(next); showStatus(`▶ מסמך ${nextIdx + 1} מוכן`, 'ok'); }
+      else if (next.status === 'error') { clearInterval(poll); showStatus(`❌ נכשל: ${next.error}`, 'err'); }
+    }, 500);
+  }
+  return true;
+}
+
+// ── NotebookLM export — names · dates · context, aggregated across all parsed docs ──
+function nlmRecordFromDOM() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  return {
+    file: state.document?.name || '—',
+    title_he: g('r-title-he'), title_en: g('r-title-en'),
+    doc_type: g('r-doc-type'), doc_date: g('r-doc-date'),
+    date_start_recon: g('r-date-start-recon'), date_end_recon: g('r-date-end-recon'),
+    place_he: g('r-place-he'), place_en: g('r-place-en'),
+    sender_he: g('r-sender-he'), recipient_he: g('r-recipient-he'),
+    persons_he: g('r-persons-he'), persons_en: g('r-persons-en'),
+    summary_he: g('r-summary-he'), context_he: g('r-context-he'),
+    subjects: activeSubjects.map(s => s.he).join(', '),
+  };
+}
+function nlmRecordFromIdent(d, file) {
+  return {
+    file: file || '—',
+    title_he: d.title_he || '', title_en: d.title_en || '',
+    doc_type: d.doc_type || '', doc_date: d.doc_date || '',
+    date_start_recon: d.date_start_reconstructed || '', date_end_recon: d.date_end_reconstructed || '',
+    place_he: d.place_he || '', place_en: d.place_en || '',
+    sender_he: d.sender_he || '', recipient_he: d.recipient_he || '',
+    persons_he: d.persons_he || '', persons_en: d.persons_en || '',
+    summary_he: d.summary_he || '', context_he: d.context_he || '',
+    subjects: (d.subjects_he || []).join(', '),
+  };
+}
+function nlmExtractNames(text) {
+  if (!text) return [];
+  return String(text).replace(/<[^>]+>/g, ' ')
+    .split(/[,;\n•·]+/)
+    .map(s => s.replace(/[✓~?×]|V[✓~?]|H[✓~?]/g, '').replace(/\[[^\]]*\]/g, '').trim())
+    .filter(s => s.length >= 2 && s.length <= 70);
+}
+function nlmStrip(text) { return String(text || '').replace(/<[^>]+>/g, '').trim(); }
+function buildNotebookLMExport() {
+  const records = [];
+  if (state.doc_queue && state.doc_queue.length) {
+    state.doc_queue.forEach((it, idx) => {
+      if (idx === state.current_doc_queue_index) records.push(nlmRecordFromDOM());
+      else if (it.identification) records.push(nlmRecordFromIdent(it.identification, it.file?.name));
+    });
+  } else {
+    records.push(nlmRecordFromDOM());
+  }
+  const valid = records.filter(r => r.title_he || r.persons_he || r.summary_he || r.original_text);
+  if (!valid.length) return null;
+
+  const today = new Date().toLocaleDateString('he-IL');
+  const lines = [];
+  lines.push(`# אינדקס שמות · תאריכים · הקשר`);
+  lines.push(`מסמך ייצוא ל-NotebookLM · נוצר ${today} · ${valid.length} מסמכים`);
+  lines.push('');
+  lines.push(`> כל רשומה למטה היא מסמך אחד שפוענח. העלה קובץ זה כמקור ב-NotebookLM כדי לחפש שמות, להצליב בין מסמכים ולבנות ציר זמן. השמות והתאריכים חולצו ע"י Claude מתוך הסריקות — מומלץ לאמת מול המקור.`);
+  lines.push('');
+
+  // Aggregated names index
+  const nameIndex = {};
+  valid.forEach(r => nlmExtractNames(r.persons_he).forEach(n => {
+    (nameIndex[n] = nameIndex[n] || new Set()).add(r.file);
+  }));
+  const names = Object.keys(nameIndex).sort((a, b) => a.localeCompare(b, 'he'));
+  if (names.length) {
+    lines.push(`## אינדקס שמות (חולץ אוטומטית — לאימות)`);
+    names.forEach(n => lines.push(`- **${n}** — ${[...nameIndex[n]].join('; ')}`));
+    lines.push('');
+  }
+
+  lines.push(`---`);
+  lines.push(`## מסמכים`);
+  lines.push('');
+  valid.forEach((r, i) => {
+    lines.push(`### ${i + 1}. ${r.file}`);
+    const add = (label, val) => { const v = nlmStrip(val); if (v) lines.push(`- **${label}:** ${v}`); };
+    add('כותר', r.title_he);
+    add('Title', r.title_en);
+    add('סוג מסמך', r.doc_type);
+    const dates = [r.doc_date, r.date_start_recon && `התחלה ${r.date_start_recon}`, r.date_end_recon && `סיום ${r.date_end_recon}`]
+      .map(x => nlmStrip(x)).filter(Boolean).join(' · ');
+    add('תאריכים', dates);
+    add('מקום', [nlmStrip(r.place_he), nlmStrip(r.place_en)].filter(Boolean).join(' / '));
+    add('שולח', r.sender_he);
+    add('נמען', r.recipient_he);
+    add('אישים (שמות)', r.persons_he);
+    add('Persons', r.persons_en);
+    add('תקציר', r.summary_he);
+    add('הקשר היסטורי', r.context_he);
+    add('נושאים', r.subjects);
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+document.getElementById('notebooklm-btn').addEventListener('click', () => {
+  const md = buildNotebookLMExport();
+  if (!md) { showStatus('אין מסמכים מפוענחים לייצוא', 'err'); return; }
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const fname = `notebooklm_shemot_taarichim_${today}.md`;
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showStatus(`✓ הורד ל-NotebookLM: ${fname}`, 'ok');
+});
+
+document.getElementById('download-final-btn').addEventListener('click', () => {
+  const html = buildDocHTML();
+  const stem = (state.document?.name || 'document').replace(/\.[^.]+$/, '').replace(/[^\w֐-׿.-]/g, '_');
+  const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
+  const fname = `document_${stem}_${today}.html`;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showStatus(`✓ הורד: ${fname}`, 'ok');
+  _docBatchAdvance();
+});
+document.getElementById('preview-btn').addEventListener('click', () => {
+  const blob = new Blob([buildDocHTML()], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+});
+
+const DOC_TEMPLATE = `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="UTF-8"><title>{{TITLE_HE}}</title>
+<style>
+  body{margin:0;font-family:"SBL Hebrew","David",serif;background:#f7f5f0;color:#1a1a1a;line-height:1.55;direction:rtl;text-align:right}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px}
+  header{border-bottom:2px solid #2e7d4e;padding-bottom:14px;margin-bottom:22px}
+  header h1{color:#2e7d4e;font-size:22px;margin:0 0 4px}
+  header .sub{font-size:13px;color:#5a5a5a}
+  .section-bar{background:#2e7d4e;color:#fff;padding:8px 14px;border-radius:4px;font-weight:700;font-size:14px;margin:24px 0 12px;direction:rtl;unicode-bidi:isolate}
+  .field{background:#fff;border:1px solid #d8d4cc;border-radius:8px;margin-bottom:14px;overflow:hidden}
+  .field>.head{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:linear-gradient(180deg,#fbfaf6,#f3efe6);border-bottom:1px solid #d8d4cc;direction:rtl}
+  .field>.head .label{font-weight:700;color:#2e7d4e;font-size:14.5px}
+  .field>.head .label small{color:#5a5a5a;font-weight:400;margin-inline-start:8px;font-size:12px}
+  .copy-btn{background:#2e7d4e;color:#fff;border:none;border-radius:4px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+  .copy-btn:hover{background:#1f5c38}.copy-btn.copied{background:#2e7d32}.copy-btn.alt{background:#4a5568}
+  .single{padding:12px 16px;font-size:15px}
+  .single.he{direction:rtl;text-align:right;background:#fbf9f3;unicode-bidi:isolate;white-space:pre-wrap}
+  .single.en{direction:ltr;text-align:left;background:#f3f6fb;font-family:Georgia,serif;white-space:pre-wrap}
+  .single.original{direction:ltr;text-align:right;background:#f5f0e8;font-family:Georgia,serif;white-space:pre-wrap;unicode-bidi:plaintext}
+  .compact{padding:10px 14px;background:#f0f4ee;font-size:14px;direction:rtl;text-align:right;unicode-bidi:isolate}
+  .bilingual{display:grid;grid-template-columns:1fr 1fr}
+  .bilingual .lang{padding:12px 16px;font-size:14.5px;white-space:pre-wrap}
+  .bilingual .he{background:#fbf9f3;direction:rtl;text-align:right;border-inline-end:1px solid #d8d4cc;unicode-bidi:isolate}
+  .bilingual .en{background:#f3f6fb;direction:ltr;text-align:left;font-family:Georgia,serif}
+  .toast{position:fixed;bottom:24px;inset-inline-start:50%;transform:translateX(-50%);background:#2e7d32;color:#fff;padding:8px 16px;border-radius:4px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:1000}
+  .toast.show{opacity:1}
+  @media(max-width:760px){.bilingual{grid-template-columns:1fr}}
+  @media print{.copy-btn,.toast{display:none}body{background:#fff}.field{break-inside:avoid}}
+</style></head><body><div class="wrap">
+
+<header><h1>📄 קטלוג מסמך — מערכת ספיר / Sapir Document Catalog</h1><div class="sub">{{ANALYSIS_DATE}} · קובץ: {{SOURCE_FILENAME}}</div></header>
+
+<div class="section-bar">כותר ופרטי קטלוג</div>
+<div class="field"><div class="head"><span class="label">כותר HE</span><button class="copy-btn" data-copy="title-he">העתק</button></div><div id="title-he" class="single he">{{TITLE_HE}}</div></div>
+<div class="field"><div class="head"><span class="label">Title EN</span><button class="copy-btn" data-copy="title-en">Copy</button></div><div id="title-en" class="single en">{{TITLE_EN}}</div></div>
+<div class="field"><div class="head"><span class="label">סוג מסמך</span><button class="copy-btn" data-copy="dt">העתק</button></div><div id="dt" class="compact">{{DOC_TYPE}}</div></div>
+<div class="field"><div class="head"><span class="label">מספר ארכיוני / נכנסות</span><button class="copy-btn" data-copy="ids">העתק</button></div><div id="ids" class="compact">{{ARCHIVE_ID}} · {{INTAKE_NUM}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך מסמך</span><button class="copy-btn" data-copy="dd">העתק</button></div><div id="dd" class="compact">{{DOC_DATE}}</div></div>
+<div class="field"><div class="head"><span class="label">שפות</span><button class="copy-btn" data-copy="lng">העתק</button></div><div id="lng" class="compact">{{LANGUAGES}}</div></div>
+<div class="field"><div class="head"><span class="label">סוג כתיבה</span><button class="copy-btn" data-copy="wt">העתק</button></div><div id="wt" class="compact">{{WRITING_TYPE}}</div></div>
+<div class="field"><div class="head"><span class="label">מספר עמודים</span><button class="copy-btn" data-copy="pc">העתק</button></div><div id="pc" class="compact">{{PAGES_COUNT}}</div></div>
+
+<div class="section-bar">שולח, נמען, מקום</div>
+<div class="field"><div class="head"><span class="label">שולח</span><button class="copy-btn" data-copy="snd-he">HE</button><button class="copy-btn alt" data-copy="snd-en">EN</button></div><div class="bilingual"><div id="snd-he" class="lang he">{{SENDER_HE}}</div><div id="snd-en" class="lang en">{{SENDER_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">נמען</span><button class="copy-btn" data-copy="rcp-he">HE</button><button class="copy-btn alt" data-copy="rcp-en">EN</button></div><div class="bilingual"><div id="rcp-he" class="lang he">{{RECIPIENT_HE}}</div><div id="rcp-en" class="lang en">{{RECIPIENT_EN}}</div></div></div>
+<div class="field"><div class="head"><span class="label">מקום</span><button class="copy-btn" data-copy="plc-he">HE</button><button class="copy-btn alt" data-copy="plc-en">EN</button></div><div class="bilingual"><div id="plc-he" class="lang he">{{PLACE_HE}}</div><div id="plc-en" class="lang en">{{PLACE_EN}}</div></div></div>
+
+<div class="section-bar">תקציר</div>
+<div class="field"><div class="head"><span class="label">תקציר</span><button class="copy-btn" data-copy="sum-he">HE</button><button class="copy-btn alt" data-copy="sum-en">EN</button></div><div class="bilingual"><div id="sum-he" class="lang he">{{SUMMARY_HE}}</div><div id="sum-en" class="lang en">{{SUMMARY_EN}}</div></div></div>
+
+<div class="section-bar">טקסט מקורי</div>
+<div class="field"><div class="head"><span class="label">טקסט מקורי <small>(שפת המקור)</small></span><button class="copy-btn" data-copy="orig">העתק</button></div><div id="orig" class="single original">{{ORIGINAL_TEXT}}</div></div>
+
+<div class="section-bar">תעתיק לטיני <small>(אם נדרש)</small></div>
+<div class="field"><div class="head"><span class="label">תעתיק</span><button class="copy-btn" data-copy="trl">העתק</button></div><div id="trl" class="single en">{{TRANSLITERATION}}</div></div>
+
+<div class="section-bar">תרגום לעברית</div>
+<div class="field"><div class="head"><span class="label">תרגום עברית</span><button class="copy-btn" data-copy="trh">העתק</button></div><div id="trh" class="single he">{{TRANSLATION_HE}}</div></div>
+
+<div class="section-bar">תרגום לאנגלית</div>
+<div class="field"><div class="head"><span class="label">English translation</span><button class="copy-btn" data-copy="tre">העתק</button></div><div id="tre" class="single en">{{TRANSLATION_EN}}</div></div>
+
+<div class="section-bar">אישים מוזכרים</div>
+<div class="field"><div class="head"><span class="label">אישים</span><button class="copy-btn" data-copy="per-he">HE</button><button class="copy-btn alt" data-copy="per-en">EN</button></div><div class="bilingual"><div id="per-he" class="lang he">{{PERSONS_HE}}</div><div id="per-en" class="lang en">{{PERSONS_EN}}</div></div></div>
+
+<div class="section-bar">קונטקסט היסטורי</div>
+<div class="field"><div class="head"><span class="label">קונטקסט</span><button class="copy-btn" data-copy="ctx-he">HE</button><button class="copy-btn alt" data-copy="ctx-en">EN</button></div><div class="bilingual"><div id="ctx-he" class="lang he">{{CONTEXT_HE}}</div><div id="ctx-en" class="lang en">{{CONTEXT_EN}}</div></div></div>
+
+<div class="section-bar">הערות פיענוח</div>
+<div class="field"><div class="head"><span class="label">הערות</span><button class="copy-btn" data-copy="nts">העתק</button></div><div id="nts" class="single he">{{NOTES}}</div></div>
+
+<div class="section-bar">נושאים</div>
+<div class="field"><div class="head"><span class="label">נושאים מתזאורוס</span></div><div style="padding:10px 14px; background:#fbf9f3; direction:rtl; text-align:right; unicode-bidi:isolate;">{{SUBJECTS}}</div></div>
+
+<!--PRIVATE_ONLY_START-->
+<div class="section-bar">מקור פרטי — חטיבה ארכיונית</div>
+<div class="field"><div class="head"><span class="label">שם / סימול חטיבה</span><button class="copy-btn" data-copy="pv-div">העתק</button></div><div id="pv-div" class="compact">{{DIVISION_NAME}}</div></div>
+<div class="field"><div class="head"><span class="label">סוג פריט</span><button class="copy-btn" data-copy="pv-itype">העתק</button></div><div id="pv-itype" class="compact">{{ITEM_TYPE}}</div></div>
+<div class="field"><div class="head"><span class="label">סימול חטיבה קודם</span><button class="copy-btn" data-copy="pv-pdiv">העתק</button></div><div id="pv-pdiv" class="compact">{{PREV_DIVISION}}</div></div>
+<div class="field"><div class="head"><span class="label">סימול תיק קודם</span><button class="copy-btn" data-copy="pv-pfile">העתק</button></div><div id="pv-pfile" class="compact">{{PREV_FILE}}</div></div>
+
+<div class="section-bar">מקור פרטי — יוצרים, תאריכים ומקוריות</div>
+<div class="field"><div class="head"><span class="label">שם יוצר החומר (אדם)</span><button class="copy-btn" data-copy="pv-cp">העתק</button></div><div id="pv-cp" class="compact">{{CREATOR_PERSON}}</div></div>
+<div class="field"><div class="head"><span class="label">יוצר החומר (ארגון)</span><button class="copy-btn" data-copy="pv-co">העתק</button></div><div id="pv-co" class="compact">{{CREATOR_ORG}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך תחילה (אותנטי)</span><button class="copy-btn" data-copy="pv-dsa">העתק</button></div><div id="pv-dsa" class="compact">{{DATE_START_AUTH}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך תחילה (משוחזר)</span><button class="copy-btn" data-copy="pv-dsr">העתק</button></div><div id="pv-dsr" class="compact">{{DATE_START_RECON}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך סיום (אותנטי)</span><button class="copy-btn" data-copy="pv-dea">העתק</button></div><div id="pv-dea" class="compact">{{DATE_END_AUTH}}</div></div>
+<div class="field"><div class="head"><span class="label">תאריך סיום (משוחזר)</span><button class="copy-btn" data-copy="pv-der">העתק</button></div><div id="pv-der" class="compact">{{DATE_END_RECON}}</div></div>
+<div class="field"><div class="head"><span class="label">מקוריות החומר</span><button class="copy-btn" data-copy="pv-orig">העתק</button></div><div id="pv-orig" class="compact">{{ORIGINALITY}}</div></div>
+
+<div class="section-bar">מקור פרטי — מבנה "מידע נוסף" (לפי הנוהל)</div>
+<div class="field"><div class="head"><span class="label">תוכן עיקרי</span><button class="copy-btn" data-copy="pv-im">העתק</button></div><div id="pv-im" class="single he">{{INFO_MAIN}}</div></div>
+<div class="field"><div class="head"><span class="label">בתיק גם</span><button class="copy-btn" data-copy="pv-ia">העתק</button></div><div id="pv-ia" class="single he">{{INFO_ALSO}}</div></div>
+<div class="field"><div class="head"><span class="label">הערות מוסר החומר</span><button class="copy-btn" data-copy="pv-id">העתק</button></div><div id="pv-id" class="single he">{{INFO_DONOR}}</div></div>
+<div class="field"><div class="head"><span class="label">הערת תוכן</span><button class="copy-btn" data-copy="pv-cn">העתק</button></div><div id="pv-cn" class="single he">{{CONTENT_NOTE}}</div></div>
+<div class="field"><div class="head"><span class="label">הערת אדמיניסטרציה <small>(פנימי — לא לפרסום)</small></span><button class="copy-btn" data-copy="pv-an">העתק</button></div><div id="pv-an" class="single he">{{ADMIN_NOTE}}</div></div>
+
+<div class="section-bar">מקור פרטי — הפניות, סיווג ורישום</div>
+<div class="field"><div class="head"><span class="label">מיועד להקלדת שמות?</span><button class="copy-btn" data-copy="pv-nt">העתק</button></div><div id="pv-nt" class="compact">{{NAMES_TYPING}}</div></div>
+<div class="field"><div class="head"><span class="label">פריטים נלווים</span><button class="copy-btn" data-copy="pv-ri">העתק</button></div><div id="pv-ri" class="single he">{{RELATED_ITEMS}}</div></div>
+<div class="field"><div class="head"><span class="label">סיווג</span><button class="copy-btn" data-copy="pv-cls">העתק</button></div><div id="pv-cls" class="compact">{{CLASSIFICATION}}</div></div>
+<div class="field"><div class="head"><span class="label">הסבר לסיווג</span><button class="copy-btn" data-copy="pv-clsr">העתק</button></div><div id="pv-clsr" class="compact">{{CLASSIFICATION_REASON}}</div></div>
+<div class="field"><div class="head"><span class="label">הצגה באינטרה-נט</span><button class="copy-btn" data-copy="pv-si">העתק</button></div><div id="pv-si" class="compact">{{SHOW_INTRANET}}</div></div>
+<div class="field"><div class="head"><span class="label">שם הרושם · תאריך רישום</span><button class="copy-btn" data-copy="pv-cat">העתק</button></div><div id="pv-cat" class="compact">{{CATALOGER}} · {{REGISTER_DATE}}</div></div>
+<!--PRIVATE_ONLY_END-->
+
+</div>
+<div id="toast" class="toast">הועתק / Copied</div>
+<script>
+document.querySelectorAll('.copy-btn[data-copy]').forEach(b=>{
+  b.addEventListener('click',async()=>{
+    const el=document.getElementById(b.getAttribute('data-copy'));if(!el)return;
+    try{await navigator.clipboard.writeText(el.innerText.trim());const o=b.textContent;b.classList.add('copied');b.textContent='✓';document.getElementById('toast').classList.add('show');setTimeout(()=>{b.classList.remove('copied');b.textContent=o;document.getElementById('toast').classList.remove('show');},1100);}catch(e){const t=document.createElement('textarea');t.value=el.innerText.trim();document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
+  });
+});
+<\/script>
+</body></html>`;
+
+function esc(s){ return window.yvEsc ? yvEsc(s) : String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }   // delegates to the ONE canonical escaper (review 21.7 #21); inline fallback covers pre-load calls
+function setMini(el, html, kind) { el.innerHTML = html; el.className = 'mini-status' + (kind ? ' ' + kind : ''); }
+
+refreshButtons();
