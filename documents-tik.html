@@ -124,8 +124,8 @@
   <a href="index.html" style="text-decoration:none;display:inline-block;margin-bottom:10px">
     <button type="button" class="gear" style="border-radius:7px;padding:8px 16px;font-size:14px;">← דף הבית</button>
   </a>
-  <h1>קטלוג תיק — מקורות פרטיים (ספיר)</h1>
-  <div class="sub">רשומה אחת לכל תיק · Claude קורא את כל דפי התיק (במנות) ואז מסנתז רשומת-תיק אחת · סימוני ודאות ונקודות לבדיקת אנוש</div>
+  <h1>קטלוג תיק (ספיר)</h1>
+  <div class="sub">רשומה אחת לכל תיק · שני סוגי קטלוג — מקורות פרטיים (נוהל מחמיר) / מקורות מוסדיים · סימוני ודאות ונקודות לבדיקת אנוש</div>
 
   <!-- שתי רמות קטלוג מסמכים: קטלוג ברמת תיק (המסך הזה) ↔ תיאור מסמך מלא (documents.html) -->
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--tint);border:1px solid var(--line);border-radius:10px;padding:9px 14px;margin-bottom:16px;font-size:13.5px" role="navigation" aria-label="רמת קטלוג">
@@ -137,6 +137,24 @@
   <!-- CONFIG -->
   <div class="card">
     <h2>הגדרות <span id="save-state" class="hint" style="font-weight:400;margin-right:8px"></span></h2>
+    <div class="row2">
+      <div>
+        <label for="tik-source">סוג התיק (אופי המקור)</label>
+        <select id="tik-source">
+          <option value="private" selected>מקורות פרטיים — זיכרונות, עדויות, יומנים (נוהל רישום מחמיר)</option>
+          <option value="institutional">מקורות מוסדיים — תיעוד רשמי (חפ"ן, בתי-משפט, מוסדות)</option>
+        </select>
+        <div class="hint">פרטיים: הרשומה כוללת תקציר כרונולוגי בראשי-פרקים ושלוש רשימות-ודאות (מופיע בוודאות בטקסט / לא נאמר בטקסט / לא ניתן לקבוע בוודאות), בלי מילות סיוג — פרט מסופק מושמט ועובר לבדיקה. מוסדיים: רישום פר-סוג-חומר לפי נוסח הרושמים.</div>
+      </div>
+      <div id="tik-kind-wrap" style="display:none">
+        <label for="tik-kind">סוג החומר המוסדי</label>
+        <select id="tik-kind">
+          <option value="testimony" selected>עדות / מסמך-רשימה — תיעוד משפטי חפ"ן (TR.11)</option>
+          <option value="generic">כללי — רשומת-תיק רגילה</option>
+        </select>
+        <div class="hint">עדות: רשומת-פריט בנוסח הרישום המוסדי — כותר נוסחתי, פרטי מוסר-העדות, תקציר בנקודה-פסיק עם שמות-פעולה ושמות בלטינית; רשימה של 5+ נרדפים מזוהה כמסמך-רשימה. מומלץ להעלות את עמודי העדות הבודדת (לא את כל התיק). סוגים נוספים ייתוספו לפי דוגמאות.</div>
+      </div>
+    </div>
     <div class="row2">
       <div>
         <label for="engine-mode">מנוע קריאה (שלב 1)</label>
@@ -278,7 +296,7 @@
 </div>
 <div class="toast" id="toast">הועתק</div>
 
-<script src="documents-tik.inline1.js?v=20260722e"></script>
+<script src="documents-tik.inline1.js?v=20260723i"></script>
 <script src="documents-tik.inline2.js?v=20260722e"></script>
 <script src="yv-providers.js?v=20260722"></script>
 <script src="yv-client-log.js?v=20260722d"></script>
