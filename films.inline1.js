@@ -1201,6 +1201,12 @@ async function uploadToGeminiFiles(file, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', uploadUrl);
+    // Proxied Files-API upload goes to our own server → carry the CSRF session
+    // header (the client-log fetch wrapper can't see XHR). Never sent on a
+    // direct-to-Google upload. (review 2026-07-23)
+    if (state.proxyGemini && state.localServerUrl) {
+      try { const sid = sessionStorage.getItem('yvSessionId'); if (sid) xhr.setRequestHeader('x-yv-session', sid); } catch (e) { /* storage blocked */ }
+    }
     xhr.setRequestHeader('Content-Length', file.size.toString());
     xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
     xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');
@@ -1408,12 +1414,18 @@ document.getElementById('r-timeline-tbody').addEventListener('change', e => {
   const sel = e.target.closest('.conf-sel');
   if (sel) sel.className = 'conf-sel conf-' + sel.value;
 });
+// CSP no-inline (review 2026-07-23): the ✕ delete button carries data-yv-act
+// instead of inline onclick (which the strict script-src silently blocks).
+document.getElementById('r-timeline-tbody').addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-yv-act="del-row"]');
+  if (b) { const tr = b.closest('tr'); if (tr) tr.remove(); }
+});
 
 function addTimelineRow(scene) {
   const tbody = document.getElementById('r-timeline-tbody');
   if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
   const tr = document.createElement('tr');
-  tr.innerHTML = `<td class="tc-cell"><input type="text" value="${esc(scene?.start || '00:00:00')}"></td><td class="tc-cell"><input type="text" value="${esc(scene?.end || '00:00:00')}"></td><td><textarea rows="2">${esc(stripConfidenceMarkup(scene?.description_he))}</textarea></td><td><textarea rows="2" style="direction:ltr; text-align:left; font-family:Georgia,serif">${esc(stripConfidenceMarkup(scene?.description_en))}</textarea></td><td class="conf-cell">${confSelectHTML(scene?.confidence)}</td><td class="del-cell"><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tr.innerHTML = `<td class="tc-cell"><input type="text" value="${esc(scene?.start || '00:00:00')}"></td><td class="tc-cell"><input type="text" value="${esc(scene?.end || '00:00:00')}"></td><td><textarea rows="2">${esc(stripConfidenceMarkup(scene?.description_he))}</textarea></td><td><textarea rows="2" style="direction:ltr; text-align:left; font-family:Georgia,serif">${esc(stripConfidenceMarkup(scene?.description_en))}</textarea></td><td class="conf-cell">${confSelectHTML(scene?.confidence)}</td><td class="del-cell"><button type="button" class="ghost" data-yv-act="del-row" style="padding:2px 8px; font-size:11px;">✕</button></td>`;
   tbody.appendChild(tr);
 }
 document.getElementById('timeline-add-row').addEventListener('click', () => addTimelineRow());

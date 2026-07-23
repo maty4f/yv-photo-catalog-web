@@ -1541,6 +1541,12 @@ async function uploadToGeminiFiles(file, onProgress, apiKey) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', uploadUrl);
+    // Proxied Files-API upload goes to our own server → carry the CSRF session
+    // header (the client-log fetch wrapper can't see XHR). Never sent on a
+    // direct-to-Google upload. (review 2026-07-23)
+    if (state.proxyGemini && state.localServerUrl) {
+      try { const sid = sessionStorage.getItem('yvSessionId'); if (sid) xhr.setRequestHeader('x-yv-session', sid); } catch (e) { /* storage blocked */ }
+    }
     xhr.setRequestHeader('Content-Length', file.size.toString());
     xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
     xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');

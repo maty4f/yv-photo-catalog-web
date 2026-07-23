@@ -2543,7 +2543,7 @@ function addIdRow(row) {
     <td><input type="text" value="${esc(row?.name || '')}"></td>
     <td><input type="text" value="${esc(row?.position_he || '')}"></td>
     <td><input type="text" value="${esc(row?.position_en || '')}"></td>
-    <td><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove()">✕</button></td>
+    <td><button type="button" class="ghost" data-yv-act="del-row" style="padding:2px 8px; font-size:11px;">✕</button></td>
   `;
   tbody.appendChild(tr);
 }
@@ -3731,11 +3731,22 @@ function addPersonRow(person) {
     <td><input type="text" value="${esc(person?.dates || '')}"></td>
     <td><input type="text" value="${esc(person?.relation || '')}"></td>
     <td><input type="text" value="${esc(person?.fate || '')}"></td>
-    <td><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove()">✕</button></td>
+    <td><button type="button" class="ghost" data-yv-act="del-row" style="padding:2px 8px; font-size:11px;">✕</button></td>
   `;
   tbody.appendChild(tr);
 }
 document.getElementById('col-people-add').addEventListener('click', () => addPersonRow());
+
+// CSP no-inline (review 2026-07-23): the ✕ row-delete buttons across the ID,
+// people and intake-items tables carry data-yv-act instead of inline onclick
+// (which the strict script-src silently blocks). One delegated handler serves all.
+document.addEventListener('click', ev => {
+  const b = ev.target.closest && ev.target.closest('[data-yv-act="del-row"]');
+  if (!b) return;
+  const tr = b.closest('tr');
+  if (tr) tr.remove();
+  if (b.dataset.renumber === 'items') renumberPhotoItems();
+});
 
 // === Intake items table (photo/document classification from intake form) ===
 function addIntakeItemRow(item) {
@@ -3760,7 +3771,7 @@ function addIntakeItemRow(item) {
     <td><input type="text" value="${esc(photoSeq)}" style="text-align:center; width:55px;" placeholder="—"></td>
     <td><textarea rows="2" style="font-size:12.5px; min-height:36px;">${esc(item?.description_he || '')}</textarea></td>
     <td><textarea rows="2" style="direction:ltr; text-align:left; font-family:'Heebo',sans-serif; font-size:12.5px; min-height:36px;">${esc(item?.description_en || '')}</textarea></td>
-    <td><button type="button" class="ghost" style="padding:2px 8px; font-size:11px;" onclick="this.closest('tr').remove(); renumberPhotoItems();">✕</button></td>
+    <td><button type="button" class="ghost" data-yv-act="del-row" data-renumber="items" style="padding:2px 8px; font-size:11px;">✕</button></td>
   `;
   tbody.appendChild(tr);
   // Color/refresh on type change

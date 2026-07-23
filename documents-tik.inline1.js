@@ -1364,6 +1364,9 @@ async function fastDescribe(){
     const xhrPost=(url,body,onPct)=>new Promise((resolve,reject)=>{
       const xhr=new XMLHttpRequest();
       xhr.open('POST',url);
+      // Session header (CSRF, review 2026-07-23): XHR bypasses the yv-client-log
+      // fetch wrapper, so set it here or production 403s the tik/upload-chunk POST.
+      try{const sid=sessionStorage.getItem('yvSessionId');if(sid)xhr.setRequestHeader('x-yv-session',sid);}catch(e){}
       xhr.upload.onprogress=ev=>{if(ev.lengthComputable&&onPct)onPct(ev.loaded,ev.total);};
       xhr.onload=()=>resolve(xhr);
       xhr.onerror=()=>reject(new Error('network'));
