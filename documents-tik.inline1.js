@@ -1017,9 +1017,10 @@ function renderRecord(rec,restored){
   state.chatHistory=[];
   $('chat-log').innerHTML='';
   $('chat-panel').classList.add('show');
-  // refresh-survival: a synthesized record is 15-40 min of model work, and the
-  // record div has no [id] form fields, so yv-autosave never captures it —
-  // persist it (with the chunk notes when they fit) so a refresh can restore.
+  // refresh-survival: a synthesized record is 15-40 min of model work, so it is
+  // persisted here (with the chunk notes when they fit) and a refresh restores
+  // it. This is the tik screen's OWN localStorage copy — the generic autosave
+  // was removed 2026-07-26 and never covered this div anyway (no [id] fields).
   if(!restored){
     try{
       const payload={rec,savedAt:Date.now()};
