@@ -246,8 +246,13 @@ const PAIR_WORD_RE = /[ _-]?(?:עורף|גב|verso|back)$/i;
 // Require a digit/separator right before the XX so a name that merely ends in
 // letters+xx (e.g. "maxx") is not misread as a back.
 const PAIR_XX_RE = /^(.*[\d _-])[xX]{2}$/;
+// xx touching a digit ANYWHERE in the stem is a verso marker too (like '#'):
+// "8xx33"/"833xx_2" are backs of "833"/"833_2". Letters-only xx ("maxx",
+// "Foxx") still never marks a back. Mirrors _PAIR_XX_MID_RE in cli/yv.py.
+const stripMidXX = s => s.replace(/(\d)[xX]{2}/g, '$1').replace(/[xX]{2}(\d)/g, '$1');
 // Classify one file → { key, isBack }. A back (verso/"עורף") is marked by '#'
-// ANYWHERE in the name, a trailing עורף/גב/verso/back word, or a trailing XX.
+// ANYWHERE in the name, a trailing עורף/גב/verso/back word, a trailing XX, or
+// xx adjacent to a digit anywhere in the name.
 // The key is the front's basename (marker removed) so a back pairs to its
 // front and is cataloged TOGETHER with it, not as a separate photo.
 function fileKind(file) {
@@ -256,6 +261,8 @@ function fileKind(file) {
   if (PAIR_WORD_RE.test(base)) return { key: PAIR_NORM(base.replace(PAIR_WORD_RE, '')), isBack: true };
   const xx = base.match(PAIR_XX_RE);
   if (xx) return { key: PAIR_NORM(xx[1]), isBack: true };
+  const mid = stripMidXX(base);
+  if (mid !== base) return { key: PAIR_NORM(mid), isBack: true };
   return { key: PAIR_NORM(base), isBack: false };
 }
 const frontKeyOf = file => fileKind(file).key;
@@ -2270,7 +2277,7 @@ ${ctxText || '(אין מידע מוקדם)'}
   "title_he": "כותר עברית בפורמט הנדרש",
   "title_en": "Title English in required format",
   "places_en": "comma-separated places in English",
-  "material_type": "26T קובץ סריקה",
+  "material_type": "26T קובץ סריקה",  // אם כתוב על התצלום (חזית או גב) סימול ארכיוני מספר-אוסף/מספר-תצלום כמו "11299/11" — זהו תצלום פיזי: "9T תצלום"
   "color": "שחור-לבן",
   "rights_owner": "הארכיון",
   "classification": "בלתי מסווג",
@@ -2338,6 +2345,7 @@ ${ctxText || '(אין מידע מוקדם)'}
 - "studio_id.studio_db_id" — אם הסטודיו ידוע במאגר; אחרת null
 - "studio_id.new_entry" — אם זוהה סטודיו חדש שלא במאגר, יש למלא ערך מלא (id, name, city, country, owner, stamps_and_marks, notes); אחרת null
 - אם בגב התצלום יש כיתוב — חובה לתעתק ולתרגם בשדה "inscriptions"
+- סימול ארכיוני "מספר-אוסף/מספר-תצלום" כתוב על התצלום (למשל 11299/11, לרוב בגב) ⇒ זהו תצלום פיזי: "material_type": "9T תצלום"
 
 החזר JSON בלבד.`;
 }
@@ -2361,6 +2369,7 @@ ${ctx ? '## מידע מוקדם\n\n' + ctx + '\n\n' : ''}## דרישות
 - כל זיהוי עם ✓/~/?
 - לא לנחש; אם אין ודאות — תיאור כללי
 - כיתוב בגב — תעתיק במקור + תרגום HE+EN
+- מספר אוסף/מספר תצלום כתוב על התצלום (למשל 11299/11) ⇒ אופי החומר: 9T תצלום
 - חותמת סטודיו אם קיימת — שם, עיר, תקופה`;
 }
 
