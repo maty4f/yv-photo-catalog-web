@@ -90,11 +90,25 @@
   }, true);
 
   // --- JS errors ------------------------------------------------------------
+  // A THIRD-PARTY resource that fails to load is not an application error and
+  // must not inflate the per-user error count on the users screen: Cloudflare
+  // injects its own analytics beacon into every HTML response and our CSP
+  // (script-src 'self' + jsdelivr) blocks it, which produced 10 of the 13
+  // "errors" counted for the operator in the week of 2026-07-25. Still logged —
+  // just under a type that isn't in user-activity's CLIENT_ERR set, so it stays
+  // diagnosable without pretending the archive is failing.
+  var SELF_HOST = location.host;
+  function isOurResource(url) {
+    try { return !url || new URL(url, location.href).host === SELF_HOST; }
+    catch (e) { return true; }            // unparsable → treat as ours, never hide a real bug
+  }
   window.addEventListener('error', function (e) {
     try {
+      var resSrc = (e.target && e.target.src) || '';
+      var thirdPartyResource = !e.message && resSrc && !isOurResource(resSrc);
       push({
-        type: 'js-error',
-        text: String(e.message || (e.target && e.target.src ? 'resource failed: ' + e.target.src : 'unknown')).slice(0, 500),
+        type: thirdPartyResource ? 'resource-3p' : 'js-error',
+        text: String(e.message || (resSrc ? 'resource failed: ' + resSrc : 'unknown')).slice(0, 500),
         src: (e.filename || '') + (e.lineno ? ':' + e.lineno : ''),
       });
     } catch (err) {}

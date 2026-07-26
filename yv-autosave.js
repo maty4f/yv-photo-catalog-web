@@ -124,8 +124,18 @@
       var body = JSON.stringify({ page: PAGE, ts: Date.now(), data: data });
       if (body === lastBackup) return;
       lastBackup = body;
-      if (navigator.sendBeacon) navigator.sendBeacon('/api/autosave', new Blob([body], { type: 'application/json' }));
-      else fetch('/api/autosave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true }).catch(function () {});
+      // fetch FIRST, sendBeacon only as a fallback (2026-07-25): a beacon cannot
+      // carry custom headers, so since the CSRF hardening of 2026-07-21 (every
+      // state-changing tunneled /api call must send x-yv-session) these POSTs
+      // were rejected 403 — silently, because this path swallows failures. The
+      // off-browser copy stopped being written on 2026-07-21 and nothing said so.
+      // keepalive fetch survives unload like a beacon AND goes through the
+      // yv-client-log wrapper that attaches the session header.
+      if (window.fetch) {
+        fetch('/api/autosave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true }).catch(function () {});
+      } else if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/autosave', new Blob([body], { type: 'application/json' }));
+      }
     } catch (e) {}
   }
   setInterval(backup, BACKUP_EVERY_MS);

@@ -58,9 +58,12 @@
     <!-- logs.html is an admin-only server route (not mirrored to the public Pages
          repo) — hidden until we confirm a real server is answering, so the public
          marketing/demo deploy of this page never shows a dead (or exposed) link. -->
+    <!-- Self-service personal key (server-only page too): revealed for a WORKER
+         session — the operator's keys are server-managed, so they never need it. -->
+    <a href="my-key.html" id="nav-mykey" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">🔑 המפתח שלי · My key</a>
     <a href="logs.html" id="nav-logs" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">📜 לוגים · Logs</a>
     <a href="logs.html#trends" id="nav-trends" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">📈 מגמות משוב · Trends</a>
-    <a href="users.html" id="nav-users" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px;">👥 מורשי גישה · Users</a>
+    <a href="users.html" id="nav-users" class="statuschip" style="display:none; text-decoration:none; margin-inline-start:8px; background:color-mix(in srgb, var(--brand) 16%, transparent); border-color:color-mix(in srgb, var(--brand) 50%, transparent); font-weight:700;">👥 ניהול הרשאות · Users</a>
   </div>
 
   <p class="lead-p">
@@ -212,7 +215,7 @@
   </footer>
 
 </div>
-<script src="index.inline1.js?v=20260722e"></script>
-<script src="yv-client-log.js?v=20260722d"></script>
+<script src="index.inline1.js?v=20260725a"></script>
+<script src="yv-client-log.js?v=20260725"></script>
 </body>
 </html>

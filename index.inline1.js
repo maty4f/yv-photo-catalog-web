@@ -17,6 +17,16 @@
     // email on the admin list). A worker's session gets 403 there, so workers
     // never see the admin links at all; on the public Pages/demo deploy there
     // is no server and nothing fires.
+    // Worker-only chip: /api/me answers 200 for any admitted session, and only a
+    // NON-owner needs a personal key (the operator's are server-managed).
+    fetch(base + '/api/me').then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (me) {
+      if (!me || !me.email || me.isOwner) return;
+      var showKey = function () { var lk = document.getElementById('nav-mykey'); if (lk) lk.style.display = 'inline-block'; };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showKey);
+      else showKey();
+    }).catch(function () {});
     fetch(base + '/api/admin/users').then(function (r) {
       if (!r.ok) return;
       var showAdmin = function () { ['nav-logs', 'nav-trends', 'nav-users'].forEach(function (id) { var lk = document.getElementById(id); if (lk) lk.style.display = 'inline-block'; }); };
