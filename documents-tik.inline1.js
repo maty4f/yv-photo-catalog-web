@@ -1754,12 +1754,24 @@ async function fastDescribe(){
     let jr={};try{jr=JSON.parse(post.responseText);}catch{}
     const {jobId}=jr;
     if(!jobId)throw new Error('השרת לא החזיר jobId (ודא שגרסת השרת החדשה רצה).');
-    // Poll until the SERVER resolves the job (done/error). The server self-resolves
-    // via its own watchdogs (idle-based engine kill + bounded model calls), so we
-    // keep waiting as long as the job shows PROGRESS: the 90-min window slides —
-    // it resets whenever a new engine event arrives, and only a genuinely silent
-    // stretch aborts (a huge tik legitimately runs hours). Each poll is a quick
-    // GET, so the Cloudflare ~100s limit never bites.
+    // Persist the running job so a tab-freeze / reload can RESUME it (26.7.2026:
+    // Chrome froze the background tab 17 min before the job finished — the ✓
+    // never reached the screen and the run looked stuck forever).
+    try{localStorage.setItem('yv-tik-last-job',JSON.stringify({id:jobId,at:Date.now()}));}catch(e){}
+    return await pollTikJob(jobId,t);
+  }catch(err){console.error(err);showStatus('שגיאה בתיאור מהיר: '+esc(err.message),'err');}
+  finally{$('run').disabled=false;$('describe-fast').disabled=false;}
+  return false;
+}
+
+// Poll until the SERVER resolves the job (done/error). The server self-resolves
+// via its own watchdogs (idle-based engine kill + bounded model calls), so we
+// keep waiting as long as the job shows PROGRESS: the 90-min window slides —
+// it resets whenever a new engine event arrives, and only a genuinely silent
+// stretch aborts (a huge tik legitimately runs hours). Each poll is a quick
+// GET, so the Cloudflare ~100s limit never bites. Shared by fastDescribe AND
+// the resume-on-load path (tab-freeze recovery, 26.7.2026).
+async function pollTikJob(jobId,t){
     let started=Date.now(),lastEvCount=0;const maxMs=90*60*1000;
     if(window.yvProgress)yvProgress.begin({screen:'documents-tik',kind:'tik'});
     while(Date.now()-started<maxMs){
@@ -1777,6 +1789,7 @@ async function fastDescribe(){
       showStatus(`<span class="spinner"></span>תיאור מהיר${mdl}${pctTxt} · ${lastEv?esc(lastEv):'המנוע התחיל…'} (${Math.round((Date.now()-t)/1000)} שׄ)`,'info');
       if(j.status==='done'){
         state.outputName=j.outputName||null;   // enables archival export (server sidecar)
+        try{localStorage.removeItem('yv-tik-last-job');}catch(e){}
         const fastRec=parseJson(j.text,'Claude');
         if(fastRec&&!fastRec._tik_source)fastRec._tik_source=tikSource(); // רשומת מנוע ישן — חתום מהבורר
         if(fastRec&&!fastRec._tik_kind)fastRec._tik_kind=(tikSource()==='institutional'?tikKind():'');
@@ -1787,15 +1800,43 @@ async function fastDescribe(){
         return true;
       }
       if(j.status==='error'){
+        try{localStorage.removeItem('yv-tik-last-job');}catch(e){}
         if(j.prohibited){showStatus('⚠ Gemini סירב לקרוא את התיק (חומר רגיש). עבור למצב "Claude בלבד" והרץ "קטלג תיק".','err');return false;}
         throw new Error(j.error||'תיאור נכשל');
       }
     }
     throw new Error('לא התקבלה שום התקדמות מהשרת במשך 90 דקות — ייתכן שהשרת נתקע או שהחיבור נותק. בדוק את מסך ההפעלות (logs.html) לפני ניסיון חוזר.');
-  }catch(err){console.error(err);showStatus('שגיאה בתיאור מהיר: '+esc(err.message),'err');}
-  finally{$('run').disabled=false;$('describe-fast').disabled=false;}
-  return false;
 }
+
+// Resume after a reload / tab-freeze (26.7.2026): if the last launched tik job is
+// still running — keep following it; if it finished while the tab was frozen —
+// load the finished record from the server instead of showing a dead spinner.
+(async()=>{
+  let last=null;
+  try{last=JSON.parse(localStorage.getItem('yv-tik-last-job')||'null');}catch(e){}
+  if(!last||!last.id||Date.now()-(last.at||0)>6*60*60*1000)return;
+  let j=null;
+  try{const pr=await fetch(serverBase()+'/api/tik-describe/'+last.id);if(pr.ok)j=await pr.json();}catch(e){}
+  if(!j||!j.status){return;}
+  if(j.status==='done'){
+    try{localStorage.removeItem('yv-tik-last-job');}catch(e){}
+    const rec=parseJson(j.text,'Claude');
+    if(rec){
+      state.outputName=j.outputName||null;
+      if(!rec._tik_source)rec._tik_source=tikSource();
+      if(!rec._tik_kind)rec._tik_kind=(tikSource()==='institutional'?tikKind():'');
+      renderRecord(rec);
+      showStatus('✓ הקטלוג הושלם בזמן שהמסך לא היה פעיל — הרשומה נטענה מהשרת. בדוק את נקודות הבדיקה לפני הדבקה לספיר.','ok');
+    }
+  }else if(j.status==='running'||j.status==='queued'){
+    showStatus('<span class="spinner"></span>ממשיך לעקוב אחרי קטלוג-תיק שכבר רץ בשרת…','info');
+    try{await pollTikJob(last.id,last.at||Date.now());}
+    catch(err){showStatus('שגיאה בקטלוג שחודש: '+esc(err.message),'err');}
+  }else{
+    try{localStorage.removeItem('yv-tik-last-job');}catch(e){}
+  }
+})();
+
 $('describe-fast').addEventListener('click',()=>{
   if(state.queueRunning)return;
   if(state.queue.some(q=>q.status==='pending'))runQueue('fast');else fastDescribe();
