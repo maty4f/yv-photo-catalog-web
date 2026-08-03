@@ -181,7 +181,7 @@ const privateRulesBlock=()=>tikSource()==='private'?'\n\n'+PRIVATE_SOURCE_RULES:
 const ISA_SOURCE_RULES=`── תוספת מחייבת — תיק המיועד לרישום בארכיון המדינה ──
 בנוסף לכל הכללים לעיל:
 1. title — "שם הפריט" בנוסח רשומות ארכיון המדינה: שם תיק קצר וענייני, לא משפט תיאורי ארוך (כדוגמת רשומותיהם: "ארגון שארית הפליטה, רחוב יהודה הלוי 143 תל-אביב.", "תלמוד תורה שארית הפליטה בחליסה").
-2. summary — "תיאור התיק": פסקה תמציתית אחת בגוף שלישי על תוכן התיק; מה שכלול בתיק נמנה במפורש ("התיק כולל: התכתבויות, תקנון, קטעי עיתונות…"); בלי פרשנות ובלי חזרה על הכותר.
+2. "תיאור התיק" — הפסקה הראשונה ב-additional_info_paragraphs, עם heading בדיוק "תיאור התיק": פסקה תמציתית אחת בגוף שלישי על תוכן התיק; מה שכלול בתיק נמנה במפורש ("התיק כולל: התכתבויות, תקנון, קטעי עיתונות…"); בלי פרשנות ובלי חזרה על הכותר.
 3. date_range — "תקופת החומר" של התיק כולו: מהמסמך המוקדם ביותר עד המאוחר ביותר.
 4. כל שאר השדות — לפי הנוסח הרגיל; ההמרה לשדות ארכיון המדינה נעשית אוטומטית בדף-ההזנה שנוצר בסוף הריצה.`;
 const isaRulesBlock=()=>tikSource()==='isa'?'\n\n'+ISA_SOURCE_RULES:'';
@@ -814,8 +814,19 @@ function renderRecord(rec,restored){
   // additional info (assembled). "הקשר היסטורי" (ידע-רקע H) מופרד לשדה משלו —
   // בדף-המקטלג הסופי של תיק פרטי הוא כבוי כברירת-מחדל (נוהל מיכאל: המידע-הנוסף
   // נושא רק את קבוצות-החומר מהתיק עצמו).
-  let info='', infoHist='';
-  (rec.additional_info_paragraphs||[]).forEach(p=>{
+  let info='', infoHist='', isaDesc='';
+  // מצב ארכיון המדינה: פסקת "תיאור התיק" נשלפת לשדה-הרישום הראשי (במבנה
+  // רשומות archives.gov.il) ולא נכפלת גם במידע-הנוסף.
+  const isIsa=rec._tik_source==='isa';
+  const _paras=(rec.additional_info_paragraphs||[]);
+  let _isaDescIdx=-1;
+  if(isIsa){
+    _isaDescIdx=_paras.findIndex(p=>/תיאור התיק/.test(String((p&&p.heading)||'')));
+    if(_isaDescIdx<0)_isaDescIdx=_paras.findIndex(p=>p&&String(p.body||'').trim()&&!/היסטורי/.test(String(p.heading||'')));
+    if(_isaDescIdx>=0)isaDesc=String(_paras[_isaDescIdx].body||'').trim();
+  }
+  _paras.forEach((p,i)=>{
+    if(i===_isaDescIdx)return;
     const body=esc(p.body);
     if(/היסטורי/.test(String(p.heading||''))){infoHist+=`${body}\n\n`;return;}
     if(p.contains_diamond) info+=`<div class="diamond">${p.heading?`<b>${esc(p.heading)}</b><br>`:''}${body}</div>`;
@@ -923,15 +934,49 @@ function renderRecord(rec,restored){
     `<span style="flex:1"></span>`+
     `<span class="pick-count">העתקה וייצוא מרשומת-טיוטה מציגים אזהרה</span>`+
   `</div>`;
-  $('record').innerHTML=
-    apprBar+
-    `<div class="pick-bar">`+
-      `<button class="btn" id="copy-picked" type="button">📋 העתק את השדות המסומנים</button>`+
-      `<span class="pick-count" id="pick-count"></span>`+
-      `<span style="flex:1"></span>`+
-      `<button class="mini-btn" id="pick-all" type="button">סמן הכל</button>`+
-      `<button class="mini-btn" id="pick-none" type="button">נקה הכל</button>`+
+  // ── רשומה במבנה ארכיון המדינה (tik_source=isa): שמות-שדות ומבנה כברשומות
+  // archives.gov.il — שם הפריט, רמה, סוג הפריט, תיאור התיק, תקופת החומר
+  // (DD/MM/YYYY, ‏01/01–31/12 כשידועה שנה בלבד), מזהים, סטטוס חשיפה ותגיות.
+  const isaDateFmt=(d,end)=>{const s=String(d||'').trim();if(!s)return '';
+    let m=s.match(/^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$/);
+    if(m){const y=m[1],mo=m[2]?String(+m[2]).padStart(2,'0'):null,da=m[3]?String(+m[3]).padStart(2,'0'):null;
+      if(da&&mo)return `${da}/${mo}/${y}`;
+      if(mo){const last=new Date(+y,+mo,0).getDate();return end?`${last}/${mo}/${y}`:`01/${mo}/${y}`;}
+      return end?`31/12/${y}`:`01/01/${y}`;}
+    m=s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/);
+    if(m)return `${m[1].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[3]}`;
+    return s;};
+  const _isaS=isaDateFmt(rec.date_authentic_start,false), _isaE=isaDateFmt(rec.date_authentic_end||rec.date_authentic_start,true);
+  const isaRange=_isaS?`<span dir="ltr" style="unicode-bidi:isolate">${esc(_isaS===_isaE?_isaS:`${_isaS} - ${_isaE}`)}</span>`:'';
+  const CORP_HE=/ארגון|אגוד|משרד|ממשלת|ועד|מועצ|חברת|בית[- ]ספר|תלמוד תורה|קופת|בית[- ]כנסת|יודנראט|תיאטרון|בנק|עיריי|קהיל/;
+  const _isaNames=[...new Set(nm.map(p=>String(p.name||p.name_original||'').trim()).filter(Boolean))];
+  const chipList=a=>a.length?a.map(x=>`<span class="chip">${esc(x)}</span>`).join(''):'<span class="none">—</span>';
+  const isaMain=
+    `<div class="section-bar">רשומת התיק — במבנה ארכיון המדינה</div>`+
+    fieldBlock('שם הפריט'+conf(rec,'title'),'f-title',esc(rec.title))+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('רמה','f-isa-level','תיק')+
+      fieldBlock('סוג הפריט','f-isa-itype','טקסטואלי')+
     `</div>`+
+    fieldBlock('תיאור התיק','f-isa-desc',esc(isaDesc)||'<span class="none">—</span>')+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('תקופת החומר','f-isa-dates',isaRange||'<span class="none">— לא זוהה טווח מבוסס —</span>')+
+      fieldBlock('מקור החומר (גוף מפקיד)','f-isa-depositor','<span class="none">— להשלמה על-ידי הארכיון —</span>')+
+    `</div>`+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('מזהה פיזי','f-isa-physid','<span class="none">— סימול פיזי (למשל גל-1704/10) — להשלמה —</span>')+
+      fieldBlock('מזהה לציטוט','f-isa-citeid','<span class="none">— מוקצה על-ידי ארכיון המדינה בעת הקליטה —</span>')+
+    `</div>`+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('סטטוס חשיפה','f-isa-status','טרם נבדק')+
+      fieldBlock('שפות','f-lang',langs)+
+    `</div>`+
+    `<div class="section-bar">תגיות</div>`+
+    fieldBlock('נושאים','f-subjects',subjHtml)+
+    fieldBlock('אישים','f-isa-persons',chipList(_isaNames.filter(n=>!CORP_HE.test(n))))+
+    fieldBlock('ארגונים','f-isa-orgs',chipList(_isaNames.filter(n=>CORP_HE.test(n))))+
+    fieldBlock('מקומות','f-places',chipList((rec.related_places||[]).filter(Boolean)));
+  const sapirMain=
     `<div class="section-bar">דפית ראשית</div>`+
     fieldBlock('כותר'+conf(rec,'title'), 'f-title', esc(rec.title))+
     fieldBlock('מקומות קשורים', 'f-places', places)+
@@ -951,12 +996,22 @@ function renderRecord(rec,restored){
       fieldBlock('מיועד להקלדת שמות','f-nt',nameType)+
       fieldBlock('סיווג','f-cls',cls)+
     `</div>`+
-    fieldBlock('הערת תוכן','f-cnote',esc(rec.content_note||'—'))+
+    fieldBlock('הערת תוכן','f-cnote',esc(rec.content_note||'—'));
+  $('record').innerHTML=
+    apprBar+
+    `<div class="pick-bar">`+
+      `<button class="btn" id="copy-picked" type="button">📋 העתק את השדות המסומנים</button>`+
+      `<span class="pick-count" id="pick-count"></span>`+
+      `<span style="flex:1"></span>`+
+      `<button class="mini-btn" id="pick-all" type="button">סמן הכל</button>`+
+      `<button class="mini-btn" id="pick-none" type="button">נקה הכל</button>`+
+    `</div>`+
+    (isIsa?isaMain:sapirMain)+
 
     testimonySectionsHtml(rec)+
 
-    `<div class="section-bar">מידע נוסף</div>`+
-    fieldBlock('מידע נוסף (להדבקה לספיר)','f-info',info.trim()||'<span class="none">—</span>')+
+    `<div class="section-bar">${isIsa?'מידע פנימי נוסף (לא חלק מרשומת ארכיון המדינה)':'מידע נוסף'}</div>`+
+    fieldBlock(isIsa?'מידע נוסף · פנימי':'מידע נוסף (להדבקה לספיר)','f-info',info.trim()||'<span class="none">—</span>')+
     (infoHist.trim()?fieldBlock(rec._tik_source==='private'?'הקשר היסטורי · פנימי (ידע-רקע — לא מהתיק)':'הקשר היסטורי','f-info-hist',infoHist.trim()):'')+
 
     privateSectionsHtml(rec)+
@@ -974,8 +1029,8 @@ function renderRecord(rec,restored){
     `<div class="section-bar">ציר זמן ביוגרפי</div>`+
     fieldBlock('ציר זמן','f-timeline',tlHtml)+
 
-    `<div class="section-bar">נושאים — תזאורוס</div>`+
-    fieldBlock('נושאים','f-subjects',subjHtml);
+    (isIsa?'':`<div class="section-bar">נושאים — תזאורוס</div>`+
+    fieldBlock('נושאים','f-subjects',subjHtml));
   const apBtn=document.getElementById('approve-rec');
   if(apBtn)apBtn.onclick=()=>{
     const r=state.lastRecord||rec;
