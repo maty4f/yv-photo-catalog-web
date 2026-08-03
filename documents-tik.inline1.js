@@ -965,8 +965,25 @@ function renderRecord(rec,restored){
   const _isaS=isaDateFmt(rec.date_authentic_start,false), _isaE=isaDateFmt(rec.date_authentic_end||rec.date_authentic_start,true);
   const isaRange=_isaS?`<span dir="ltr" style="unicode-bidi:isolate">${esc(_isaS===_isaE?_isaS:`${_isaS} - ${_isaE}`)}</span>`:'';
   const CORP_HE=/ארגון|אגוד|משרד|ממשלת|ועד|מועצ|חברת|בית[- ]ספר|תלמוד תורה|קופת|בית[- ]כנסת|יודנראט|תיאטרון|בנק|עיריי|קהיל/;
-  const _isaNames=[...new Set(nm.map(p=>String(p.name||p.name_original||'').trim()).filter(Boolean))];
-  const chipList=a=>a.length?a.map(x=>`<span class="chip">${esc(x)}</span>`).join(''):'<span class="none">—</span>';
+  // תגית "אישים" ברשומת ארכיון המדינה = נקודות-גישה מובחרות (אצלם ~3 לתיק שלם),
+  // לא מפתח. לכן מדורגות לפי מרכזיות (מספר העמודים) ומוגבלות; הרשימה המלאה
+  // נשארת במפתח השמות ובקובץ ה-CSV.
+  const ISA_MAX_PERSON_TAGS=10;
+  const pageCount=p=>{const raw=String(p.source_pages||p.pages||'').replace(/\s/g,'');
+    if(!raw)return 0;
+    return raw.split(',').filter(Boolean).reduce((n,part)=>{
+      const m=part.match(/^(\d+)-(\d+)$/);
+      return n+(m&&+m[2]>=+m[1]?(+m[2]-+m[1]+1):1);},0);};
+  const _isaEntries=nm.filter(p=>String(p.name||p.name_original||'').trim());
+  const _isaOrgs=[...new Set(_isaEntries.map(p=>String(p.name||p.name_original).trim()).filter(n=>CORP_HE.test(n)))];
+  const _isaPeople=_isaEntries.filter(p=>!CORP_HE.test(String(p.name||p.name_original).trim()))
+    .map(p=>({n:String(p.name||p.name_original).trim(),c:pageCount(p)}))
+    .sort((a,b)=>b.c-a.c);
+  let _isaCentral=[...new Set(_isaPeople.filter(p=>p.c>=2).map(p=>p.n))].slice(0,ISA_MAX_PERSON_TAGS);
+  if(!_isaCentral.length)_isaCentral=[...new Set(_isaPeople.map(p=>p.n))].slice(0,ISA_MAX_PERSON_TAGS);
+  const _isaOmitted=Math.max(0,new Set(_isaPeople.map(p=>p.n)).size-_isaCentral.length);
+  const chipList=(a,hint)=>(a.length?a.map(x=>`<span class="chip">${esc(x)}</span>`).join(''):'<span class="none">—</span>')+
+    (hint?`<div class="hint" style="margin-top:5px">${esc(hint)}</div>`:'');
   const isaMain=
     `<div class="section-bar">רשומת התיק — במבנה ארכיון המדינה</div>`+
     fieldBlock('שם הפריט'+conf(rec,'title'),'f-title',esc(rec.title))+
@@ -990,8 +1007,10 @@ function renderRecord(rec,restored){
     isaRedactionsField(rec)+
     `<div class="section-bar">תגיות</div>`+
     fieldBlock('נושאים','f-subjects',subjHtml)+
-    fieldBlock('אישים','f-isa-persons',chipList(_isaNames.filter(n=>!CORP_HE.test(n))))+
-    fieldBlock('ארגונים','f-isa-orgs',chipList(_isaNames.filter(n=>CORP_HE.test(n))))+
+    fieldBlock('אישים','f-isa-persons',chipList(_isaCentral,
+      _isaOmitted?`הדמויות המרכזיות בתיק (לפי מספר העמודים שבהם הן מופיעות); ${_isaOmitted} שמות נוספים במפתח השמות המלא ובקובץ ה-CSV`
+                 :'שנות חיים מופיעות רק כשנרשמו בתיק במפורש'))+
+    fieldBlock('ארגונים','f-isa-orgs',chipList(_isaOrgs))+
     fieldBlock('מקומות','f-places',chipList((rec.related_places||[]).filter(Boolean)));
   const sapirMain=
     `<div class="section-bar">דפית ראשית</div>`+
