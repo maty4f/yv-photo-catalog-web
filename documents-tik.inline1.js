@@ -186,6 +186,19 @@ const ISA_SOURCE_RULES=`── תוספת מחייבת — תיק המיועד �
 4. כל שאר השדות — לפי הנוסח הרגיל; ההמרה לשדות ארכיון המדינה נעשית אוטומטית בדף-ההזנה שנוצר בסוף הריצה.`;
 const isaRulesBlock=()=>tikSource()==='isa'?'\n\n'+ISA_SOURCE_RULES:'';
 
+// "פריטים מושחרים" — צנזורת ארכיון המדינה שזוהתה בסריקה (שלב-1). רשומה מלפני
+// הוספת הזיהוי (אין מפתח redactions) מוצגת עם הערה, לא עם "לא זוהו".
+function isaRedactionsField(rec){
+  if(rec.redactions===undefined&&!String(rec.redactions_he||'').trim())
+    return fieldBlock('פריטים מושחרים','f-isa-redact','<span class="none">— הרשומה נוצרה לפני הוספת זיהוי ההשחרות; הרץ תיאור מחדש לבדיקה —</span>');
+  const reds=(rec.redactions||[]).filter(r=>r&&String(r.pages||'').trim());
+  if(!reds.length)
+    return fieldBlock('פריטים מושחרים','f-isa-redact','אין — לא זוהו קטעים מושחרים בסריקה');
+  const txt=String(rec.redactions_he||'').trim()||
+    (`בתיק ${reds.length} קטעים מושחרים: `+reds.map(r=>`עמ' ${String(r.pages)}`+(String(r.extent_he||'').trim()?` — ${String(r.extent_he)}`:'')).join('; '));
+  return fieldBlock('פריטים מושחרים','f-isa-redact',esc(txt));
+}
+
 // דף-ההזנה לארכיון המדינה נוצר על-ידי המנוע לצד הרשומה (<שם>.isa.html) בריצת
 // "תיאור מהיר" עם tik_source=isa; כאן רק מוצעת הורדתו כשקיים בשרת.
 async function maybeOfferIsaSheet(){
@@ -933,7 +946,7 @@ function renderRecord(rec,restored){
   const apprBar=`<div class="pick-bar" style="gap:12px;margin-bottom:6px">`+
     `<span style="font-weight:700;font-size:13px;color:${appr?'var(--good)':'var(--warn)'}">${appr?('✔ אושר לרישום · '+esc(new Date(appr.at).toLocaleString('he-IL'))):'⚠ טיוטה — טרם אושר לרישום'}</span>`+
     `<button class="mini-btn" id="approve-rec" type="button">${appr?'בטל אישור':'✔ אשר לרישום'}</button>`+
-    (rec._trust!==''&&rec._trust!==undefined&&rec._trust!==null?`<span class="chip" title="ציון-אמינות מצרפי מהמנוע: שמות ודאיים, כיסוי-עמודים, ממצאי-בקרה">🎯 אמינות: ${esc(String(rec._trust))}/100</span>`:'')+
+    (!isIsa&&rec._trust!==''&&rec._trust!==undefined&&rec._trust!==null?`<span class="chip" title="ציון-אמינות מצרפי מהמנוע: שמות ודאיים, כיסוי-עמודים, ממצאי-בקרה">🎯 אמינות: ${esc(String(rec._trust))}/100</span>`:'')+
     `<span style="flex:1"></span>`+
     `<span class="pick-count">העתקה וייצוא מרשומת-טיוטה מציגים אזהרה</span>`+
   `</div>`;
@@ -974,6 +987,7 @@ function renderRecord(rec,restored){
       fieldBlock('סטטוס חשיפה','f-isa-status','טרם נבדק')+
       fieldBlock('שפות','f-lang',langs)+
     `</div>`+
+    isaRedactionsField(rec)+
     `<div class="section-bar">תגיות</div>`+
     fieldBlock('נושאים','f-subjects',subjHtml)+
     fieldBlock('אישים','f-isa-persons',chipList(_isaNames.filter(n=>!CORP_HE.test(n))))+
