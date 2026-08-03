@@ -158,7 +158,7 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני בארכיון. לפ�
 // בורר #tik-source: "מקורות פרטיים" (ברירת-מחדל — זיכרונות, עדויות, יומנים)
 // מוסיף את הכללים המחמירים לפרומפט הסינתזה ואת רשימות-הוודאות לרשומה;
 // "מקורות מוסדיים" = הרישום הרגיל (צורת הרישום תותאם כשיגיעו דוגמאות).
-function tikSource(){const el=document.getElementById('tik-source');return (el&&el.value==='institutional')?'institutional':'private';}
+function tikSource(){const el=document.getElementById('tik-source');const v=(el&&el.value)||'';return (v==='institutional'||v==='isa')?v:'private';}
 const PRIVATE_SOURCE_RULES=`── תוספת מחייבת — תיק ממקורות פרטיים (זיכרונות, עדויות, יומנים; נוהל רישום מחמיר) ──
 הכללים הבאים מצטרפים לכל הכללים לעיל וגוברים עליהם בכל סתירה:
 1. הסתמך אך ורק על המופיע במפורש בתיק. אין ידע חיצוני, אין השלמת פרטים, אין הסקת מסקנות שאינן כתובות.
@@ -172,6 +172,40 @@ const PRIVATE_SOURCE_RULES=`── תוספת מחייבת — תיק ממקור
 6. בכל ספק — העדף השמטה. שם, מקום, תאריך או קרבה נכללים רק אם כתובים במפורש.
 7. ב-names_index מלא לכל אדם "confidence": "✓"/"~"/"?" (ודאות קריאת השם); ב-timeline אירוע מסופק מקבל "?".`;
 const privateRulesBlock=()=>tikSource()==='private'?'\n\n'+PRIVATE_SOURCE_RULES:'';
+
+/* ---------- מסלול "תיעוד לארכיון המדינה" — נוסח רשומות archives.gov.il ---------- */
+// נלמד מרשומות-תיק חיות באתר ארכיון המדינה (details/<id>, אומת 3.8.2026):
+// שם-פריט קצר, "תיאור התיק" תמציתי, תקופת-חומר של התיק כולו. ההמרה המלאה לשדות
+// ISA (תגיות, סטטוס חשיפה, מזהים, 01/01–31/12) נעשית בדף-ההזנה שהמנוע מפיק
+// אוטומטית בסוף "תיאור מהיר" (cli/exporters/isa.py) — לא כאן.
+const ISA_SOURCE_RULES=`── תוספת מחייבת — תיק המיועד לרישום בארכיון המדינה ──
+בנוסף לכל הכללים לעיל:
+1. title — "שם הפריט" בנוסח רשומות ארכיון המדינה: שם תיק קצר וענייני, לא משפט תיאורי ארוך (כדוגמת רשומותיהם: "ארגון שארית הפליטה, רחוב יהודה הלוי 143 תל-אביב.", "תלמוד תורה שארית הפליטה בחליסה").
+2. summary — "תיאור התיק": פסקה תמציתית אחת בגוף שלישי על תוכן התיק; מה שכלול בתיק נמנה במפורש ("התיק כולל: התכתבויות, תקנון, קטעי עיתונות…"); בלי פרשנות ובלי חזרה על הכותר.
+3. date_range — "תקופת החומר" של התיק כולו: מהמסמך המוקדם ביותר עד המאוחר ביותר.
+4. כל שאר השדות — לפי הנוסח הרגיל; ההמרה לשדות ארכיון המדינה נעשית אוטומטית בדף-ההזנה שנוצר בסוף הריצה.`;
+const isaRulesBlock=()=>tikSource()==='isa'?'\n\n'+ISA_SOURCE_RULES:'';
+
+// דף-ההזנה לארכיון המדינה נוצר על-ידי המנוע לצד הרשומה (<שם>.isa.html) בריצת
+// "תיאור מהיר" עם tik_source=isa; כאן רק מוצעת הורדתו כשקיים בשרת.
+async function maybeOfferIsaSheet(){
+  const old=document.getElementById('isa-sheet-btn');if(old)old.remove();
+  const bar=document.getElementById('tik-export-bar');
+  if(tikSource()!=='isa'||!state.outputName||!bar)return;
+  const name=state.outputName.replace(/\.html$/,'.isa.html');
+  try{
+    const r=await fetch(serverBase()+'/api/output/'+encodeURIComponent(name));
+    if(!r.ok)return;
+    const blob=await r.blob();
+    const b=document.createElement('button');
+    b.type='button';b.id='isa-sheet-btn';b.className='copy-btn';
+    b.style.cssText='background:#8a6a1f;color:#fff';
+    b.textContent='🏛 דף-הזנה לארכיון המדינה';
+    b.title='הרשומה במבנה רשומת ארכיון המדינה — שם הפריט, תיאור התיק, תקופת החומר, תגיות, סטטוס חשיפה — כפתור העתקה לכל שדה. נוצר אוטומטית בסוף הריצה';
+    b.addEventListener('click',()=>downloadBlob(blob,name));
+    bar.insertBefore(b,bar.firstElementChild?bar.firstElementChild.nextSibling:null);
+  }catch(e){/* אין דף — אין כפתור */}
+}
 
 /* ---------- מקורות מוסדיים · סוג "עדות" (חפ"ן / TR.11, נוסח פולינה אידלסון) ---------- */
 // נלמד מרשומות-הדוגמה 17404545/17415302 (עדות) ו-17404618/17415050 (מסמך-רשימה)
@@ -470,7 +504,7 @@ async function synthesizeTik(notes,onStage){
     items=condensed;
   }
   const findingsText=items.join('\n\n');
-  const synthPrompt=`${synthRules()}${privateRulesBlock()}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
+  const synthPrompt=`${synthRules()}${privateRulesBlock()}${isaRulesBlock()}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
   onStage&&onStage(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק…`);
   return await claudeSynthesize(synthPrompt,s=>onStage&&onStage(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק… (${s} שׄ)`));
 }
@@ -1688,7 +1722,7 @@ async function fastDescribe(){
     // Gemini→Claude collaboration: the server has Gemini read every page and extract
     // facts, then Claude (the historian) synthesizes the record from those facts. This
     // prompt is Claude's synthesis brief; the server appends Gemini's extracted facts.
-    const prompt=`${schemaRules()}${privateRulesBlock()}\n\n⚠ Gemini כבר קרא את **כל דפי התיק** וחילץ עובדות גולמיות (יצורפו בהמשך ההודעה). תפקידך כהיסטוריון ארכיוני: לסנתז מהן **רשומת-תיק אחת ברמת תיאור** — מפת המסמכים, היקף, מקומות ותקופה, אנשים מרכזיים, ויהלומים — עם **הקשר היסטורי מעמיק ומדויק**. עגן כל קביעה בעובדות בלבד (אל תמציא), והבחן בבירור בין מה שמתועד בתיק לבין ידע היסטורי כללי. החזר field_confidence (✓/~/?) לכל שדה, ו-review_flags לכל הסקה/אי-ודאות/פער שדורש אימות ארכיונאי. **לא** תמלול דף-דף ולא רשימת כל שם בכל דף.${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
+    const prompt=`${schemaRules()}${privateRulesBlock()}${isaRulesBlock()}\n\n⚠ Gemini כבר קרא את **כל דפי התיק** וחילץ עובדות גולמיות (יצורפו בהמשך ההודעה). תפקידך כהיסטוריון ארכיוני: לסנתז מהן **רשומת-תיק אחת ברמת תיאור** — מפת המסמכים, היקף, מקומות ותקופה, אנשים מרכזיים, ויהלומים — עם **הקשר היסטורי מעמיק ומדויק**. עגן כל קביעה בעובדות בלבד (אל תמציא), והבחן בבירור בין מה שמתועד בתיק לבין ידע היסטורי כללי. החזר field_confidence (✓/~/?) לכל שדה, ו-review_flags לכל הסקה/אי-ודאות/פער שדורש אימות ארכיונאי. **לא** תמלול דף-דף ולא רשימת כל שם בכל דף.${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
     // shared non-file fields — the finalize of a chunked upload sends them without the blob.
     // context is written server-side as the standard <pdf>.context.txt sidecar.
     const fields={prompt,context:[$('context').value.trim(),(state.intakeText||'').trim()].filter(Boolean).join('\n\n')};
@@ -1794,6 +1828,7 @@ async function pollTikJob(jobId,t){
         if(fastRec&&!fastRec._tik_source)fastRec._tik_source=tikSource(); // רשומת מנוע ישן — חתום מהבורר
         if(fastRec&&!fastRec._tik_kind)fastRec._tik_kind=(tikSource()==='institutional'?tikKind():'');
         renderRecord(fastRec);
+        maybeOfferIsaSheet();
         const split=(j.geminiSec&&j.claudeSec)?`Gemini ${j.geminiSec}שׄ + Claude ${j.claudeSec}שׄ`:(j.model||'Gemini+Claude');
         showStatus(`✓ תיאור הושלם תוך ${j.elapsedSec||Math.round((Date.now()-t)/1000)} שׄ (${split}). בדוק את נקודות הבדיקה ו-review_flags לפני הדבקה לספיר.`,'ok');
         $('results').scrollIntoView({behavior:'smooth'});
@@ -1826,6 +1861,7 @@ async function pollTikJob(jobId,t){
       if(!rec._tik_source)rec._tik_source=tikSource();
       if(!rec._tik_kind)rec._tik_kind=(tikSource()==='institutional'?tikKind():'');
       renderRecord(rec);
+      maybeOfferIsaSheet();
       showStatus('✓ הקטלוג הושלם בזמן שהמסך לא היה פעיל — הרשומה נטענה מהשרת. בדוק את נקודות הבדיקה לפני הדבקה לספיר.','ok');
     }
   }else if(j.status==='running'||j.status==='queued'){
