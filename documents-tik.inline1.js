@@ -817,7 +817,10 @@ function renderRecord(rec,restored){
   let info='', infoHist='', isaDesc='';
   // מצב ארכיון המדינה: פסקת "תיאור התיק" נשלפת לשדה-הרישום הראשי (במבנה
   // רשומות archives.gov.il) ולא נכפלת גם במידע-הנוסף.
-  const isIsa=rec._tik_source==='isa';
+  // גם רשומה מוסדית שנוצרה לפני חתימת-isa (או עם חותמת ישנה) מוצגת במבנה ארכיון
+  // המדינה כשהבורר עומד על isa — הבורר משקף את כוונת המקטלג; פרטי/עדות לא נגררים.
+  const isIsa=rec._tik_source==='isa'||
+    (tikSource()==='isa'&&rec._tik_source!=='private'&&rec._tik_kind!=='testimony');
   const _paras=(rec.additional_info_paragraphs||[]);
   let _isaDescIdx=-1;
   if(isIsa){
