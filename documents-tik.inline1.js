@@ -975,7 +975,11 @@ function renderRecord(rec,restored){
       const m=part.match(/^(\d+)-(\d+)$/);
       return n+(m&&+m[2]>=+m[1]?(+m[2]-+m[1]+1):1);},0);};
   const _isaEntries=nm.filter(p=>String(p.name||p.name_original||'').trim());
-  const _isaOrgs=[...new Set(_isaEntries.map(p=>String(p.name||p.name_original).trim()).filter(n=>CORP_HE.test(n)))];
+  // גופים: הרשימה הייעודית משלב-1 היא המקור הסמכותי; שמות "ארגוניים" שנקלטו
+  // בטעות למפתח השמות מצטרפים אליה (רשומות ישנות שאין להן רשימה כזו).
+  const _isaOrgs=[...new Set([
+    ...(rec.organizations||[]).map(o=>String((o&&o.name)||'').trim()).filter(Boolean),
+    ..._isaEntries.map(p=>String(p.name||p.name_original).trim()).filter(n=>CORP_HE.test(n))])];
   const _isaPeople=_isaEntries.filter(p=>!CORP_HE.test(String(p.name||p.name_original).trim()))
     .map(p=>({n:String(p.name||p.name_original).trim(),c:pageCount(p)}))
     .sort((a,b)=>b.c-a.c);
