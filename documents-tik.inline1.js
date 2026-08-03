@@ -968,7 +968,7 @@ function renderRecord(rec,restored){
   // תגית "אישים" ברשומת ארכיון המדינה = נקודות-גישה מובחרות (אצלם ~3 לתיק שלם),
   // לא מפתח. לכן מדורגות לפי מרכזיות (מספר העמודים) ומוגבלות; הרשימה המלאה
   // נשארת במפתח השמות ובקובץ ה-CSV.
-  const ISA_MAX_PERSON_TAGS=10;
+  const ISA_MAX_PERSON_TAGS=10,ISA_MAX_ORG_TAGS=10;
   const pageCount=p=>{const raw=String(p.source_pages||p.pages||'').replace(/\s/g,'');
     if(!raw)return 0;
     return raw.split(',').filter(Boolean).reduce((n,part)=>{
@@ -977,9 +977,12 @@ function renderRecord(rec,restored){
   const _isaEntries=nm.filter(p=>String(p.name||p.name_original||'').trim());
   // גופים: הרשימה הייעודית משלב-1 היא המקור הסמכותי; שמות "ארגוניים" שנקלטו
   // בטעות למפתח השמות מצטרפים אליה (רשומות ישנות שאין להן רשימה כזו).
-  const _isaOrgs=[...new Set([
-    ...(rec.organizations||[]).map(o=>String((o&&o.name)||'').trim()).filter(Boolean),
+  const _isaOrgsAll=[...new Set([
+    ...(rec.organizations||[]).slice().sort((a,b)=>pageCount(b||{})-pageCount(a||{}))
+        .map(o=>String((o&&o.name)||'').trim()).filter(Boolean),
     ..._isaEntries.map(p=>String(p.name||p.name_original).trim()).filter(n=>CORP_HE.test(n))])];
+  const _isaOrgs=_isaOrgsAll.slice(0,ISA_MAX_ORG_TAGS);
+  const _isaOrgsOmitted=Math.max(0,_isaOrgsAll.length-_isaOrgs.length);
   const _isaPeople=_isaEntries.filter(p=>!CORP_HE.test(String(p.name||p.name_original).trim()))
     .map(p=>({n:String(p.name||p.name_original).trim(),c:pageCount(p)}))
     .sort((a,b)=>b.c-a.c);
@@ -1014,7 +1017,8 @@ function renderRecord(rec,restored){
     fieldBlock('אישים','f-isa-persons',chipList(_isaCentral,
       _isaOmitted?`הדמויות המרכזיות בתיק (לפי מספר העמודים שבהם הן מופיעות); ${_isaOmitted} שמות נוספים במפתח השמות המלא ובקובץ ה-CSV`
                  :'שנות חיים מופיעות רק כשנרשמו בתיק במפורש'))+
-    fieldBlock('ארגונים','f-isa-orgs',chipList(_isaOrgs))+
+    fieldBlock('ארגונים','f-isa-orgs',chipList(_isaOrgs,
+      _isaOrgsOmitted?`הגופים המרכזיים בתיק; ${_isaOrgsOmitted} גופים נוספים ברשומה המלאה`:''))+
     fieldBlock('מקומות','f-places',chipList((rec.related_places||[]).filter(Boolean)));
   const sapirMain=
     `<div class="section-bar">דפית ראשית</div>`+
