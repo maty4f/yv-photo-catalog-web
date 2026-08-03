@@ -12,6 +12,16 @@
   var base = '';
   try { if (typeof serverBase === 'function') base = serverBase(); } catch (e) {}
   fetch(base + '/api/config').then(function (r) { return r.json(); }).then(function (c) {
+    // Server-only screens (server-films / knowledge / catalog) exist on the local
+    // server, not in the public Pages mirror. /api/config answered, so they are
+    // reachable — reveal them. On the demo deploy nothing fires and the gateway
+    // shows no link that leads nowhere.
+    var showServer = function () {
+      var els = document.getElementsByClassName('server-only');
+      for (var i = 0; i < els.length; i++) els[i].style.display = 'inline';
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showServer);
+    else showServer();
     // Admin-only chips (logs, users): revealed ONLY when an admin endpoint
     // answers 200 — i.e. the operator's own session (local, or their Access
     // email on the admin list). A worker's session gets 403 there, so workers

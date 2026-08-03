@@ -185,25 +185,164 @@ textarea:focus, input:focus, select:focus { outline:none; border-color:var(--acc
 .jumpnav a:hover { color:var(--ink); border-color:var(--accent); }
 .jumpnav a.active { background:var(--accent); border-color:var(--accent); color:#0c0a06; font-weight:700; box-shadow:0 0 14px color-mix(in srgb, var(--accent) 45%, transparent); }
 
-/* ---------- index-style material cards ---------- */
-.cards { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:26px; }
+/* ---------- gateway material cards (index.html) ----------
+   Scoped to .cards so the generic .card panel on tik/status/names/onboarding
+   keeps its own layout. Each card sets --mat to its material color once; the
+   badge, title, glow, hover border and primary tool link all read from it. */
+.cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:26px; }
 @media (max-width:640px) { .cards { grid-template-columns:1fr; } }
-.card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:32px 26px; text-align:center; display:block; text-decoration:none; position:relative; cursor:pointer; color:inherit; transition:transform .18s ease, background .18s ease, border-color .18s ease; box-shadow:0 10px 30px -14px rgba(0,0,0,.6); }
-.card:hover, .card:focus-visible { transform:translateY(-4px); background:var(--card-hover); }
-.card .badge { width:54px; height:54px; border-radius:14px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; font-size:25px; }
-.card h2 { margin:0 0 8px; font-size:19px; font-weight:700; }
-.card .desc { font-size:13.5px; color:var(--muted); line-height:1.6; min-height:52px; }
-.card .features { margin-top:14px; padding-top:13px; border-top:1px solid var(--line); font-size:12px; color:var(--ink); opacity:.85; text-align:right; }
-.card .features ul { margin:0; padding:0; list-style:none; }
-.card .features li::before { content:"✓ "; font-weight:bold; }
-.card.photos { box-shadow:0 10px 34px -12px color-mix(in srgb, var(--photos) 28%, transparent), 0 2px 8px rgba(0,0,0,.4); }
-.card.films  { box-shadow:0 10px 34px -12px color-mix(in srgb, var(--films) 28%, transparent), 0 2px 8px rgba(0,0,0,.4); }
-.card.docs   { box-shadow:0 10px 34px -12px color-mix(in srgb, var(--docs) 28%, transparent), 0 2px 8px rgba(0,0,0,.4); }
-.card.tik    { box-shadow:0 10px 34px -12px color-mix(in srgb, var(--tik) 28%, transparent), 0 2px 8px rgba(0,0,0,.4); }
-.card.photos:hover { border-color:var(--photos); } .card.photos h2 { color:var(--photos); } .card.photos .badge { background:linear-gradient(155deg, color-mix(in srgb, var(--photos) 24%, transparent), color-mix(in srgb, var(--photos) 8%, transparent)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--photos) 35%, transparent); } .card.photos .features li::before { color:var(--photos); }
-.card.films:hover  { border-color:var(--films); }  .card.films h2  { color:var(--films); }  .card.films .badge  { background:linear-gradient(155deg, color-mix(in srgb, var(--films) 24%, transparent), color-mix(in srgb, var(--films) 8%, transparent)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--films) 35%, transparent); } .card.films .features li::before { color:var(--films); }
-.card.docs:hover   { border-color:var(--docs); }   .card.docs h2   { color:var(--docs); }   .card.docs .badge   { background:linear-gradient(155deg, color-mix(in srgb, var(--docs) 24%, transparent), color-mix(in srgb, var(--docs) 8%, transparent)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--docs) 35%, transparent); } .card.docs .features li::before { color:var(--docs); }
-.card.tik:hover    { border-color:var(--tik); }    .card.tik h2    { color:var(--tik); }    .card.tik .badge    { background:linear-gradient(155deg, color-mix(in srgb, var(--tik) 24%, transparent), color-mix(in srgb, var(--tik) 8%, transparent)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--tik) 35%, transparent); } .card.tik .features li::before { color:var(--tik); }
+.cards .card {
+  --mat:var(--brand);
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  padding:24px 22px 18px; position:relative; display:block; text-decoration:none;
+  color:inherit; cursor:pointer; direction:rtl; text-align:right;
+  transition:transform .18s ease, background .18s ease, border-color .18s ease;
+  box-shadow:0 10px 34px -12px color-mix(in srgb, var(--mat) 28%, transparent), 0 2px 8px rgba(0,0,0,.4);
+}
+.cards .card.photos { --mat:var(--photos); }
+.cards .card.films  { --mat:var(--films); }
+.cards .card.docs   { --mat:var(--docs); }
+.cards .card.tik    { --mat:var(--tik); }
+.cards .card:hover, .cards .card:focus-visible { transform:translateY(-4px); background:var(--card-hover); border-color:var(--mat); }
+.cards .card .tagcode { position:absolute; top:16px; left:18px; font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10px; letter-spacing:.05em; color:var(--muted); direction:ltr; unicode-bidi:isolate; }
+.cards .card .badge {
+  width:50px; height:50px; border-radius:var(--radius); margin:0 0 14px;
+  display:flex; align-items:center; justify-content:center; font-size:24px;
+  background:linear-gradient(155deg, color-mix(in srgb, var(--mat) 24%, transparent), color-mix(in srgb, var(--mat) 8%, transparent));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--mat) 35%, transparent);
+}
+.cards .card h2 { margin:0 0 6px; font-size:18px; font-weight:700; color:var(--mat); }
+.cards .card .desc { font-size:13.5px; color:var(--muted); line-height:1.6; }
+/* tool row — the sub-tools that belong to this material, not siblings of it.
+   .go is the card's primary destination: its ::after covers the whole card so
+   the card stays ONE click target (as it was when the card itself was an <a>);
+   the secondary links ride above that overlay. .cap is a capability label —
+   something the screen does in-page, with nowhere separate to go. */
+.cards .card .tools { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); display:flex; gap:14px; flex-wrap:wrap; font-size:12px; }
+.cards .card .tools a { color:var(--muted); text-decoration:none; transition:color .12s; }
+.cards .card .tools a:hover { color:var(--ink); }
+.cards .card .tools .cap { color:var(--muted); }
+.cards .card .tools .go { color:var(--mat); font-weight:600; }
+.cards .card .tools .go::after { content:""; position:absolute; inset:0; border-radius:var(--radius); }
+.cards .card .tools a:not(.go), .cards .card .tools .cap { position:relative; z-index:1; }
+.cards .card:has(.go:focus-visible) { outline:2px solid var(--mat); outline-offset:2px; }
+
+/* ---------- cross-collection strip (index.html) ---------- */
+.crosslinks { margin-top:22px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; }
+.crosslinks > .head { padding:10px 16px; background:var(--card-hover); border-bottom:1px solid var(--line); font-size:12.5px; font-weight:700; color:var(--brand); }
+.crosslinks .links { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line); }
+@media (max-width:640px) { .crosslinks .links { grid-template-columns:1fr; } }
+.crosslinks a { background:var(--card); padding:13px 16px; text-decoration:none; color:inherit; display:block; transition:background .12s; }
+.crosslinks a:hover, .crosslinks a:focus-visible { background:var(--card-hover); }
+.crosslinks .t { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.crosslinks .t b { font-size:13.5px; font-weight:600; }
+.crosslinks .t code { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10px; color:var(--muted); direction:ltr; unicode-bidi:isolate; }
+.crosslinks .d { font-size:12px; color:var(--muted); margin-top:3px; }
+
+/* ---------- results scaffold ----------
+   The editable record the cataloger copies from. Skeleton only — each screen
+   keeps its own field-level extras (photos' .conf-* outlines, documents'
+   [data-conf] tinting) local, because those encode screen-specific meaning.
+   Two drift fixes folded in here, both deliberate:
+     · .compact-row styled `input` only on photos, `input, select` on the other
+       two — unified, so a <select> is sized the same on every screen.
+     · .subject-chips radius was var(--radius-sm) on photos and a literal 4px on
+       films/documents — unified onto the token. */
+.results { display:none; }
+.results.show { display:block; }
+.results .field-group { margin-bottom:14px; }
+.results .field-group h4 { margin:0 0 6px 0; color:var(--accent); font-size:13.5px; font-weight:700; }
+.results .field-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px; }
+@media (max-width:720px) { .results .field-row { grid-template-columns:1fr; } }
+.results .field-row .lang-tag { font-size:11px; color:var(--muted); margin-bottom:3px; display:block; }
+.results .field-row textarea { min-height:60px; font-size:13px; }
+.results .compact-row { display:grid; grid-template-columns:180px 1fr; gap:10px; align-items:center; margin-bottom:6px; }
+.results .compact-row label { font-size:12.5px; color:var(--muted); }
+.results .compact-row input, .results .compact-row select { font-size:13px; padding:6px 10px; }
+.results .subject-chips { padding:8px; background:var(--tint); border:1px solid var(--line); border-radius:var(--radius-sm); min-height:38px; }
+.results .chip { display:inline-block; background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--accent); padding:3px 9px; margin:2px; border-radius:12px; font-size:12px; border:1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.results .chip .x { cursor:pointer; margin-inline-start:5px; color:var(--accent); font-weight:bold; }
+.results .chip .x:hover { color:var(--error); }
+
+/* ---------- step-wizard card ----------
+   The numbered stages every catalog screen walks through. The step number is
+   dark ink on the accent disc; that ink is NOT derivable from --accent by any
+   formula, so each screen declares --accent-ink next to its --accent. One
+   component, one token — the same shape --accent itself already uses. */
+section.step { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); margin-bottom:16px; overflow:hidden; box-shadow:0 10px 28px -18px rgba(0,0,0,.7); }
+section.step > .head { padding:11px 16px; background:var(--card-hover); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+section.step > .head .num {
+  background:var(--accent); color:var(--accent-ink); border-radius:50%; width:26px; height:26px;
+  display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;
+  box-shadow:0 0 12px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+section.step > .head .title { font-weight:700; color:var(--ink); font-size:15px; }
+section.step > .head .title small { color:var(--muted); font-weight:400; margin-inline-start:8px; font-size:12px; }
+section.step > .body { padding:16px; }
+
+/* ---------- settings panel ---------- */
+.settings-panel { display:none; background:color-mix(in srgb, var(--accent) 8%, var(--card)); border:1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius:var(--radius); padding:14px; margin-bottom:14px; }
+.settings-panel.open { display:block; }
+.settings-panel .row { display:grid; grid-template-columns:140px 1fr; gap:10px; align-items:center; margin-bottom:8px; }
+.settings-panel .row label { font-size:13px; font-weight:600; color:var(--accent); }
+.settings-panel .hint { font-size:11.5px; color:var(--muted); margin-top:6px; }
+.settings-panel .hint a { color:var(--accent); }
+
+/* ---------- uploaded-tile delete button ----------
+   One component, three call sites. The selectors keep their existing names so
+   no markup moves; a selector list applies each at its own specificity. */
+.photo-slot .delete-btn, .delete-film-btn, .delete-doc-btn {
+  position:absolute; top:8px; left:8px; background:color-mix(in srgb, var(--error) 85%, black);
+  color:white; border:none; width:26px; height:26px; border-radius:50%; cursor:pointer;
+  font-size:14px; line-height:1; display:none; z-index:2;
+}
+.photo-slot .delete-btn:hover, .delete-film-btn:hover, .delete-doc-btn:hover { background:var(--error); }
+
+/* ---------- media meta tiles (duration / resolution / framerate) ---------- */
+.film-meta-grid, .doc-meta-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; margin-top:12px; font-size:12px; }
+.film-meta-grid .item, .doc-meta-grid .item { background:var(--tint); border:1px solid var(--line); border-radius:4px; padding:6px 10px; direction:rtl; text-align:right; unicode-bidi:isolate; }
+.film-meta-grid .item b, .doc-meta-grid .item b { color:var(--accent); font-weight:600; }
+.film-meta-grid .item code, .doc-meta-grid .item code { font-family:"SF Mono", Menlo, monospace; font-size:11px; color:var(--ink); direction:ltr; unicode-bidi:isolate; }
+
+/* ---------- confidence legend ----------
+   The two-axis key (evidence type × confidence level) that every catalog screen
+   opens with. Promoted from the three identical copies; .cl-high/.cl-mid/.cl-low
+   are the legend's own swatches — distinct from .c-high/.c-mid/.c-low above,
+   which mark the records themselves and are asserted across six test files. */
+.conf-legend { background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); margin-bottom:16px; font-size:13px; }
+.conf-legend > summary { cursor:pointer; padding:10px 14px; font-weight:600; color:var(--accent); list-style:none; -webkit-user-select:none; user-select:none; }
+.conf-legend > summary::-webkit-details-marker { display:none; }
+.conf-legend > summary::before { content:"\25B8"; margin-inline-end:6px; font-size:11px; }
+.conf-legend[open] > summary::before { content:"\25BE"; }
+.conf-legend .cl-body { padding:0 14px 12px; color:var(--muted); }
+.cl-intro { margin:0 0 10px; line-height:1.6; }
+.cl-block { margin-top:8px; }
+.cl-head { font-weight:600; color:var(--ink); font-size:12px; border-bottom:1px solid var(--line); padding-bottom:3px; margin-bottom:6px; }
+.cl-row { display:flex; align-items:center; gap:8px; padding:3px 0; line-height:1.4; }
+.cl-row small { color:var(--muted); font-weight:400; }
+.cl-mark { display:inline-block; font-weight:700; font-size:0.85em; padding:1px 5px; border-radius:3px; background:color-mix(in srgb, var(--accent) 10%, transparent); unicode-bidi:isolate; margin:0 1px; }
+.cl-high { color:var(--good); } .cl-mid { color:var(--warn); } .cl-low { color:var(--error); }
+.cl-note { margin:10px 0 0; line-height:1.7; font-size:12px; }
+
+/* ---------- catalog-screen chrome ----------
+   Promoted verbatim from the identical copies in photos.html / films.html /
+   documents.html. `header.doc` deliberately stays page-local: index.html uses
+   the same class for a centered gateway header and does not reset border /
+   display / gap, so hoisting it would restyle that page. */
+.download-bar {
+  position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--line-strong);
+  padding:10px 16px; margin:0 -20px -20px; display:flex; gap:10px;
+  align-items:center; justify-content:space-between; z-index:50;
+}
+@media (max-width:720px) { .download-bar { padding:8px 10px; flex-wrap:wrap; } }
+
+.footer-hint {
+  margin-top:24px; padding:12px 14px; background:var(--card); border:1px solid var(--line);
+  border-inline-start:3px solid var(--brand); border-radius:var(--radius-sm);
+  font-size:12.5px; color:var(--ink);
+}
+footer.bottom { margin-top:22px; padding-top:14px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; text-align:center; }
+footer.bottom a { color:var(--brand); }
 
 /* ---------- page header (glow) ---------- */
 .dochead { position:relative; }
