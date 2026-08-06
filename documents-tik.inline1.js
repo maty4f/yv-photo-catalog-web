@@ -9,10 +9,29 @@ function fileToBase64(file){return new Promise(r=>{const fr=new FileReader();fr.
 function imgMaxEdge(){return Math.max(500,Math.min(3500,parseInt($('img-edge')?.value,10)||1100));}
 // Tiling grid for handwriting: 0 = off, 2 = 2×2, 3 = 3×3.
 function tilingGrid(){const v=parseInt($('tiling')?.value,10);return (v===2||v===3)?v:0;}
+// A bare "טעינת תמונה נכשלה" says nothing about WHICH page of a 200-scan tik
+// died or why (3.8.2026: a folder picked straight off the Google Drive mount —
+// the files were online-only, so every read threw and the whole run aborted).
+// Probe the bytes to separate the real causes and always name the file.
+async function decodeFailure(file){
+  const nm=(file&&file.name)||'קובץ';
+  const mb=file?` (${(file.size/1024/1024).toFixed(1)}MB)`:'';
+  if(!file||!file.size)
+    return new Error(`הקובץ «${nm}» ריק (0 בתים) — כנראה לא ירד מהענן למחשב.`);
+  try{await file.slice(0,8).arrayBuffer();}
+  catch(e){
+    return new Error(`לא ניתן לקרוא את «${nm}»${mb} — הקובץ יושב בענן (Google Drive / iCloud) ולא הורד למחשב. `+
+      `סמן את התיקייה «זמינה גם במצב לא מקוון», או העתק אותה לדיסק המקומי, ונסה שוב. (${e.name||e.message})`);
+  }
+  if(/\.tiff?$/i.test(nm))
+    return new Error(`«${nm}» הוא TIFF — כרום לא מפענח TIFF. המר את הסריקות ל-JPG/PNG, או הרץ מה-CLI (yv doc describe).`);
+  return new Error(`«${nm}»${mb} — לא ניתן לפענח את התמונה (קובץ פגום או פורמט לא נתמך).`);
+}
 async function loadImg(file){
   const url=URL.createObjectURL(file);
-  try{return await new Promise((res,rej)=>{const i=new Image();i.onload=()=>{URL.revokeObjectURL(url);res(i);};i.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('טעינת תמונה נכשלה'));};i.src=url;});}
-  catch(e){URL.revokeObjectURL(url);throw e;}
+  try{return await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('decode'));i.src=url;});}
+  catch(e){throw await decodeFailure(file);}
+  finally{URL.revokeObjectURL(url);}
 }
 async function downscaledB64(file){
   const img=await loadImg(file);
@@ -158,7 +177,7 @@ const TIK_SCHEMA_RULES = `אתה מקטלג ארכיוני בארכיון. לפ�
 // בורר #tik-source: "מקורות פרטיים" (ברירת-מחדל — זיכרונות, עדויות, יומנים)
 // מוסיף את הכללים המחמירים לפרומפט הסינתזה ואת רשימות-הוודאות לרשומה;
 // "מקורות מוסדיים" = הרישום הרגיל (צורת הרישום תותאם כשיגיעו דוגמאות).
-function tikSource(){const el=document.getElementById('tik-source');const v=(el&&el.value)||'';return (v==='institutional'||v==='isa')?v:'private';}
+function tikSource(){const el=document.getElementById('tik-source');const v=(el&&el.value)||'';return (v==='institutional'||v==='isa'||v==='eliach')?v:'private';}
 const PRIVATE_SOURCE_RULES=`── תוספת מחייבת — תיק ממקורות פרטיים (זיכרונות, עדויות, יומנים; נוהל רישום מחמיר) ──
 הכללים הבאים מצטרפים לכל הכללים לעיל וגוברים עליהם בכל סתירה:
 1. הסתמך אך ורק על המופיע במפורש בתיק. אין ידע חיצוני, אין השלמת פרטים, אין הסקת מסקנות שאינן כתובות.
@@ -186,6 +205,19 @@ const ISA_SOURCE_RULES=`── תוספת מחייבת — תיק המיועד �
 4. כל שאר השדות — לפי הנוסח הרגיל; ההמרה לשדות ארכיון המדינה נעשית אוטומטית בדף-ההזנה שנוצר בסוף הריצה.`;
 const isaRulesBlock=()=>tikSource()==='isa'?'\n\n'+ISA_SOURCE_RULES:'';
 
+/* ---------- מסלול "אוסף יפה אליאך" — קטלוג תיקים בשדות ספיר ---------- */
+// מפרט הארכיונאית (4.8.2026): כותר של משפט–שניים, עשיר בתאריכים ובמקומות
+// מדויקים — תמצית ה"מידע נוסף"; מידע-נוסף = תיאור מפורט (שמות, מקומות,
+// תאריכים, תוכן). ההמרה לשדות דף-ההזנה של ספיר (צורה/אופי חומר/שפה/מקומות
+// קשורים) נעשית בדף שהמנוע מפיק בסוף "תיאור מהיר" (cli/exporters/eliach.py).
+const ELIACH_SOURCE_RULES=`── תוספת מחייבת — קטלוג תיקים של אוסף יפה אליאך (שדות ספיר) ──
+בנוסף לכל הכללים לעיל:
+1. title — "כותר" ספיר: משפט אחד עד שניים, לא יותר, שהם תמצית המידע-הנוסף — עם התאריכים והמקומות המדויקים ככל שכתוב בתיק ("עדות של רחל X על גטו Eishyshok ועל מחנה Y, 1941–1944" — לא "עדות על השואה"). שמות אנשים — עברית בלבד; מקומות — בכתיב הלטיני/האנגלי המקובל בספיר. בלי פרט שאינו כתוב בתיק.
+2. additional_info_paragraphs — "מידע נוסף" ספיר: תיאור מפורט של החומר — השמות הנזכרים (ומה שנאמר על גורלם), המקומות, התאריכים ותוכן הדברים, בפסקאות לפי מרכיבי התיק. הכותר הוא תקציר של שדה זה.
+3. date_range — טווח תאריכי החומר כולו; languages — שמות שפות בעברית (ערכי שדה "שפה" בספיר).
+4. כל השאר — לפי הנוסח הרגיל; דף-ההזנה בשדות ספיר (צורה, אופי חומר, שפה, מקומות קשורים) נוצר אוטומטית בסוף הריצה.`;
+const eliachRulesBlock=()=>tikSource()==='eliach'?'\n\n'+ELIACH_SOURCE_RULES:'';
+
 // "פריטים מושחרים" — צנזורת ארכיון המדינה שזוהתה בסריקה (שלב-1). רשומה מלפני
 // הוספת הזיהוי (אין מפתח redactions) מוצגת עם הערה, לא עם "לא זוהו".
 function isaRedactionsField(rec){
@@ -199,22 +231,29 @@ function isaRedactionsField(rec){
   return fieldBlock('פריטים מושחרים','f-isa-redact',esc(txt));
 }
 
-// דף-ההזנה לארכיון המדינה נוצר על-ידי המנוע לצד הרשומה (<שם>.isa.html) בריצת
-// "תיאור מהיר" עם tik_source=isa; כאן רק מוצעת הורדתו כשקיים בשרת.
-async function maybeOfferIsaSheet(){
-  const old=document.getElementById('isa-sheet-btn');if(old)old.remove();
+// דף-ההזנה נוצר על-ידי המנוע לצד הרשומה בריצת "תיאור מהיר" — ‎<שם>.isa.html
+// כשנבחר ארכיון המדינה, ‎<שם>.eliach.html כשנבחר אוסף יפה אליאך; כאן רק
+// מוצעת הורדתו כשקיים בשרת.
+const ENTRY_SHEETS={
+  isa:{suffix:'.isa.html',bg:'#8a6a1f',label:'🏛 דף-הזנה לארכיון המדינה',
+       title:'הרשומה במבנה רשומת ארכיון המדינה — שם הפריט, תיאור התיק, תקופת החומר, תגיות, סטטוס חשיפה — כפתור העתקה לכל שדה. נוצר אוטומטית בסוף הריצה'},
+  eliach:{suffix:'.eliach.html',bg:'#6b4b8a',label:'📗 דף-הזנה לספיר — אוסף יפה אליאך',
+       title:'הרשומה בשדות ספיר — כותר, מידע נוסף, צורה, אופי חומר, שפה, מקומות קשורים — כפתור העתקה לכל שדה. נוצר אוטומטית בסוף הריצה'}};
+async function maybeOfferEntrySheet(){
+  const old=document.getElementById('entry-sheet-btn');if(old)old.remove();
   const bar=document.getElementById('tik-export-bar');
-  if(tikSource()!=='isa'||!state.outputName||!bar)return;
-  const name=state.outputName.replace(/\.html$/,'.isa.html');
+  const sheet=ENTRY_SHEETS[tikSource()];
+  if(!sheet||!state.outputName||!bar)return;
+  const name=state.outputName.replace(/\.html$/,sheet.suffix);
   try{
     const r=await fetch(serverBase()+'/api/output/'+encodeURIComponent(name));
     if(!r.ok)return;
     const blob=await r.blob();
     const b=document.createElement('button');
-    b.type='button';b.id='isa-sheet-btn';b.className='copy-btn';
-    b.style.cssText='background:#8a6a1f;color:#fff';
-    b.textContent='🏛 דף-הזנה לארכיון המדינה';
-    b.title='הרשומה במבנה רשומת ארכיון המדינה — שם הפריט, תיאור התיק, תקופת החומר, תגיות, סטטוס חשיפה — כפתור העתקה לכל שדה. נוצר אוטומטית בסוף הריצה';
+    b.type='button';b.id='entry-sheet-btn';b.className='copy-btn';
+    b.style.cssText=`background:${sheet.bg};color:#fff`;
+    b.textContent=sheet.label;
+    b.title=sheet.title;
     b.addEventListener('click',()=>downloadBlob(blob,name));
     bar.insertBefore(b,bar.firstElementChild?bar.firstElementChild.nextSibling:null);
   }catch(e){/* אין דף — אין כפתור */}
@@ -517,7 +556,7 @@ async function synthesizeTik(notes,onStage){
     items=condensed;
   }
   const findingsText=items.join('\n\n');
-  const synthPrompt=`${synthRules()}${privateRulesBlock()}${isaRulesBlock()}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
+  const synthPrompt=`${synthRules()}${privateRulesBlock()}${isaRulesBlock()}${eliachRulesBlock()}\n\n## הסיכומים שלך מכל מנות התיק (טקסט חופשי, לפי טווחי דפים)\n${findingsText}${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
   onStage&&onStage(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק…`);
   return await claudeSynthesize(synthPrompt,s=>onStage&&onStage(`<span class="spinner"></span>שלב 2 · Claude מסנתז את רשומת התיק… (${s} שׄ)`));
 }
@@ -833,7 +872,11 @@ function renderRecord(rec,restored){
   // גם רשומה מוסדית שנוצרה לפני חתימת-isa (או עם חותמת ישנה) מוצגת במבנה ארכיון
   // המדינה כשהבורר עומד על isa — הבורר משקף את כוונת המקטלג; פרטי/עדות לא נגררים.
   const isIsa=rec._tik_source==='isa'||
-    (tikSource()==='isa'&&rec._tik_source!=='private'&&rec._tik_kind!=='testimony');
+    (tikSource()==='isa'&&rec._tik_source!=='private'&&rec._tik_source!=='eliach'&&rec._tik_kind!=='testimony');
+  // מצב אוסף יפה אליאך: הרשומה מוצגת בשדות ספיר (כותר, מידע נוסף, צורה, אופי
+  // חומר, שפה, מקומות קשורים). חותמת מפורשת גוברת על הבורר — כמו ב-isa.
+  const isEliach=!isIsa&&(rec._tik_source==='eliach'||
+    (tikSource()==='eliach'&&rec._tik_source!=='private'&&rec._tik_kind!=='testimony'));
   const _paras=(rec.additional_info_paragraphs||[]);
   let _isaDescIdx=-1;
   if(isIsa){
@@ -1041,6 +1084,30 @@ function renderRecord(rec,restored){
       fieldBlock('סיווג','f-cls',cls)+
     `</div>`+
     fieldBlock('הערת תוכן','f-cnote',esc(rec.content_note||'—'));
+  // ── רשומה בשדות ספיר לאוסף יפה אליאך (tik_source=eliach): כותר, צורה, אופי
+  // חומר, שפה, מקומות קשורים — וה"מידע נוסף" (התיאור המפורט) בשדה המשותף שמתחת.
+  // צורה: רק אם המקטלגת ציינה במידע-המוקדם ("צורה: קסרוקס"); אחרת ערכי הרשימה
+  // הסגורה מוצעים בלבד (never-invent). אופי חומר: מהאינוונטר, הדומיננטי תחילה.
+  const elForm=(()=>{const t=(($('context').value||'')+'\n'+(state.intakeText||''));
+    const m=t.match(/(?:^|[^א-ת])צורה\s*:\s*([^\n;.]+)/);return m?m[1].trim():'';})();
+  const elNature=(()=>{const cnt={};
+    inv.forEach(d=>{const ty=String(d.doc_type||'').trim();if(!ty)return;
+      cnt[ty]=(cnt[ty]||0)+Math.max(1,pageCount(d));});
+    return Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(([ty])=>ty);})();
+  const eliachMain=
+    `<div class="section-bar">רשומת התיק — אוסף יפה אליאך (שדות ספיר)</div>`+
+    fieldBlock('כותר'+conf(rec,'title'),'f-title',esc(rec.title))+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('צורה','f-el-form',elForm?esc(elForm):chipList(['קסרוקס','תצלום'],
+        'לא נקבע אוטומטית — בספיר נבחר מהרשימה הסגורה; ניתן לקבוע מראש במידע-המוקדם: "צורה: קסרוקס"'))+
+      fieldBlock('אופי חומר','f-el-nature',chipList(elNature,
+        'לפי מפת המסמכים, הדומיננטי תחילה — בספיר נבחר מהרשימה הסגורה (יומן/עדות/כרזה וכו\')'))+
+    `</div>`+
+    `<div class="row2" style="gap:10px">`+
+      fieldBlock('שפה','f-lang',langs)+
+      fieldBlock('מקומות קשורים','f-places',chipList((rec.related_places||[]).filter(Boolean),
+        'בספיר נבחרים מרשימת המקומות הסגורה (אנגלית, גבולות 1.9.1939)'))+
+    `</div>`;
   $('record').innerHTML=
     apprBar+
     `<div class="pick-bar">`+
@@ -1050,7 +1117,7 @@ function renderRecord(rec,restored){
       `<button class="mini-btn" id="pick-all" type="button">סמן הכל</button>`+
       `<button class="mini-btn" id="pick-none" type="button">נקה הכל</button>`+
     `</div>`+
-    (isIsa?isaMain:sapirMain)+
+    (isEliach?eliachMain:isIsa?isaMain:sapirMain)+
 
     testimonySectionsHtml(rec)+
 
@@ -1539,7 +1606,9 @@ async function pdfPageFor(file,edge=2000,quality=0.85){
   // dominate on cloud-mounted scans).
   const url=URL.createObjectURL(file);
   try{
-    const img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('טעינת תמונה נכשלה'));im.src=url;});
+    let img;
+    try{img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('decode'));im.src=url;});}
+    catch(e){throw await decodeFailure(file);}
     const scale=Math.min(1,edge/Math.max(img.naturalWidth,img.naturalHeight));
     const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
     const cv=document.createElement('canvas');cv.width=w;cv.height=h;
@@ -1609,11 +1678,13 @@ async function buildCombinedPdf(){
   if(state.pdfBlob&&state.pdfKey===key)return state.pdfBlob;
   const bar=$('pdf-bar');bar.style.display='block';
   bar.textContent='⏳ בונה PDF מאוחד מ-'+imgs.length+' תמונות…';
-  // Pool of 4: overlaps file reads (the dominant cost on cloud-mounted scans).
-  // Full-quality pages are heavier than the describe path, so keep the pool small.
+  // Overlaps file reads — the dominant cost on cloud-mounted scans (3.8.2026:
+  // measured ~60s PER PAGE off the Google Drive mount, and throughput scaled
+  // ~linearly with concurrency, so the pool is the only lever). Full-quality
+  // pages hold bigger bitmaps than the describe path, hence 8 and not 12.
   const pages=new Array(imgs.length);
   let built=0;
-  const POOL=Math.min(4,imgs.length);
+  const POOL=Math.min(8,imgs.length);
   await Promise.all(Array.from({length:POOL},async(_,k)=>{
     for(let i=k;i<imgs.length;i+=POOL){
       pages[i]=await pdfPageFor(imgs[i]);
@@ -1802,15 +1873,23 @@ async function fastDescribe(){
       blob=state.files[0];name=state.files[0].name||'tik.pdf';   // single uploaded PDF — as-is
     }else if(imgs.length){
       // Concurrency pool: overlap file reads (slow on cloud-mounted scans) with
-      // decode/encode. Order is preserved via index assignment. Pool of 4 keeps
-      // memory bounded (~4 decoded bitmaps at 1100px) and the UI responsive.
+      // decode/encode. Order is preserved via index assignment. Decode runs on
+      // the main thread anyway, so a wider pool only overlaps READS — which is
+      // the whole cost off a cloud mount (3.8.2026: ~60s/page via Google Drive,
+      // 12 concurrent reads gave ~11x throughput). 12 bitmaps at 1100px is cheap.
       const pages=new Array(imgs.length);
       let built=0;
-      const POOL=Math.min(4,imgs.length);
+      const POOL=Math.min(12,imgs.length);
+      const t0=Date.now();
       await Promise.all(Array.from({length:POOL},async(_,k)=>{
         for(let i=k;i<imgs.length;i+=POOL){
           pages[i]=await pdfPageFor(imgs[i],1100,0.55);
-          showStatus(`<span class="spinner"></span>תיאור מהיר · בונה PDF מוקטן לתיאור… ${++built}/${imgs.length}`,'info');
+          built++;
+          // Reading off a cloud mount is orders of magnitude slower than local
+          // disk; say so instead of letting a 90-minute build look like a hang.
+          const perPage=(Date.now()-t0)/built/1000;
+          const slow=perPage>3?` · ⚠ ${perPage.toFixed(1)} שנ׳ לעמוד — הקבצים כנראה נקראים מהענן; העתקת התיקייה לדיסק המקומי תקצר את זה מאוד`:'';
+          showStatus(`<span class="spinner"></span>תיאור מהיר · בונה PDF מוקטן לתיאור… ${built}/${imgs.length}${slow}`,'info');
         }
       }));
       blob=new Blob([buildImagesPdf(pages)],{type:'application/pdf'});name='tik_describe.pdf';
@@ -1821,7 +1900,7 @@ async function fastDescribe(){
     // Gemini→Claude collaboration: the server has Gemini read every page and extract
     // facts, then Claude (the historian) synthesizes the record from those facts. This
     // prompt is Claude's synthesis brief; the server appends Gemini's extracted facts.
-    const prompt=`${schemaRules()}${privateRulesBlock()}${isaRulesBlock()}\n\n⚠ Gemini כבר קרא את **כל דפי התיק** וחילץ עובדות גולמיות (יצורפו בהמשך ההודעה). תפקידך כהיסטוריון ארכיוני: לסנתז מהן **רשומת-תיק אחת ברמת תיאור** — מפת המסמכים, היקף, מקומות ותקופה, אנשים מרכזיים, ויהלומים — עם **הקשר היסטורי מעמיק ומדויק**. עגן כל קביעה בעובדות בלבד (אל תמציא), והבחן בבירור בין מה שמתועד בתיק לבין ידע היסטורי כללי. החזר field_confidence (✓/~/?) לכל שדה, ו-review_flags לכל הסקה/אי-ודאות/פער שדורש אימות ארכיונאי. **לא** תמלול דף-דף ולא רשימת כל שם בכל דף.${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
+    const prompt=`${schemaRules()}${privateRulesBlock()}${isaRulesBlock()}${eliachRulesBlock()}\n\n⚠ Gemini כבר קרא את **כל דפי התיק** וחילץ עובדות גולמיות (יצורפו בהמשך ההודעה). תפקידך כהיסטוריון ארכיוני: לסנתז מהן **רשומת-תיק אחת ברמת תיאור** — מפת המסמכים, היקף, מקומות ותקופה, אנשים מרכזיים, ויהלומים — עם **הקשר היסטורי מעמיק ומדויק**. עגן כל קביעה בעובדות בלבד (אל תמציא), והבחן בבירור בין מה שמתועד בתיק לבין ידע היסטורי כללי. החזר field_confidence (✓/~/?) לכל שדה, ו-review_flags לכל הסקה/אי-ודאות/פער שדורש אימות ארכיונאי. **לא** תמלול דף-דף ולא רשימת כל שם בכל דף.${contextBlock()}${thesaurusBlock()}\n\nהחזר JSON סופי בלבד.`;
     // shared non-file fields — the finalize of a chunked upload sends them without the blob.
     // context is written server-side as the standard <pdf>.context.txt sidecar.
     const fields={prompt,context:[$('context').value.trim(),(state.intakeText||'').trim()].filter(Boolean).join('\n\n')};
@@ -1927,7 +2006,7 @@ async function pollTikJob(jobId,t){
         if(fastRec&&!fastRec._tik_source)fastRec._tik_source=tikSource(); // רשומת מנוע ישן — חתום מהבורר
         if(fastRec&&!fastRec._tik_kind)fastRec._tik_kind=(tikSource()==='institutional'?tikKind():'');
         renderRecord(fastRec);
-        maybeOfferIsaSheet();
+        maybeOfferEntrySheet();
         const split=(j.geminiSec&&j.claudeSec)?`Gemini ${j.geminiSec}שׄ + Claude ${j.claudeSec}שׄ`:(j.model||'Gemini+Claude');
         showStatus(`✓ תיאור הושלם תוך ${j.elapsedSec||Math.round((Date.now()-t)/1000)} שׄ (${split}). בדוק את נקודות הבדיקה ו-review_flags לפני הדבקה לספיר.`,'ok');
         $('results').scrollIntoView({behavior:'smooth'});
@@ -1960,7 +2039,7 @@ async function pollTikJob(jobId,t){
       if(!rec._tik_source)rec._tik_source=tikSource();
       if(!rec._tik_kind)rec._tik_kind=(tikSource()==='institutional'?tikKind():'');
       renderRecord(rec);
-      maybeOfferIsaSheet();
+      maybeOfferEntrySheet();
       showStatus('✓ הקטלוג הושלם בזמן שהמסך לא היה פעיל — הרשומה נטענה מהשרת. בדוק את נקודות הבדיקה לפני הדבקה לספיר.','ok');
     }
   }else if(j.status==='running'||j.status==='queued'){
@@ -2090,6 +2169,88 @@ function tikGroupsOf(list){
   groups.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
   return groups;
 }
+/* ---------- ☁ tik straight off Google Drive (server downloads, then catalogs) ---------- */
+// Reading scans through the Drive mount costs ~60s PER FILE (measured 3.8.2026),
+// so a 193-page tik spent 45 minutes just being read into this page before the
+// engine saw anything. Here the SERVER fetches the folder with rclone (~15x
+// faster, straight off the API) and hands the folder to the engine — no mount
+// reads, no client-side PDF build, no upload. The job polls exactly like the
+// upload path, so results render identically.
+state.drivePath='';
+async function driveLoad(sub){
+  const list=$('drive-list');
+  list.innerHTML='<div style="padding:8px;color:var(--muted)"><span class="spinner"></span> טוען מהדרייב…</div>';
+  $('drive-path').textContent=sub?`/${sub}`:'(שורש)';
+  try{
+    const r=await fetch(`${serverBase()}/api/drive-tiks?path=${encodeURIComponent(sub)}`);
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||`שרת HTTP ${r.status}`);
+    state.drivePath=sub;
+    $('drive-up').style.display=sub?'':'none';
+    if(!d.folders.length&&!d.scanCount){list.innerHTML='<div style="padding:8px;color:var(--muted)">התיקייה ריקה.</div>';return;}
+    const rows=d.folders.map((f,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px dashed color-mix(in srgb, var(--muted) 30%, transparent);font-size:12.5px;flex-wrap:wrap">
+      <button type="button" class="copy-btn" data-into="${i}" style="padding:2px 9px;font-size:11.5px;background:transparent;color:var(--fg);border:1px solid var(--muted)" title="כניסה לתיקייה">📂</button>
+      <b style="unicode-bidi:isolate">${esc(f.name)}</b>
+      <span style="margin-inline-start:auto;display:flex;gap:6px">
+        <button type="button" class="copy-btn" data-run="${i}" style="padding:2px 9px;font-size:11.5px;background:var(--good);color:#06210f" title="הורדת התיקייה לדיסק וקטלוגה">קטלג תיק זה</button>
+        <button type="button" class="copy-btn" data-q="${i}" style="padding:2px 9px;font-size:11.5px" title="הכנסת כל תת-התיקיות שבתוכה לתור התיקים">הוסף הכל לתור</button>
+      </span></div>`).join('');
+    const here=d.scanCount?`<div style="padding:6px;font-size:12.5px;border-bottom:1px solid color-mix(in srgb, var(--muted) 30%, transparent)">
+      📄 ${d.scanCount} סריקות ישירות בתיקייה הזו
+      <button type="button" class="copy-btn" data-run-here="1" style="padding:2px 9px;font-size:11.5px;background:var(--good);color:#06210f;margin-inline-start:8px">קטלג את התיקייה הזו</button></div>`:'';
+    list.innerHTML=here+rows;
+    const at=i=>sub?`${sub}/${d.folders[i].name}`:d.folders[i].name;
+    list.querySelectorAll('[data-into]').forEach(b=>b.addEventListener('click',()=>driveLoad(at(+b.dataset.into))));
+    list.querySelectorAll('[data-run]').forEach(b=>b.addEventListener('click',()=>driveRunOne(at(+b.dataset.run))));
+    list.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>driveEnqueueAll(at(+b.dataset.q))));
+    list.querySelectorAll('[data-run-here]').forEach(b=>b.addEventListener('click',()=>driveRunOne(sub)));
+  }catch(e){list.innerHTML=`<div style="padding:8px;color:var(--error)">${esc(e.message)}</div>`;}
+}
+// Catalog ONE Drive folder now. Returns true when a record was produced — same
+// contract as fastDescribe(), so the queue can drive it.
+async function driveDescribe(drivePath){
+  try{serverBase();}catch(e){showStatus(esc(e.message),'err');return false;}
+  const t=Date.now();
+  try{
+    showStatus(`<span class="spinner"></span>☁ ${esc(drivePath)} — השרת מוריד מהדרייב…`,'info');
+    const body={path:drivePath,
+      context:[$('context').value.trim(),(state.intakeText||'').trim()].filter(Boolean).join('\n\n'),
+      tik_source:tikSource(),tik_kind:tikSource()==='institutional'?tikKind():''};
+    if(window.yvFlow)body.reader=yvFlow.current('documents-tik');
+    if(window.yvFlow&&yvFlow.backend)body.backend=yvFlow.backend('documents-tik');
+    const r=await fetch(`${serverBase()}/api/drive-tiks/catalog`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok||!d.jobId)throw new Error(d.error||`שרת HTTP ${r.status}`);
+    try{localStorage.setItem('yv-tik-last-job',JSON.stringify({id:d.jobId,at:Date.now()}));}catch(e){}
+    return await pollTikJob(d.jobId,t);
+  }catch(err){console.error(err);showStatus('שגיאה בקטלוג מהדרייב: '+esc(err.message),'err');return false;}
+}
+async function driveRunOne(drivePath){
+  if(state.queueRunning){showStatus('התור רץ כרגע — המתן לסיומו.','err');return;}
+  $('drive-panel').style.display='none';
+  await driveDescribe(drivePath);
+}
+// A parent folder (e.g. M46) → every tik inside it joins the existing queue.
+async function driveEnqueueAll(parent){
+  try{
+    const r=await fetch(`${serverBase()}/api/drive-tiks?path=${encodeURIComponent(parent)}`);
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||`שרת HTTP ${r.status}`);
+    if(!d.folders.length){showStatus(`אין תת-תיקיות ב-«${esc(parent)}» — השתמש ב«קטלג תיק זה».`,'err');return;}
+    d.folders.forEach(f=>state.queue.push({name:f.name,files:[],drivePath:`${parent}/${f.name}`,status:'pending'}));
+    $('drive-panel').style.display='none';
+    renderQueue();
+    showStatus(`נוספו ${d.folders.length} תיקים מהדרייב לתור (${state.queue.length} סה״כ) — לחץ «⚡ תיאור מהיר» או «קטלג תיק» כדי להריץ.`,'ok');
+  }catch(e){showStatus('שגיאה בקריאת הדרייב: '+esc(e.message),'err');}
+}
+$('pick-drive').addEventListener('click',()=>{
+  const p=$('drive-panel');
+  if(p.style.display==='block'){p.style.display='none';return;}
+  p.style.display='block';driveLoad('');
+});
+$('drive-close').addEventListener('click',()=>{$('drive-panel').style.display='none';});
+$('drive-up').addEventListener('click',()=>driveLoad(state.drivePath.split('/').slice(0,-1).join('/')));
+
 function enqueueFolderSelection(list){
   const groups=tikGroupsOf(list);
   if(!groups.length){alert('לא נמצאו קבצים נתמכים (PDF / JPG / PNG / TIFF / WEBP).');return;}
@@ -2110,8 +2271,11 @@ function renderQueue(){
     :q.status==='done'?'<span style="color:var(--good)">✓</span>'
     :q.status==='error'?'<span style="color:var(--error)">✗</span>':'⏳';
   $('tik-queue-list').innerHTML=state.queue.map((q,i)=>{
-    const mb=(q.files.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(1);
-    const what=(q.files.length===1&&/\.pdf$/i.test(q.files[0].name))?'PDF':`${q.files.length} דפים`;
+    // A Drive item carries no File objects — the server fetches it — so describe
+    // it by origin instead of by local byte count.
+    const what=q.drivePath?'☁ מהדרייב'
+      :(q.files.length===1&&/\.pdf$/i.test(q.files[0].name))?'PDF':`${q.files.length} דפים`;
+    const mb=q.drivePath?'':` · ${(q.files.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(1)}MB`;
     const acts=[];
     if(q.status==='done'&&q.rec)acts.push(`<button type="button" class="copy-btn" data-show="${i}" style="padding:2px 9px;font-size:11.5px" title="הצגת רשומת התיק הזה במסך (הרשומות של שאר התיקים נשארות שמורות בתור)">הצג</button>`);
     if(q.status==='done'&&q.outputName&&base)acts.push(`<a href="${base}/api/output/${encodeURIComponent(q.outputName)}" style="font-size:11.5px" title="הורדת קובץ הרשומה שנשמר בשרת">⬇ קובץ</a>`);
@@ -2120,7 +2284,7 @@ function renderQueue(){
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px dashed color-mix(in srgb, var(--muted) 30%, transparent);font-size:12.5px;flex-wrap:wrap">
       <span style="width:18px;text-align:center;flex:none">${icon(q)}</span>
       <b>${i+1}. ${esc(q.name)}</b>
-      <span style="color:var(--muted)">${what} · ${mb}MB</span>${err}
+      <span style="color:var(--muted)">${what}${mb}</span>${err}
       <span style="margin-inline-start:auto;display:flex;gap:6px;align-items:center">${acts.join('')}</span>
     </div>`;
   }).join('');
@@ -2133,7 +2297,7 @@ function renderQueue(){
 // between items can't corrupt what gets saved.
 function showQueueItem(i){
   const q=state.queue[i];if(!q||q.status!=='done'||!q.rec)return;
-  state.files=q.files.slice();renderFiles();
+  state.files=(q.files||[]).slice();renderFiles();
   state.chunkNotes=Array.isArray(q.notes)?q.notes:[];
   state.outputName=q.outputName||null;
   renderRecord(q.rec,true);   // restored=true: don't overwrite the refresh-survival snapshot
@@ -2160,10 +2324,13 @@ async function runQueue(mode){
   while((i=state.queue.findIndex(q=>q.status==='pending'))!==-1){
     const item=state.queue[i];
     item.status='running';renderQueue();
-    state.files=item.files.slice();renderFiles();
+    state.files=(item.files||[]).slice();renderFiles();
     state.chunkNotes=null;state.outputName=null;
     let good=false;
-    try{good=(await runner())===true;}catch(e){console.error(e);}
+    // A Drive item has no local files: the server downloads and catalogs it, so
+    // it bypasses the file-based runner entirely (both modes land on the same
+    // engine anyway — the describe engine reads the folder).
+    try{good=(item.drivePath?await driveDescribe(item.drivePath):await runner())===true;}catch(e){console.error(e);}
     if(good){
       item.status='done';item.rec=state.lastRecord;
       // Capture per-engine only — "הצג" mid-run swaps these globals, so a blind

@@ -1718,7 +1718,18 @@ async function runUnifiedJob(file, contextText, onStatus, backFile, startedAt) {
   if (!j.jobId) throw new Error('השרת לא החזיר jobId — ודא שגרסת השרת תומכת ב-/api/items');
 
   if (onStatus) onStatus('מנתח בשרת (Gemini → Claude → ולידציה)… ~2-3 דק׳');
-  if (window.yvProgress) yvProgress.begin({ screen: 'photos', kind: 'photo', t0: widgetT0 });
+  // The live progress card is a single shared widget, but the queue runs
+  // QUEUE_CONCURRENCY jobs at once. Claim it only while it's free, and pump it
+  // only while we hold it — otherwise the first photo to finish stopped the clock
+  // and declared "✓ הקטלוג הושלם" with other photos still being cataloged.
+  // When our job ends the card frees itself, so a still-running photo takes over.
+  const claimProgress = () => {
+    if (!window.yvProgress || typeof yvProgress.owner !== 'function') return false;
+    if (yvProgress.owner()) return false;           // another photo holds the card
+    yvProgress.begin({ screen: 'photos', kind: 'photo', t0: widgetT0, jobId: j.jobId });
+    return true;
+  };
+  let ownsProgress = claimProgress();
   // Poll for completion via GET /api/jobs/:id. SSE (EventSource) does NOT stream
   // reliably through the Cloudflare tunnel — events get buffered/dropped, so the
   // queue item would hang on "מנתח" forever even after the server finished.
@@ -1740,7 +1751,8 @@ async function runUnifiedJob(file, contextText, onStatus, backFile, startedAt) {
       /* transient — keep polling */
     }
     if (!job) { if (Date.now() - t0 > MAX_MS) throw new Error('timeout בניתוח'); continue; }
-    if (window.yvProgress) yvProgress.pump(job);
+    if (!ownsProgress) ownsProgress = claimProgress();   // took over from a finished photo
+    if (ownsProgress && window.yvProgress) yvProgress.pump(job);
     if (onStatus && Array.isArray(job.events) && job.events.length) {
       const last = job.events[job.events.length - 1];
       const line = String(last.text || last.message || '').trim().split('\n').pop().slice(0, 160);

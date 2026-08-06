@@ -144,8 +144,9 @@
           <option value="private" selected>מקורות פרטיים — זיכרונות, עדויות, יומנים (נוהל רישום מחמיר)</option>
           <option value="institutional">מקורות מוסדיים — תיעוד רשמי (חפ"ן, בתי-משפט, מוסדות)</option>
           <option value="isa">תיעוד לארכיון המדינה — רשומה + דף-הזנה במבנה רשומות ארכיון המדינה</option>
+          <option value="eliach">אוסף יפה אליאך — רשומה + דף-הזנה בשדות ספיר (כותר, מידע נוסף, צורה, אופי חומר)</option>
         </select>
-        <div class="hint">פרטיים: הרשומה כוללת תקציר כרונולוגי בראשי-פרקים ושלוש רשימות-ודאות (מופיע בוודאות בטקסט / לא נאמר בטקסט / לא ניתן לקבוע בוודאות), בלי מילות סיוג — פרט מסופק מושמט ועובר לבדיקה. מוסדיים: רישום פר-סוג-חומר לפי נוסח הרושמים. ארכיון המדינה: שם-פריט ותיאור-תיק בנוסח רשומותיהם, ובסוף "תיאור מהיר" נוצר אוטומטית דף-הזנה עם כל השדות שלהם (תקופת החומר, סטטוס חשיפה, תגיות) וכפתור העתקה לכל שדה.</div>
+        <div class="hint">פרטיים: הרשומה כוללת תקציר כרונולוגי בראשי-פרקים ושלוש רשימות-ודאות (מופיע בוודאות בטקסט / לא נאמר בטקסט / לא ניתן לקבוע בוודאות), בלי מילות סיוג — פרט מסופק מושמט ועובר לבדיקה. מוסדיים: רישום פר-סוג-חומר לפי נוסח הרושמים. ארכיון המדינה: שם-פריט ותיאור-תיק בנוסח רשומותיהם, ובסוף "תיאור מהיר" נוצר אוטומטית דף-הזנה עם כל השדות שלהם (תקופת החומר, סטטוס חשיפה, תגיות) וכפתור העתקה לכל שדה. אוסף יפה אליאך: כותר של משפט–שניים עשיר בתאריכים ובמקומות (תמצית המידע-הנוסף), מידע-נוסף מפורט (שמות, מקומות, תאריכים, תוכן), ובסוף "תיאור מהיר" נוצר אוטומטית דף-הזנה בשדות ספיר — צורה, אופי חומר, שפה, מקומות קשורים.</div>
       </div>
       <div id="tik-kind-wrap" style="display:none">
         <label for="tik-kind">סוג החומר המוסדי</label>
@@ -229,10 +230,25 @@
     <input type="file" id="folder-input" webkitdirectory directory multiple class="visually-hidden-file">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
       <label id="pick-folder" class="upload-btn" for="folder-input" style="color:var(--films);border-color:var(--films)" title="תיקייה של סריקות = תיק אחד · תיקייה עם תת-תיקיות או כמה PDF = תור תיקים (כל תת-תיקייה / כל PDF = תיק נפרד)">📁 העלה תיקייה שלמה</label>
+      <button type="button" id="pick-drive" class="upload-btn" style="color:var(--good);border-color:var(--good)" title="בחירת תיק ישירות מגוגל דרייב — השרת מוריד אותו לדיסק (rclone) ואז מקטלג. בלי קריאה מהמאונט, בלי בניית PDF בדפדפן ובלי העלאה">☁ תיק מהדרייב</button>
       <button type="button" id="download-tik-pdf" class="copy-btn" style="background:var(--brand);color:#04222a" disabled title="איחוד כל דפי התיק לקובץ PDF אחד והורדתו למחשב">⬇ הורד את התיק כ-PDF</button>
       <button type="button" id="clear-files" class="copy-btn" style="background:var(--error);color:#fff">נקה</button>
     </div>
     <div class="hint">תיקייה של סריקות = תיק אחד; תיקייה שמכילה <b>תת-תיקיות</b> (או כמה קובצי PDF) נכנסת ל<b>תור תיקים</b> — כל תת-תיקייה / כל PDF מקוטלגים כתיק נפרד, תיק אחרי תיק, וכל רשומה נשמרת. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
+
+    <!-- Drive browser: pick a tik straight off Google Drive — the SERVER downloads
+         it (rclone) and catalogs the folder in place. No mount reads, no PDF build. -->
+    <div id="drive-panel" style="display:none; margin-top:10px; padding:10px 12px; background:color-mix(in srgb, var(--good) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--good) 40%, transparent); border-radius:8px; direction:rtl; text-align:right;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+        <div style="font-weight:700; font-size:13.5px;">☁ תיקים בגוגל דרייב <span id="drive-path" style="font-weight:400; font-size:12px; color:var(--muted); margin-inline-start:6px; unicode-bidi:isolate;"></span></div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" id="drive-up" class="copy-btn" style="padding:3px 9px; font-size:11.5px; background:var(--card); color:var(--fg); border:1px solid var(--muted);">↑ תיקייה למעלה</button>
+          <button type="button" id="drive-close" class="copy-btn" style="padding:3px 9px; font-size:11.5px; background:var(--error); color:#fff;">✕ סגור</button>
+        </div>
+      </div>
+      <div id="drive-list"></div>
+      <div class="hint" style="margin-top:6px">לחיצה על שם תיקייה נכנסת פנימה. «קטלג תיק זה» מוריד את התיקייה לדיסק (<code>מסמכים/</code>) ומקטלג אותה — העותק נשמר, אז ריצה חוזרת מיידית. «הוסף הכל לתור» מכניס את כל תת-התיקיות לתור התיקים, אחת אחרי השנייה.</div>
+    </div>
 
     <!-- Folder queue: each subfolder / root-level PDF = one tik, processed sequentially -->
     <div id="tik-queue-panel" style="display:none; margin-top:10px; padding:10px 12px; background:color-mix(in srgb, var(--films) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--films) 40%, transparent); border-radius:8px; direction:rtl; text-align:right;">
@@ -278,6 +294,7 @@
         <option value="dc">Dublin Core (XML)</option>
         <option value="csv-atom">AtoM (CSV)</option>
         <option value="isa">ארכיון המדינה (דף הזנה)</option>
+        <option value="eliach">אוסף יפה אליאך (דף הזנה בשדות ספיר)</option>
       </select>
       <button type="button" id="export-arch-btn" class="copy-btn" style="background:#2c5f7c;color:#fff" title="ייצוא לפורמט ארכיוני תקני לייבוא במערכות תיאור ארכיוני">🗄 ייצוא ארכיוני</button>
       <button type="button" id="notebooklm-btn" class="copy-btn" title="ייצוא שמות · תאריכים · הקשר של התיק — קובץ Markdown להעלאה כמקור ב-NotebookLM">🧠 NotebookLM</button>
@@ -298,7 +315,7 @@
 </div>
 <div class="toast" id="toast">הועתק</div>
 
-<script src="documents-tik.inline1.js?v=20260803g"></script>
+<script src="documents-tik.inline1.js?v=20260804a"></script>
 <script src="documents-tik.inline2.js?v=20260722e"></script>
 <script src="yv-providers.js?v=20260722"></script>
 <script src="yv-client-log.js?v=20260725"></script>
@@ -307,6 +324,6 @@
 <script src="documents-tik.inline3.js?v=20260722e"></script>
 <script src="yv-flow.js?v=20260721"></script>
 <script src="documents-tik.inline4.js?v=20260722e"></script>
-<script src="yv-progress.js?v=20260722b"></script>
+<script src="yv-progress.js?v=20260805a"></script>
 </body>
 </html>

@@ -239,7 +239,7 @@
       // upload/enqueue time when the caller passes cfg.t0, so the displayed clock
       // counts the true upload→done span (matching the queue-card timer) instead of
       // the moment this widget happened to start tracking the job.
-      A = { el: el, kind: cfg.kind, est: cfg.estSec || EST[cfg.kind] || 120,
+      A = { el: el, kind: cfg.kind, est: cfg.estSec || EST[cfg.kind] || 120, jobId: cfg.jobId || null,
             t0: now(), clockT0: (typeof cfg.t0 === 'number' && cfg.t0 <= now()) ? cfg.t0 : now(),
             now: now, pct: 0, floor: 0, state: 'run', stageHe: '', frozen: null, timer: null,
             trailCount: 0, winDone: 0, winTotal: 0, pageA: 0, pageB: 0, pageTotal: 0, model: '', lastLi: null };
@@ -250,6 +250,12 @@
     // Feed the poll loop's job object (events + status). Safe if begin() was skipped.
     pump: function (job) {
       if (!A || A.state !== 'run' || !job) return;
+      // Ownership: the photos queue runs several jobs CONCURRENTLY, each with its
+      // own poll loop pumping this one shared card. Without this guard the first
+      // job to finish froze the clock and stamped "✓ הקטלוג הושלם" while the other
+      // photos were still being cataloged. A card claimed by a jobId accepts only
+      // that job; cards begun without one (single-job screens) behave as before.
+      if (A.jobId && job.id && job.id !== A.jobId) return;
       // Server-computed HONEST percent (e.g. tik window pages / total pages) beats
       // any milestone guess — adopt it as the floor, and project a real ETA from it
       // (elapsed / pct) instead of the static per-kind estimate.
@@ -311,6 +317,10 @@
       if (A && A.el && A.el.parentNode) A.el.parentNode.innerHTML = '';
       A = null;
     },
+    // Who owns the live card right now — the jobId if one is still running, else
+    // null (free: no card, or the last one already ended). A concurrent queue uses
+    // this to hand the card over to a photo that is still working.
+    owner: function () { return (A && A.state === 'run') ? (A.jobId || true) : null; },
     _active: function () { return A; },   // test hook
   };
 })();
