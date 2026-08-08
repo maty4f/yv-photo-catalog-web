@@ -2131,8 +2131,17 @@ function addFiles(list){
     .sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name,undefined,{numeric:true}));
   state.files=[...state.files,...files];renderFiles();
 }
+// Direct multi-PDF selection (drag or file picker, no folder): ≥2 PDFs = a
+// BATCH of tiks — route to the queue (one tik per PDF, processed sequentially),
+// mirroring the CLI semantics of a folder of PDFs. A single PDF or a set of
+// page scans keeps the classic single-tik flow.
+function addFilesOrEnqueue(list){
+  const pdfs=Array.from(list).filter(f=>/\.pdf$/i.test(f.name));
+  if(pdfs.length>=2)enqueueFolderSelection(list);
+  else addFiles(list);
+}
 const drop=$('drop');
-$('file-input').addEventListener('change',e=>{addFiles(e.target.files);e.target.value='';});
+$('file-input').addEventListener('change',e=>{addFilesOrEnqueue(e.target.files);e.target.value='';});
 $('folder-input').addEventListener('change',e=>{
   if(!e.target.files.length){alert('לא נבחרו קבצים.');return;}
   enqueueFolderSelection(e.target.files);e.target.value='';
@@ -2142,7 +2151,7 @@ $('chunk-size').addEventListener('change',renderFiles);
 $('tiling').addEventListener('change',renderFiles);
 drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
 drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
-drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files);});
+drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');addFilesOrEnqueue(e.dataTransfer.files);});
 
 /* ---------- folder queue: many tiks, processed one after another ---------- */
 // Mirrors the CLI semantics (yv doc describe <folder>): each first-level

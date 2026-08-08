@@ -225,7 +225,7 @@
   <!-- UPLOAD -->
   <div class="card">
     <h2>התיק</h2>
-    <label class="drop" id="drop" for="file-input">גרור לכאן את התיק — PDF אחד או כמה סריקות (JPG/PNG/TIFF)<br><small>או לחץ לבחירה</small></label>
+    <label class="drop" id="drop" for="file-input">גרור לכאן את התיק — PDF אחד או כמה סריקות (JPG/PNG/TIFF)<br><small>או לחץ לבחירה · כמה קובצי PDF בבת-אחת = תור תיקים (כל PDF מקוטלג כתיק נפרד, תיק אחרי תיק)</small></label>
     <input type="file" id="file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp" class="visually-hidden-file">
     <input type="file" id="folder-input" webkitdirectory directory multiple class="visually-hidden-file">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
@@ -234,7 +234,7 @@
       <button type="button" id="download-tik-pdf" class="copy-btn" style="background:var(--brand);color:#04222a" disabled title="איחוד כל דפי התיק לקובץ PDF אחד והורדתו למחשב">⬇ הורד את התיק כ-PDF</button>
       <button type="button" id="clear-files" class="copy-btn" style="background:var(--error);color:#fff">נקה</button>
     </div>
-    <div class="hint">תיקייה של סריקות = תיק אחד; תיקייה שמכילה <b>תת-תיקיות</b> (או כמה קובצי PDF) נכנסת ל<b>תור תיקים</b> — כל תת-תיקייה / כל PDF מקוטלגים כתיק נפרד, תיק אחרי תיק, וכל רשומה נשמרת. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
+    <div class="hint">תיקייה של סריקות = תיק אחד; תיקייה שמכילה <b>תת-תיקיות</b>, כמה קובצי PDF בתיקייה, או <b>כמה קובצי PDF שנגררו יחד</b> — נכנסים ל<b>תור תיקים</b>: כל תת-תיקייה / כל PDF מקוטלגים כתיק נפרד, תיק אחרי תיק, וכל רשומה נשמרת. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
 
     <!-- Drive browser: pick a tik straight off Google Drive — the SERVER downloads
          it (rclone) and catalogs the folder in place. No mount reads, no PDF build. -->
@@ -315,7 +315,7 @@
 </div>
 <div class="toast" id="toast">הועתק</div>
 
-<script src="documents-tik.inline1.js?v=20260804a"></script>
+<script src="documents-tik.inline1.js?v=20260808a"></script>
 <script src="documents-tik.inline2.js?v=20260722e"></script>
 <script src="yv-providers.js?v=20260722"></script>
 <script src="yv-client-log.js?v=20260725"></script>
