@@ -256,12 +256,13 @@
         <div style="font-weight:700; font-size:13.5px;">📚 תור תיקים <span id="tik-queue-summary" style="font-weight:400; font-size:12px; color:var(--muted); margin-inline-start:6px;"></span></div>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <label id="tik-queue-add-btn" class="upload-btn" for="folder-input" style="padding:3px 9px; font-size:11.5px; color:var(--films); border-color:var(--films);">+ הוסף תיקייה</label>
+          <button type="button" id="tik-queue-pause" class="copy-btn" style="display:none; padding:3px 9px; font-size:11.5px; background:var(--brand); color:#04222a;" title="עצירה מסודרת: התיק שרץ כרגע ממשיך בשרת עד סופו ורשומתו נשמרת, והתור נעצר אחריו. הממתינים נשארים ברשימה — גם אחרי סגירת הדפדפן">⏸ עצור אחרי התיק הנוכחי</button>
           <button type="button" id="tik-queue-retry" class="copy-btn" style="display:none; padding:3px 9px; font-size:11.5px; background:var(--good); color:#06210f;">🔄 נסה כושלים מחדש</button>
           <button type="button" id="tik-queue-clear" class="copy-btn" style="padding:3px 9px; font-size:11.5px; background:var(--error); color:#fff;">🗑 נקה תור</button>
         </div>
       </div>
       <div id="tik-queue-list"></div>
-      <div class="hint" style="margin-top:6px">התור רץ תיק-אחרי-תיק במנוע של הכפתור שתלחץ — «קטלג תיק» או «⚡ תיאור מהיר». כל רשומה שהסתיימה נשמרת ברשימה: «הצג» מחזיר אותה למסך גם בזמן שהתור ממשיך. שים לב: «מידע מוקדם» וטופס האיסוף חלים על <b>כל</b> התיקים שבתור.</div>
+      <div class="hint" style="margin-top:6px">התור רץ תיק-אחרי-תיק במנוע של הכפתור שתלחץ — «קטלג תיק» או «⚡ תיאור מהיר». כל רשומה שהסתיימה נשמרת ברשימה: «הצג» מחזיר אותה למסך גם בזמן שהתור ממשיך. שים לב: «מידע מוקדם» וטופס האיסוף חלים על <b>כל</b> התיקים שבתור.<br><b>עצירה ושמירה:</b> «⏸ עצור אחרי התיק הנוכחי» עוצר מסודר — התיק שרץ ממשיך בשרת עד סופו ורשומתו נשמרת, והתור נעצר אחריו; «▶ המשך התור» ממשיך מאותה נקודה. הרשימה נשמרת במכשיר, אז גם אחרי סגירת הדפדפן היא חוזרת. תיקים מהדרייב חוזרים מוכנים-לריצה; תיקים שהועלו מהמחשב חוזרים מסומנים «צריך בחירה מחדש» — בחר שוב את אותה תיקייה והם יתאחו לפי שם, בלי להריץ שוב את מה שכבר קוטלג.</div>
     </div>
     <div class="filelist" id="filelist"></div>
     <label>טופס איסוף / דף מלווה (אופציונלי — סריקה או PDF)</label>
@@ -315,7 +316,7 @@
 </div>
 <div class="toast" id="toast">הועתק</div>
 
-<script src="documents-tik.inline1.js?v=20260808a"></script>
+<script src="documents-tik.inline1.js?v=20260809b"></script>
 <script src="documents-tik.inline2.js?v=20260722e"></script>
 <script src="yv-providers.js?v=20260722"></script>
 <script src="yv-client-log.js?v=20260725"></script>

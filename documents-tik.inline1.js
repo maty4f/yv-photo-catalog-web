@@ -273,6 +273,7 @@ const TESTIMONY_SCHEMA_RULES=`אתה מקטלג תיעוד מוסדי בארכי
 - דרגות, שמות ארגונים ועיטורים — בלטינית, עם הסבר עברי קצר בסוגריים במידת הצורך: SS-Obersturmführer (דרגת קצונה ב-SS).
 - title — נוסחת הכותר המוסדית: "עדות של <שם>, יליד/ילידת <שנה או מקום ושנה>, שניתנה ב<בית המשפט/מקום> ב-<תאריך>", ובמידת הצורך "לפי בקשת <בית המשפט המבקש>". למסמך-רשימה: "רשימת <עדים/ניצולים/נספים>... מ<הקשר> מה-<תאריך>".
 - summary ("מידע נוסף"): משפטים מופרדים ב-**נקודה-פסיק (;)** ולא בנקודה; **שמות-פעולה במקום פעלים** ("הוצאה להורג של קבוצת יהודים מהגטו", לא "הנאצים הוציאו להורג"); קדימות ל**סיפור היהודי** — אקציות, גירושים, הקמת גטאות, משלוחים למחנות, בריחה והסתתרות; מידע על הפושעים בקצרה בלבד; **אין לחזור על הכותר**.
+- **צירי-החובה של תקציר עדות**: כשהעדות עוסקת במחנות, בגטאות, ברדיפת יהודים או ברצח — התקציר **קצר** ובנוי סביבם לפי הסדר: (א) **מחנות וגטאות** — כל אחד בשמו ובכתיב לטיני, כרונולוגית; (ב) **רדיפה** — סימון ואות קלון, החרמת רכוש, עבודות כפייה, ריכוז בגטו, רעב, גירוש; (ג) **רצח** — אקציה, סלקציה, הוצאה להורג, תא גזים, חיסול גטו, צעדת-מוות: מה, היכן, מתי, ובאיזה היקף; (ד) **הנרדפים** — הקהילה/המשפחה/השמות שהעד נוקב, וגורלם. פרוצדורה משפטית, נסיבות גביית העדות וזהות החוקרים יורדים לשוליים או נשמטים. לשון ארכיונית מאופקת, בלי הגזמה ובלי פרט שהעד לא מסר.
 - מסמך-רשימה: רשימה של 5 יהודים נרדפים או יותר → record_type="מסמך-רשימה", מלא names_in_list, וקבע designate_name_typing=true (הקלדת השמות — תפקיד היכל השמות; אל תעתיק את כל הרשימה לתקציר). אחרת record_type="עדות".
 - accession_number ("מספר נכנסות"): אינו מופיע במסמך — העתק מהמידע-המוקדם אם סופק; אחרת "".
 - related_places: לכל מקום name בלטינית, country_he בעברית (למשל "פולין"), type_he="גטו"/"מחנה"/"" ו-region ("נפה/מחוז" אם ידוע, לטינית).
@@ -2263,6 +2264,16 @@ $('drive-up').addEventListener('click',()=>driveLoad(state.drivePath.split('/').
 function enqueueFolderSelection(list){
   const groups=tikGroupsOf(list);
   if(!groups.length){alert('לא נמצאו קבצים נתמכים (PDF / JPG / PNG / TIFF / WEBP).');return;}
+  // תור משוחזר ממתין לקבצים → הבחירה הזו מתאחה אליו במקום להוסיף כפילויות.
+  if(state.queue.some(q=>q.needsFiles)){
+    const hit=reattachFiles(groups);
+    if(hit){
+      renderQueue();
+      const left=state.queue.filter(q=>q.needsFiles).length;
+      showStatus(`אוחו ${hit} תיקים לתור המשוחזר`+(left?` · ${left} עדיין ממתינים לקבצים.`:' — התור מוכן להרצה, ומה שכבר קוטלג לא ירוץ שוב.'),'ok');
+      return;
+    }
+  }
   if(groups.length===1&&!state.queue.length){addFiles(groups[0].files);return;}   // classic single-tik flow
   groups.forEach(g=>state.queue.push({name:g.name,files:g.files,status:'pending'}));
   renderQueue();
@@ -2275,6 +2286,15 @@ function renderQueue(){
   const c={pending:0,running:0,done:0,error:0};state.queue.forEach(q=>c[q.status]=(c[q.status]||0)+1);
   $('tik-queue-summary').textContent=`${state.queue.length} תיקים · ${c.done||0} הושלמו`+(c.error?` · ${c.error} נכשלו`:'')+((c.pending&&!state.queueRunning)?` · ${c.pending} ממתינים`:'')+(state.queueRunning?' · התור רץ…':'');
   $('tik-queue-retry').style.display=(c.error&&!state.queueRunning)?'':'none';
+  // ⏸ בזמן ריצה · ▶ כשיש ממתינים ואינו רץ · מוסתר כשאין מה לעשות איתו
+  const pb=$('tik-queue-pause');
+  if(state.queueRunning){
+    pb.style.display='';pb.textContent=state.queuePaused?'⏸ ייעצר בתום התיק…':'⏸ עצור אחרי התיק הנוכחי';
+    pb.disabled=!!state.queuePaused;
+  }else{
+    pb.disabled=false;pb.style.display=c.pending?'':'none';pb.textContent='▶ המשך התור';
+  }
+  saveQueue();
   let base='';try{base=serverBase();}catch(e){}
   const icon=q=>q.status==='running'?'<span class="spinner"></span>'
     :q.status==='done'?'<span style="color:var(--good)">✓</span>'
@@ -2283,8 +2303,9 @@ function renderQueue(){
     // A Drive item carries no File objects — the server fetches it — so describe
     // it by origin instead of by local byte count.
     const what=q.drivePath?'☁ מהדרייב'
+      :q.needsFiles?`<span style="color:var(--error)">⚠ צריך בחירה מחדש (${(q.savedNames||[]).length} קבצים)</span>`
       :(q.files.length===1&&/\.pdf$/i.test(q.files[0].name))?'PDF':`${q.files.length} דפים`;
-    const mb=q.drivePath?'':` · ${(q.files.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(1)}MB`;
+    const mb=(q.drivePath||q.needsFiles)?'':` · ${(q.files.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(1)}MB`;
     const acts=[];
     if(q.status==='done'&&q.rec)acts.push(`<button type="button" class="copy-btn" data-show="${i}" style="padding:2px 9px;font-size:11.5px" title="הצגת רשומת התיק הזה במסך (הרשומות של שאר התיקים נשארות שמורות בתור)">הצג</button>`);
     if(q.status==='done'&&q.outputName&&base)acts.push(`<a href="${base}/api/output/${encodeURIComponent(q.outputName)}" style="font-size:11.5px" title="הורדת קובץ הרשומה שנשמר בשרת">⬇ קובץ</a>`);
@@ -2313,8 +2334,60 @@ function showQueueItem(i){
   showStatus(`מוצגת רשומת התיק «${esc(q.name)}» מהתור — שאר הרשומות נשארות שמורות ברשימת התור.`,'ok');
   $('results').scrollIntoView({behavior:'smooth'});
 }
+/* ---------- עצירה ושמירה של התור ----------
+   התור חי בדפדפן, אז עד היום רענון/סגירה איבדו אותו, ולא הייתה דרך לעצור
+   באמצע בלי להרוג את התיק הרץ. שתי היכולות משלימות זו את זו:
+   ⏸ עוצר *אחרי* התיק הנוכחי (התיק הרץ ממשיך בשרת עד סופו — לא מאבדים עבודה),
+   והרשימה נשמרת ל-localStorage כדי שאפשר יהיה להמשיך מחר.
+   מה נשמר: שם, מצב, נתיב-דרייב, ושמות הקבצים. תוכן הקבצים לא — אובייקטי File
+   של הדפדפן לא שורדים רענון, ואחסון מאות מגה-בייט של סריקות היה מנפח את
+   המכשיר. פריט-דרייב חוזר מוכן-לריצה; פריט-העלאה מסומן «צריך בחירה מחדש»
+   ומתאחה לפי שם הקובץ ברגע שבוחרים את אותה תיקייה — עם המצב שלו, כך שמה
+   שכבר קוטלג לא ירוץ שוב. */
+const QUEUE_KEY='yv-tik-queue-v1';
+function saveQueue(){
+  try{
+    if(!state.queue.length){localStorage.removeItem(QUEUE_KEY);return;}
+    localStorage.setItem(QUEUE_KEY,JSON.stringify({
+      at:Date.now(),mode:state.lastQueueMode||'fast',
+      items:state.queue.map(q=>({
+        name:q.name,drivePath:q.drivePath||null,
+        // 'running' never survives — a reload means that run is no longer ours.
+        status:q.status==='running'?'pending':q.status,
+        fileNames:(q.files||[]).map(f=>f.name),
+        outputName:q.outputName||null,error:q.error||null}))}));
+  }catch(e){/* מכסת אחסון / מצב פרטי — התור פשוט לא נשמר */}
+}
+function restoreQueue(){
+  let saved=null;
+  try{saved=JSON.parse(localStorage.getItem(QUEUE_KEY)||'null');}catch(e){}
+  if(!saved||!Array.isArray(saved.items)||!saved.items.length)return;
+  state.lastQueueMode=saved.mode||'fast';
+  state.queue=saved.items.map(it=>({
+    name:it.name,drivePath:it.drivePath||undefined,files:[],
+    status:it.status,needsFiles:!it.drivePath&&it.status==='pending',
+    savedNames:it.fileNames||[],outputName:it.outputName||null,error:it.error||null}));
+  renderQueue();
+  const need=state.queue.filter(q=>q.needsFiles).length;
+  showStatus(`שוחזר תור שמור מ-${new Date(saved.at).toLocaleString('he-IL')} — ${state.queue.length} תיקים`
+    +(need?`. ${need} מהם הועלו מהמחשב: בחר שוב את אותה תיקייה («📁 העלה תיקייה שלמה») והקבצים יתאחו לפי שם, בלי להריץ מחדש את מה שכבר קוטלג.`:'.'),'ok');
+}
+// Re-attach uploaded files to a restored queue: match by the saved file names,
+// so a restored item keeps its status (done stays done → never re-catalogued).
+function reattachFiles(groups){
+  let hit=0;
+  for(const g of groups){
+    const q=state.queue.find(x=>x.needsFiles&&(x.name===g.name
+      ||(x.savedNames||[]).join('|')===g.files.map(f=>f.name).join('|')));
+    if(q){q.files=g.files;delete q.needsFiles;hit++;}
+  }
+  return hit;
+}
 async function runQueue(mode){
   if(state.queueRunning)return;
+  const blocked=state.queue.find(q=>q.status==='pending'&&q.needsFiles);
+  if(blocked){showStatus(`«${esc(blocked.name)}» שוחזר מתור שמור אך קבציו אינם בדפדפן — בחר שוב את התיקייה שלו לפני ההרצה.`,'err');return;}
+  state.queuePaused=false;
   state.lastQueueMode=mode;
   // Loose files already on screen become the first tik — nothing is dropped
   // silently. Files that came FROM the queue («הצג», or the last processed tik)
@@ -2351,21 +2424,42 @@ async function runQueue(mode){
       item.status='error';item.error=(($('status').textContent||'').trim()||'נכשל').slice(0,400);fail++;
     }
     renderQueue();
+    // ⏸ נלחץ בזמן שהתיק הזה רץ: הוא הושלם ונשמר, והתור נעצר כאן — הממתינים
+    // נשארים ברשימה (ובאחסון), כך שאפשר להמשיך אחר כך בלי לאבד דבר.
+    if(state.queuePaused)break;
     if(state.queue.some(q=>q.status==='pending'))await new Promise(r=>setTimeout(r,800));
   }
   state.queueRunning=false;renderQueue();   // state.files keeps the last tik's pages (צ'אט / תיאור מפורט / PDF)
   const failTxt=fail?` · ${fail} נכשלו — «🔄 נסה כושלים מחדש» יריץ אותם שוב`:'';
+  if(state.queuePaused){
+    state.queuePaused=false;renderQueue();
+    const left=state.queue.filter(q=>q.status==='pending').length;
+    showStatus(`⏸ התור נעצר לבקשתך — ${ok} תיקים קוטלגו${failTxt} · ${left} ממתינים ונשמרו. «▶ המשך התור» ימשיך מכאן, וגם אחרי סגירת הדפדפן הרשימה תחזור.`,'info');
+    return;
+  }
   showStatus(`✓ התור הסתיים — ${ok} תיקים קוטלגו${failTxt}. כל הרשומות שמורות בתור: «הצג» מחזיר רשומה למסך, «⬇ קובץ» מוריד את מה שנשמר בשרת.`,fail?'info':'ok');
 }
 $('tik-queue-clear').addEventListener('click',()=>{
-  if(state.queueRunning){showStatus('התור רץ — המתן לסיום התיק הנוכחי לפני ניקוי.','err');return;}
+  if(state.queueRunning){showStatus('התור רץ — עצור אותו ב-«⏸ עצור אחרי התיק הנוכחי», ואז אפשר לנקות.','err');return;}
   state.queue=[];renderQueue();
+});
+// ⏸ / ▶ — עצירה אחרי התיק הנוכחי, והמשך מאותה נקודה.
+$('tik-queue-pause').addEventListener('click',()=>{
+  if(state.queueRunning){
+    state.queuePaused=true;renderQueue();
+    showStatus('⏸ ייעצר בתום התיק הנוכחי — הוא ממשיך בשרת עד סופו ורשומתו תישמר. הממתינים יישארו ברשימה.','info');
+    return;
+  }
+  if(!state.queue.some(q=>q.status==='pending')){showStatus('אין תיקים ממתינים בתור.','err');return;}
+  runQueue(state.lastQueueMode||'fast');
 });
 $('tik-queue-retry').addEventListener('click',()=>{
   if(state.queueRunning)return;
   state.queue.forEach(q=>{if(q.status==='error'){q.status='pending';delete q.error;}});
   renderQueue();runQueue(state.lastQueueMode||'fast');
 });
+// תור שנשמר בריצה קודמת חוזר למסך (אחרי שכל פונקציות התור הוגדרו).
+restoreQueue();
 
 /* ---------- intake form (טופס איסוף) handling ---------- */
 function renderIntake(){
