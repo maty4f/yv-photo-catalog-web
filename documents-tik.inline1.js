@@ -578,7 +578,7 @@ function copyCloneOf(el){
   [...c.querySelectorAll('.row-pick')].forEach((cb,i)=>{
     if(live[i]&&!live[i].checked){const tr=cb.closest('tr');if(tr)tr.remove();}
   });
-  c.querySelectorAll('th.rp,td.rp,th.act,td.act,button').forEach(x=>x.remove());
+  c.querySelectorAll('th.rp,td.rp,th.act,td.act,button,select').forEach(x=>x.remove());
   c.querySelectorAll('.cv,.ch,.cmark').forEach(x=>x.remove());
   return c;
 }
@@ -606,7 +606,32 @@ function conf(rec,key){const c=rec.field_confidence?.[key];return c?(' '+cmark(c
 /* ---------- רשומת עדות מוסדית (TR.11): פרטי מוסר-העדות, שיוך ונתוני-חומר ---------- */
 function testimonySectionsHtml(rec){
   if(!rec||rec._tik_kind!=='testimony')return '';
-  const w=rec.witness||{},m=rec.material||{},c=rec.collection||{};
+  const w=Object.assign({},rec.witness||{}),m=rec.material||{},c=rec.collection||{};
+  // גישור מבנה-המנוע (תור-השרת / ☁): רשומת המנוע נושאת את פרטי-העד ב-
+  // testimonies[].witness (name/birth/prewar_residence…), לא ב-rec.witness
+  // (first_name/birth_date_authentic…) של מסלול-הדפדפן — בלעדיו הטופס יצא
+  // ריק גם כשהעדות חולצה במלואה (10.8). ממלאים רק שדות שריקים בטופס,
+  // ורק ממה שנכתב בעדות — never-invent.
+  // בוחרים את העד העשיר-בפרטים (העד המרכזי; בתיק משפטי מופיעים גם עדים אגביים
+  // כ-"Mr. X" בלי ביוגרפיה) — לא סתם את הראשון.
+  const _wScore=x=>x?Object.values(x).filter(s=>String(s||'').trim()).length:0;
+  const ew=(rec.testimonies||[]).map(t=>t&&t.witness).sort((a,b)=>_wScore(b)-_wScore(a))[0]||{};
+  const fill=(key,val)=>{if(!String(w[key]||'').trim()&&String(val||'').trim())w[key]=String(val).trim();};
+  const nm=String(ew.name||ew.name_original||'').trim();
+  if(nm&&!String(w.first_name||'').trim()&&!String(w.last_name||'').trim()){
+    const parts=nm.split(/\s+/);
+    if(parts.length>1){w.first_name=parts.slice(0,-1).join(' ');w.last_name=parts[parts.length-1];}
+    else w.last_name=nm;   // מילה בודדת ("Rosenberg") = שם-משפחה, לא שם פרטי
+  }
+  fill('gender',ew.gender);fill('birth_date_authentic',ew.birth);fill('birth_place',ew.birth_place);
+  fill('maiden_name',ew.maiden_name);fill('father_name',ew.father_name);fill('mother_name',ew.mother_name);
+  fill('spouse_name',ew.spouse_name);fill('residence_before_war',ew.prewar_residence);
+  fill('place_after_war',ew.postwar_residence);fill('aliyah_year',ew.aliyah_year);
+  fill('testimony_place',ew.testimony_place);fill('interviewer',ew.interviewer);
+  const t0=(rec.testimonies||[]).find(t=>t&&t.witness===ew)||{};
+  fill('testimony_type',t0.kind_he);
+  const nTst=(rec.testimonies||[]).filter(t=>t&&t.witness&&Object.values(t.witness).some(s=>String(s||'').trim())).length;
+  const multiNote=nTst>1?`<div class="diamond">בתיק ${nTst} עדויות — הטופס מציג את הראשונה; פירוט כולן בבלוק «שכבת העדות» של הרשומה.</div>`:'';
   const v=x=>{const s=String(x==null?'':x).trim();return s?esc(s):'—';};
   const tbl=rows=>`<table class="tbl"><tbody>`+
     rows.map(r=>`<tr><th style="width:34%">${esc(r[0])}</th><td>${r[1]}</td></tr>`).join('')+`</tbody></table>`;
@@ -641,7 +666,7 @@ function testimonySectionsHtml(rec){
     ?`<div class="diamond"><b>מסמך-רשימה</b> — ${nList?`${nList} שמות ברשימה; `:''}רישום השמות הוא תפקיד היכל השמות (מיועד להקלדת שמות: ${rec.designate_name_typing?'כן':'לבדיקה'}).</div>`
     :'';
   return `<div class="section-bar">רשומת עדות מוסדית — חפ"ן / TR.11</div>`+
-    listBanner+
+    listBanner+multiNote+
     fieldBlock('פרטי מוסר העדות','f-witness',tbl(witnessRows))+
     fieldBlock('נתוני חומר','f-material',tbl(materialRows))+
     fieldBlock('שיוך ארכיוני','f-collection',tbl(collectionRows));
@@ -837,6 +862,55 @@ async function deepDescribeTestimony(btn){
   }
 }
 
+/* ---------- "צור פריט ממקטע" (TR.15 — פגישת 17.8.2026) ----------
+   כל שורת אינוונטר יכולה להפוך לפריט-משנה: כותר בנוסחת "כותר-על: תוכן המקטע
+   [כרך N]", טווח דפים ושיוך לפריט-הכרך. המקטלגת מחליטה מה ראוי להיות פריט;
+   הכותר ניתן לעריכה במקום, והפריטים רוכבים על הרשומה (שרידות-רענון). */
+function subItemTitleFor(rec,row){
+  const full=String(rec.title||'').trim();
+  const over=(full.split(/[::]/)[0]||'').trim()||full;   // מה שלפני הנקודתיים = כותר-העל
+  let content=String(row.description||row.doc_type||'').trim();
+  content=(content.split(/[.;\n]/)[0]||'').trim();       // הכותר קצר — המשפט הראשון בלבד
+  const vol=String((rec._cover&&rec._cover.volume)||'').trim();
+  const volTag=vol?(/^\d+$/.test(vol)?` [כרך ${vol}]`:` [${vol}]`):'';
+  return (over&&content?over+': ':'')+(content||over)+volTag;
+}
+function persistTikRecord(){
+  // שמירה שקטה (עריכת כותר במקום) — בלי renderRecord, כדי לא לאבד פוקוס
+  try{
+    const payload={rec:state.lastRecord,savedAt:Date.now()};
+    const notes=JSON.stringify(state.chunkNotes||[]);
+    if(notes.length<1500000)payload.notes=state.chunkNotes||[];
+    localStorage.setItem('yv_tik_last_record',JSON.stringify(payload));
+  }catch(e){}
+}
+function hierarchyTreeHtml(rec){
+  // עץ שלוש הרמות של הפגישה: תת-אוסף (התיק המשפטי) ← פריט-הכרך ← פריטי-משנה.
+  // מוצג רק כשיש מה להראות (kind=tr15 או פריטי-משנה) — לא רועש בתיק רגיל.
+  const subs=rec.sub_items||[];
+  if(rec._tik_kind!=='tr15'&&!subs.length)return '';
+  const full=String(rec.title||'').trim();if(!full)return '';
+  const over=(full.split(/[::]/)[0]||'').trim()||full;
+  const vol=String((rec._cover&&rec._cover.volume)||'').trim();
+  let h=`<div class="hier"><div>📁 ${esc(over)} <small>— תת-אוסף (התיק המשפטי כולו)</small></div>`;
+  h+=`<div class="h-i1">└ 📄 ${esc(full)}${vol?` [כרך ${esc(vol)}]`:''} <small>— פריט-הכרך (הרשומה הזו)</small></div>`;
+  subs.forEach((s,i)=>{
+    h+=`<div class="h-i2">${i===subs.length-1?'└':'├'} ▪ ${esc(s.title||('פריט-משנה '+(i+1)))} <small>— דפים ${esc(s.pages||'?')}${Number.isInteger(s.related)?` · 🔗 נלווה לפריט-משנה ${s.related+1}`:''}</small></div>`;
+  });
+  return h+'</div>';
+}
+function createSubItem(idx){
+  const rec=state.lastRecord;if(!rec)return;
+  const row=(rec.document_inventory||[])[idx];if(!row)return;
+  (rec.sub_items=rec.sub_items||[]).push({
+    pages:String(row.pages||''),tik_pages:String(row.tik_pages||''),
+    doc_type:String(row.doc_type||''),date:String(row.date||''),
+    languages:String(row.languages||''),source_desc:String(row.description||''),
+    title:subItemTitleFor(rec,row)});
+  renderRecord(rec,false);
+  showStatus(`✓ נוצר פריט-משנה מדפים ${row.pages||'?'} — מופיע אחרי האינוונטר; הכותר ניתן לעריכה במקום.`,'ok');
+}
+
 function renderRecord(rec,restored){
   state.lastRecord=rec;
   // רשומת עדות מוסדית: התאמות-תצוגה — מקומות-עשירים ({name,region,country,type})
@@ -919,13 +993,34 @@ function renderRecord(rec,restored){
   const hasTikPages=inv.some(d=>String(d.tik_pages||'').trim());
   const invHtml=inv.length
     ? `<table class="tbl"><thead><tr><th class="rp"></th>${hasTikPages?'<th>עמוד בתיק</th>':''}<th>דפי מקור</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th><th class="act"></th></tr></thead><tbody>`+
-        inv.map(d=>`<tr><td class="rp"><input type="checkbox" class="row-pick" checked title="כלול שורה זו בהעתקה ובדף-ההעתקה"></td>${hasTikPages?`<td>${pgs(d.tik_pages||'—')}</td>`:''}<td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
-          `<td class="act">${isTestimony(d)?`<button class="deep-btn" data-pages="${esc(String(d.pages||''))}" data-desc="${esc(String(d.description||d.doc_type||''))}">🔎 תיאור מפורט</button>`:''}</td></tr>`).join('')+
+        inv.map((d,i)=>`<tr><td class="rp"><input type="checkbox" class="row-pick" checked title="כלול שורה זו בהעתקה ובדף-ההעתקה"></td>${hasTikPages?`<td>${pgs(d.tik_pages||'—')}</td>`:''}<td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
+          `<td class="act">${isTestimony(d)?`<button class="deep-btn" data-pages="${esc(String(d.pages||''))}" data-desc="${esc(String(d.description||d.doc_type||''))}">🔎 תיאור מפורט</button>`:''}`+
+          `<button class="deep-btn item-btn" data-idx="${i}" title="פתח פריט-משנה מהמקטע הזה — כותר משלו, כפוף לפריט הכרך (TR.15)">➕ פריט</button></td></tr>`).join('')+
       `</tbody></table>`
     : '<span class="none">— לא נרשם אינוונטר —</span>';
   // deep descriptions from previous button runs ride the record (refresh-safe)
   const deepBlocks=(rec.deep_descriptions||[]).map((d,i)=>
     fieldBlock(`תיאור מפורט — עדות (דפים ${d.pages||'?'})`,`f-deep-${i}`,d.html||esc(d.text||''))).join('');
+  // פריטי-משנה שנוצרו מהאינוונטר (TR.15) — רוכבים על הרשומה (שרידות-רענון);
+  // כפתורים ובוררים אינם מועתקים (copyCloneOf מסיר button+select) — ההעתקה נקייה לספיר.
+  const _subs=rec.sub_items||[];
+  const _shortT=t=>{t=String(t||'').trim();return t.length>48?t.slice(0,48)+'…':t;};
+  const subItemBlocks=_subs.map((s,i)=>
+    fieldBlock(`פריט-משנה ${i+1} — דפים ${s.pages||'?'}`,`f-subitem-${i}`,
+      `<div><b>כותר:</b> <span class="subitem-title" contenteditable="true" data-si="${i}" title="הכותר ניתן לעריכה — נשמר אוטומטית">${esc(s.title||'')}</span></div>`+
+      `<div><b>שיוך:</b> פריט שייך ל-«${esc(rec.title||'')}»</div>`+
+      `<div><b>דפים:</b> ${esc(s.pages||'—')}${s.tik_pages?` (עמוד בתיק ${esc(s.tik_pages)})`:''} · <b>סוג:</b> ${esc(s.doc_type||'—')}`+
+      `${s.date?` · <b>תאריך:</b> ${esc(s.date)}`:''}${s.languages?` · <b>שפות:</b> ${esc(s.languages)}`:''}</div>`+
+      // פריטים נלווים (החלטת הפגישה): עדות ותרגומה — אותו אדם, אותו כרך בלבד.
+      // הקישור דו-כיווני; שורת-הטקסט נכנסת להעתקה, הבורר עצמו לא.
+      (Number.isInteger(s.related)&&_subs[s.related]
+        ?`<div><b>פריט נלווה:</b> פריט-משנה ${s.related+1} — ${esc(_subs[s.related].title||'')}</div>`:'')+
+      (_subs.length>1
+        ?`<div class="rel-row"><label>🔗 נלווה ל:</label> <select class="subitem-rel" data-si="${i}">`+
+          `<option value="">— ללא —</option>`+
+          _subs.map((o,j)=>j===i?'':`<option value="${j}"${s.related===j?' selected':''}>פריט-משנה ${j+1} — ${esc(_shortT(o.title))}</option>`).join('')+
+          `</select></div>`:'')+
+      `<button class="deep-btn subitem-del" data-si="${i}">✕ הסר פריט</button>`)).join('');
   // names index — feeds the Shoah Victims' Names DB. Split into three lists
   // (archivist decision): Jews & fate (the focus) · Germans/collaborators with
   // role+crimes+fate · additional people. Records with no category fall back to
@@ -1134,6 +1229,9 @@ function renderRecord(rec,restored){
     `<div class="section-bar">אינוונטר מסמכים — מפת התיק</div>`+
     fieldBlock('אינוונטר מסמכים','f-inv',invHtml)+
     deepBlocks+
+    subItemBlocks+
+    (hierarchyTreeHtml(rec)?`<div class="section-bar">היררכיית הפריט — תת-אוסף ← כרך ← פריטי-משנה</div>`+
+      fieldBlock('היררכיה','f-hier',hierarchyTreeHtml(rec)):'')+
 
     `<div class="section-bar">מפתח שמות — להזנת מאגר שמות הקורבנות</div>`+
     fieldBlock('מפתח שמות','f-names',nmHtml)+
@@ -1205,8 +1303,45 @@ function renderRecord(rec,restored){
   });
   pickCount();
   // bind testimony deep-describe buttons
-  document.querySelectorAll('.deep-btn').forEach(b=>{
+  document.querySelectorAll('.deep-btn:not(.item-btn):not(.subitem-del)').forEach(b=>{
     b.addEventListener('click',()=>deepDescribeTestimony(b));
+  });
+  // bind "צור פריט ממקטע" + עריכת/הסרת פריטי-משנה (TR.15)
+  document.querySelectorAll('.item-btn').forEach(b=>{
+    b.addEventListener('click',()=>createSubItem(+b.getAttribute('data-idx')));
+  });
+  document.querySelectorAll('.subitem-del').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const r=state.lastRecord;if(!r||!Array.isArray(r.sub_items))return;
+      const del=+b.getAttribute('data-si');
+      r.sub_items.splice(del,1);
+      // קישורי "נלווה" מוחזקים באינדקסים — מתקנים אחרי ההסרה: קישור אל
+      // הפריט שנמחק מתבטל, קישור אל פריט מאוחר ממנו זז אחורה.
+      r.sub_items.forEach(s=>{
+        if(!Number.isInteger(s.related))return;
+        if(s.related===del)delete s.related;
+        else if(s.related>del)s.related--;
+      });
+      renderRecord(r,false);
+    });
+  });
+  // קישור "פריט נלווה" (עדות↔תרגום — אותו אדם, אותו כרך): דו-כיווני
+  document.querySelectorAll('.subitem-rel').forEach(sel=>{
+    sel.addEventListener('change',()=>{
+      const r=state.lastRecord,i=+sel.getAttribute('data-si');
+      if(!r||!r.sub_items||!r.sub_items[i])return;
+      const old=r.sub_items[i].related;
+      if(Number.isInteger(old)&&r.sub_items[old]&&r.sub_items[old].related===i)delete r.sub_items[old].related;
+      if(sel.value===''){delete r.sub_items[i].related;}
+      else{const j=+sel.value;r.sub_items[i].related=j;if(r.sub_items[j])r.sub_items[j].related=i;}
+      renderRecord(r,false);
+    });
+  });
+  document.querySelectorAll('.subitem-title').forEach(el=>{
+    el.addEventListener('blur',()=>{
+      const r=state.lastRecord,i=+el.getAttribute('data-si');
+      if(r&&r.sub_items&&r.sub_items[i]){r.sub_items[i].title=el.innerText.trim();persistTikRecord();}
+    });
   });
   // bind per-row picks — unchecked row dims and drops out of every copy path
   document.querySelectorAll('.row-pick').forEach(cb=>{
@@ -2299,17 +2434,32 @@ function renderQueue(){
   const icon=q=>q.status==='running'?'<span class="spinner"></span>'
     :q.status==='done'?'<span style="color:var(--good)">✓</span>'
     :q.status==='error'?'<span style="color:var(--error)">✗</span>':'⏳';
+  // מצב-השרת (מוזן מפס-«☁»): שם-שורה בדפדפן הוא <סריקה>_<תיק> — היפוך של
+  // שם תיקיית-הדרייב — לכן בודקים את שני הכיוונים. שורה שקוטלגה בשרת מקבלת
+  // ✓ וקישור במקום "צריך בחירה מחדש"; שורה שרצה עכשיו מקבלת שעון-ריצה חי.
+  const srv=window.__serverTikStatus||{doneBy:{},runFolder:'',runStart:0};
+  const srvKey=n=>{const p=String(n||'').trim().split('_');
+    const rev=p.length===2?`${p[1]}_${p[0]}`:'';
+    return srv.doneBy[n]?n:(rev&&srv.doneBy[rev]?rev:'');};
+  const srvRunning=n=>{const p=String(n||'').trim().split('_');
+    const rev=p.length===2?`${p[1]}_${p[0]}`:'';
+    return srv.runFolder&&(srv.runFolder===n||srv.runFolder===rev);};
   $('tik-queue-list').innerHTML=state.queue.map((q,i)=>{
     // A Drive item carries no File objects — the server fetches it — so describe
     // it by origin instead of by local byte count.
-    const what=q.drivePath?'☁ מהדרייב'
+    const sk=srvKey(q.name);
+    const what=srvRunning(q.name)?`<span style="color:var(--brand)"><span class="spinner"></span> רץ בשרת עכשיו · <span class="srv-clock" data-start="${srv.runStart}">—</span></span>`
+      :sk?`<span style="color:var(--good)">✓ קוטלג בשרת · <a href="#" class="srv-open-cat" data-out="${esc(srv.doneBy[sk].out)}" data-name="${esc(sk)}" style="color:var(--good);font-weight:700">⚙ פתח בקטלוג</a> · <a href="/api/output/${encodeURIComponent(srv.doneBy[sk].out)}" target="_blank" style="color:var(--good)">רשומה</a> · <a href="#" class="srv-xlsx" data-out="${esc(srv.doneBy[sk].out)}" data-stem="${esc(sk)}" style="color:var(--good)">📊 Excel</a> · <a href="#" class="srv-print" data-out="${esc(srv.doneBy[sk].out)}" style="color:var(--good)">🖨 PDF</a></span>`
+      :q.drivePath?'☁ מהדרייב'
       :q.needsFiles?`<span style="color:var(--error)">⚠ צריך בחירה מחדש (${(q.savedNames||[]).length} קבצים)</span>`
       :(q.files.length===1&&/\.pdf$/i.test(q.files[0].name))?'PDF':`${q.files.length} דפים`;
     const mb=(q.drivePath||q.needsFiles)?'':` · ${(q.files.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(1)}MB`;
     const acts=[];
     if(q.status==='done'&&q.rec)acts.push(`<button type="button" class="copy-btn" data-show="${i}" style="padding:2px 9px;font-size:11.5px" title="הצגת רשומת התיק הזה במסך (הרשומות של שאר התיקים נשארות שמורות בתור)">הצג</button>`);
     if(q.status==='done'&&q.outputName&&base)acts.push(`<a href="${base}/api/output/${encodeURIComponent(q.outputName)}" style="font-size:11.5px" title="הורדת קובץ הרשומה שנשמר בשרת">⬇ קובץ</a>`);
-    if(q.status==='pending')acts.push(`<button type="button" class="copy-btn" data-del="${i}" style="padding:2px 9px;font-size:11.5px;background:var(--error);color:#fff" title="הסרה מהתור">✕</button>`);
+    // ✕ ליד כל תיק שאינו רץ (בקשת משתמש 10.8) — גם שנכשל וגם שהסתיים; הסרת
+    // שורה מהתור אינה מוחקת רשומה שנשמרה בשרת.
+    if(q.status!=='running')acts.push(`<button type="button" class="copy-btn" data-del="${i}" style="padding:2px 9px;font-size:11.5px;background:var(--error);color:#fff" title="הסרה מהתור (רשומה שנשמרה בשרת אינה נמחקת)">✕</button>`);
     const err=q.status==='error'?` <span style="color:var(--error);font-size:11px" title="${esc(q.error||'')}">— ${esc(String(q.error||'נכשל').slice(0,90))}</span>`:'';
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px dashed color-mix(in srgb, var(--muted) 30%, transparent);font-size:12.5px;flex-wrap:wrap">
       <span style="width:18px;text-align:center;flex:none">${icon(q)}</span>
@@ -2479,3 +2629,208 @@ $('intake-input').addEventListener('change',e=>{addIntake(e.target.files);e.targ
 idrop.addEventListener('dragover',e=>{e.preventDefault();idrop.classList.add('over');});
 idrop.addEventListener('dragleave',()=>idrop.classList.remove('over'));
 idrop.addEventListener('drop',e=>{e.preventDefault();idrop.classList.remove('over');addIntake(e.dataTransfer.files);});
+
+
+/* ---------- פתיחת תיק שקוטלג-בשרת בקטלוג המלא של המסך ----------
+   ה-sidecar על הדיסק הוא רשומת-המנוע (TITLE_HE, doc_map...); המסך עובד על
+   רשומת-הדשבורד. הממפה משכפל את engineRecordToDashboard של השרת — ובנוסף
+   מעביר את שכבת-העדות (testimonies) שהממפה של השרת עדיין לא מעביר, כך
+   שטופס-העד מתמלא. */
+function engineSidecarToDashboard(f){
+  f=f||{};
+  const _clean=x=>String(x==null?'':x).trim();
+  const _split=x=>_clean(x)?_clean(x).split(/[,;·]+/).map(t=>t.trim()).filter(Boolean):[];
+  const docMap=Array.isArray(f.doc_map)?f.doc_map.filter(d=>d&&typeof d==='object'):[];
+  const names=Array.isArray(f.names_index)?f.names_index.filter(n=>n&&typeof n==='object'):[];
+  const events=Array.isArray(f.timeline)?f.timeline.filter(t=>t&&typeof t==='object'):[];
+  const dr=_clean(f.DATE_RANGE);const drm=dr.split(/\s*[–—-]\s*/);
+  const paragraphs=[];
+  if(_clean(f.SUMMARY_HE))paragraphs.push({heading:'',body:_clean(f.SUMMARY_HE),contains_diamond:false});
+  if(_clean(f.INFO_HE))paragraphs.push({heading:'הקשר היסטורי',body:_clean(f.INFO_HE),contains_diamond:false});
+  const reviewFlags=[];
+  // סימוני V/H ברשומת-המנוע הם HTML — מנוקים לתצוגת-טקסט (ולעולם לא מועתקים לספיר)
+  const _txt=x=>_clean(x).replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();
+  if(_txt(f.NOTES_HE))reviewFlags.push({field:'הערות המנוע',issue:_txt(f.NOTES_HE)});
+  reviewFlags.push({field:'מקור הרשומה',issue:'נטען מרשומת-שרת שמורה (output/) — תור-הדרייב.'});
+  return {
+    title:_clean(f.TITLE_HE),
+    related_places:_split(f.PLACES_HE),
+    languages:_split(f.LANGUAGES_HE),
+    date_authentic_start:drm[0]||'',date_authentic_end:drm[drm.length-1]||drm[0]||'',
+    date_reconstructed_start:'',date_reconstructed_end:'',
+    originality:'',creator_person:'',creator_org:'',
+    designate_name_typing:names.length>0,
+    name_typing_reason:names.length?`זוהו ${names.length} שמות במפתח — לבדיקת המקטלג`:'',
+    classification:'בלתי מסווג',classification_reason:'',
+    content_note:_clean(f.DOC_TYPES_HE)?`סוגי מסמכים בתיק: ${_clean(f.DOC_TYPES_HE)}`:'',
+    additional_info_paragraphs:paragraphs,also_in_file:[],
+    donor_notes:_clean(f.CONTEXT_HE).includes('ללא מידע מוקדם')?'':_clean(f.CONTEXT_HE),
+    diamonds:[],
+    document_inventory:docMap.map(d=>({pages:String(d.pages||''),tik_pages:String(d.tik_pages||''),
+      doc_type:String(d.type_he||''),type_key:String(d.type_key||''),date:String(d.date||''),
+      languages:String(d.language_he||''),description:String(d.summary_he||d.summary||'')})),
+    names_index:names.map(p=>({name:String(p.name||''),name_original:String(p.name_original||''),
+      category:String(p.category||'').trim().toLowerCase(),crimes:String(p.crimes||''),
+      role:String(p.role||p.context||''),birth:String(p.birth||''),death:String(p.death||''),
+      place:String(p.place||''),fate:String(p.fate||''),source_pages:String(p.pages||p.page||''),
+      confidence:String(p.confidence||'').trim().toLowerCase()})),
+    timeline:events.map(t=>({date:String(t.date||''),event:String(t.event||''),
+      place:String(t.place||''),source_pages:String(t.pages||t.page||'')})),
+    subjects_he:_split(f.SUBJECTS_HE),subjects_en:_split(f.SUBJECTS_EN),
+    field_confidence:{},review_flags:reviewFlags,
+    _tik_source:String(f.tik_source||''),
+    redactions:Array.isArray(f.redactions)?f.redactions:undefined,
+    redactions_he:String(f.REDACTIONS_HE||''),
+    organizations:Array.isArray(f.organizations)?f.organizations:[],
+    _tik_kind:String(f.tik_kind||''),
+    // כריכה (TR.15): כותר מקורי/סיגנטורה/כרך — מזין את נוסחת הכותר של פריטי-המשנה
+    _cover:(f.cover&&typeof f.cover==='object')?f.cover:undefined,
+    _trust:(f.trust_score===undefined||f.trust_score===null)?'':String(f.trust_score),
+    _names_csv:String(f.names_csv||''),
+    unreadable_pages:Array.isArray(f.unreadable_pages)?f.unreadable_pages:[],
+    // שכבת-העדות — מוזנת לטופס-העד ולדפיות-הסיכום (חסרה בממפה של השרת)
+    testimonies:Array.isArray(f.testimonies)?f.testimonies:[],
+    deceased_index:Array.isArray(f.deceased_index)?f.deceased_index:[],
+    _engine:{html:'',json:''},
+  };
+}
+async function openServerRecordInCatalog(outName,dispName){
+  try{
+    showStatus('<span class="spinner"></span> טוען את רשומת «'+esc(dispName)+'» מהשרת…','info');
+    const r=await fetch('/api/output/'+encodeURIComponent(outName.replace(/\.html$/,'.json')));
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const rec=engineSidecarToDashboard(await r.json());
+    state.files=[];state.chunkNotes=null;state.outputName=outName;
+    renderRecord(rec,true);
+    showStatus('מוצגת רשומת «'+esc(dispName)+'» מקטלוג-השרת — כל השדות, ההעתקות והייצוא זמינים.','ok');
+    $('results').scrollIntoView({behavior:'smooth'});
+  }catch(err){showStatus('טעינת הרשומה נכשלה: '+esc(err.message),'err');}
+}
+/* ---------- פס-מצב של תור-השרת: ריצות ☁ שמנוהלות בשרת, לא מהטאב הזה ----------
+   קורא את זרם-הג'ובים (אדמין בלבד; 403 → הפס נשאר מוסתר) ומציג תמונת-מצב חיה
+   של אצוות-הדרייב: התיק שרץ, התקדמות האוסף, והרשומות האחרונות עם קישורים.
+   מתעדכן כל 30 ש׳ — "לראות מה עובד" בלי לעזוב את מסך העבודה (בקשת משתמש 11.8). */
+(function serverQueueStrip(){
+  const el=document.getElementById('server-queue-strip');
+  if(!el)return;
+  let denied=false,expanded=false;
+  const COL=window.TIK_COLLECTION||[],LEG=window.TIK_LEGACY||{};
+  const day=o=>{const d=new Date(Date.now()-o*864e5);return d.toISOString().slice(0,10).replace(/-/g,'');};
+  async function tick(){
+    if(denied)return;
+    try{
+      const evs=[];
+      for(const off of [2,1,0]){
+        const r=await fetch(`/api/admin/logs/job/${day(off)}?tail=5000&q=${encodeURIComponent('"kind":"tik"')}`);
+        if(r.status===403){denied=true;return;}          // לא-אדמין — הפס לא רלוונטי
+        if(r.ok){const j=await r.json();evs.push(...(j.records||[]));}
+      }
+      const open={},doneBy={};let failedRecent=0;const failsToday=[];
+      for(const e of evs){
+        if(e.kind!=='tik')continue;
+        if(e.phase==='running')open[e.jobId]=e;
+        if(e.phase==='done'){delete open[e.jobId];
+          const m=String(e.outputName||'').match(/^tik_(.+?)_\d{8}\.html$/);
+          if(m&&COL.includes(m[1]))doneBy[m[1]]={out:e.outputName,ts:e.ts,sec:e.elapsedSec};}
+        if(e.phase==='error'){delete open[e.jobId];
+          if(String(e.ts||'').slice(0,10).replace(/-/g,'')===day(0)){failedRecent++;
+            failsToday.push({ts:String(e.ts||'').slice(11,16),err:String(e.error||'שגיאה לא מפורטת')});}}
+      }
+      for(const f in LEG)if(!doneBy[f])doneBy[f]={out:LEG[f],ts:'2026-08-09',sec:null};
+      const doneN=Object.keys(doneBy).length,pendN=Math.max(0,COL.length-doneN-(Object.keys(open).length?1:0));
+
+      const run=Object.values(open).sort((a,b)=>String(b.ts).localeCompare(a.ts))[0];
+      let runTxt='<b>☁ תור-השרת</b> · אין תיק רץ כרגע';
+      let runFolder='',stagesHtml='';
+      if(run){
+        const mins=Math.max(0,Math.round((Date.now()-Date.parse(run.ts))/60000));
+        let pct='',ev='',modelTxt='',etaTxt='';
+        try{
+          const r=await fetch(`/api/tik-describe/${run.jobId}`);
+          if(r.ok){const j=await r.json();
+            const pctN=(j.progressPct!=null)?Number(j.progressPct):null;
+            pct=(pctN!=null)?` · ${pctN}%`:'';
+            if(j.progressModel)modelTxt=` · מנוע: <b>${esc(j.progressModel)}</b>`;
+            // זמן נשאר לתיק — אקסטרפולציה מאחוז-ההתקדמות (יציב מ-10% ומעלה)
+            if(pctN&&pctN>=10&&pctN<100&&mins>=2)
+              etaTxt=` · נותרו ~${Math.max(1,Math.round(mins*(100-pctN)/pctN))} דק׳`;
+            const evs2=j.events||[];const last=evs2.slice(-1)[0];ev=last?` — ${String(last.text||'').slice(0,60)}`:'';
+            // שם התיק הרץ — מאירוע-ההורדה «מוריד את "X" מהדרייב»
+            for(const e2 of evs2){const mm=String(e2.text||'').match(/«([^»]+)»/);if(mm){runFolder=mm[1];break;}}
+            // שלבי-הפעילות: אירועים ייחודיים (חלונות-קריאה חוזרים נצברים לשלב אחד עם מונה)
+            const seen=[];let winCount=0;
+            for(const e2 of evs2){
+              const t=String(e2.text||'').trim();if(!t)continue;
+              if(/⇡ מעלה \d+ דפים/.test(t)){winCount++;continue;}
+              seen.push(t.slice(0,84));
+            }
+            if(winCount)seen.push(`⇡ קריאת חלונות — ${winCount} חלונות עד כה`);
+            stagesHtml=seen.slice(-6).map((t,ix,arr)=>`<div style="padding:1px 0;${ix===arr.length-1?'font-weight:600':'color:var(--muted)'}">${ix===arr.length-1?'▶':'✓'} ${esc(t)}</div>`).join('');
+          }
+        }catch(e){}
+        runTxt=`<b>☁ רץ עכשיו</b>${runFolder?` · <b>${esc(runFolder)}</b>`:''} · <span class="srv-clock" data-start="${Date.parse(run.ts)}">${mins} דק׳</span>${pct}${modelTxt}${etaTxt}${ev}`;
+      }
+      // הזנת מצב-השרת לרינדור התור: שורות הרשימה מציגות ✓/⏳ לפי זה.
+      window.__serverTikStatus={doneBy,runFolder,runStart:run?Date.parse(run.ts):0};
+      if(typeof renderQueue==='function'&&(state.queue||[]).length)try{renderQueue();}catch(e){}
+      // הערכת סיום לאוסף כולו: ממוצע זמן-תיק מהרשומות שנמדדו × הממתינים.
+      const secs=Object.values(doneBy).map(d=>Number(d.sec)||0).filter(s=>s>0);
+      let colEta='';
+      if(pendN>0&&secs.length>=2){
+        const avg=secs.reduce((a,b)=>a+b,0)/secs.length;
+        const fin=new Date(Date.now()+pendN*avg*1000+(run?avg*500:0));
+        colEta=` · סיום משוער: <b>${fin.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${fin.getDate()!==new Date().getDate()?' מחר':''}</b>`;
+      }
+      const recent=Object.entries(doneBy).sort((a,b)=>String(b[1].ts).localeCompare(String(a[1].ts))).slice(0,6);
+      const detail=expanded?`<div style="margin-top:7px;border-top:1px dashed color-mix(in srgb, var(--brand) 35%, transparent);padding-top:6px;font-size:12px">
+        ${stagesHtml?`<div style="margin-bottom:6px"><b>שלבי הפעילות של התיק הרץ:</b>${stagesHtml}</div>`:''}
+        ${failsToday.length?`<div style="margin-bottom:6px"><b style="color:var(--error)">הכשלים של היום (${failsToday.length}):</b>
+          ${failsToday.slice(-8).map(f=>`<div style="padding:1px 0;color:var(--error)">✗ ${esc(f.ts)} — ${esc(f.err.slice(0,130))}</div>`).join('')}
+          <div style="color:var(--muted)">תיק שנכשל אינו אבוד — הוא ירוץ שוב אוטומטית בהרצה הבאה של התור.</div></div>`:''}
+        ${recent.map(([f,d])=>`<div style="padding:2px 0">✓ <b>${esc(f)}</b>${d.sec?` · ${Math.round(d.sec/60)} דק׳`:''} · <a href="/api/output/${encodeURIComponent(d.out)}" target="_blank" style="color:var(--brand)">פתח רשומה</a></div>`).join('')}
+        </div>`:'';
+      el.innerHTML=`${runTxt}<br><span style="color:var(--muted);font-size:12px">האוסף: <b>${doneN}</b>/${COL.length} קוטלגו · ${pendN} ממתינים${colEta}${failedRecent?` · <a href="#" class="sqs-open" style="color:var(--error)">${failedRecent} כשלים היום ←</a>`:''}</span>
+        · <a href="#" id="sqs-toggle" style="color:var(--brand);font-size:12px">${expanded?'הסתר פירוט':'הצג שלבים ורשומות'}</a>
+        · <a href="tik-queue-monitor.html" target="_blank" style="color:var(--brand);font-size:12px">מסך המעקב המלא ←</a>${detail}`;
+      el.style.display='';
+      const tg=document.getElementById('sqs-toggle');
+      if(tg)tg.addEventListener('click',e=>{e.preventDefault();expanded=!expanded;tick();});
+      el.querySelectorAll('.sqs-open').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();if(!expanded){expanded=true;tick();}}));
+    }catch(e){/* שרת לא זמין — ננסה בסבב הבא */}
+  }
+  // הורדות מתוך שורות-התור: Excel (דרך ה-JSON של הרשומה) והדפסה/PDF.
+  const ql=document.getElementById('tik-queue-list');
+  if(ql&&!ql.__srvDl){ql.__srvDl=true;
+    ql.addEventListener('click',async e=>{
+      const oc=e.target.closest('.srv-open-cat');
+      if(oc){e.preventDefault();openServerRecordInCatalog(oc.dataset.out,oc.dataset.name);return;}
+      const x=e.target.closest('.srv-xlsx');
+      if(x){e.preventDefault();x.textContent='📊 מכין…';
+        try{
+          const jr=await fetch('/api/output/'+encodeURIComponent(x.dataset.out.replace(/\.html$/,'.json')));
+          if(!jr.ok)throw new Error('HTTP '+jr.status);
+          const rec=await jr.json();
+          const r=await fetch('/api/export-xlsx',{method:'POST',headers:{'content-type':'application/json'},
+            body:JSON.stringify({record:rec,filename:'tik_'+x.dataset.stem})});
+          if(!r.ok)throw new Error('HTTP '+r.status);
+          const blob=await r.blob();const u=URL.createObjectURL(blob);
+          const a2=document.createElement('a');a2.href=u;a2.download='tik_'+x.dataset.stem+'.xlsx';a2.click();
+          setTimeout(()=>URL.revokeObjectURL(u),5000);
+        }catch(err){alert('יצוא Excel נכשל: '+err.message);}
+        x.textContent='📊 Excel';return;}
+      const pr=e.target.closest('.srv-print');
+      if(pr){e.preventDefault();
+        const w=window.open('/api/output/'+encodeURIComponent(pr.dataset.out),'_blank');
+        if(w)setTimeout(()=>{try{w.print();}catch(err){/* ידפיס ידנית */}},1500);
+      }
+    });}
+  tick();setInterval(tick,30000);
+  // שעון-הריצה החי: כל שנייה, כל היכן שמוצג תיק רץ (הפס + שורות התור).
+  setInterval(()=>{
+    document.querySelectorAll('.srv-clock').forEach(s=>{
+      const t0=Number(s.dataset.start)||0;if(!t0)return;
+      const sec=Math.max(0,Math.floor((Date.now()-t0)/1000));
+      s.textContent=`${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+    });
+  },1000);
+})();

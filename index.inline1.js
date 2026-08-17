@@ -39,7 +39,7 @@
     }).catch(function () {});
     fetch(base + '/api/admin/users').then(function (r) {
       if (!r.ok) return;
-      var showAdmin = function () { ['nav-logs', 'nav-trends', 'nav-users', 'nav-edits'].forEach(function (id) { var lk = document.getElementById(id); if (lk) lk.style.display = 'inline-block'; }); };
+      var showAdmin = function () { ['nav-logs', 'nav-trends', 'nav-users', 'nav-edits', 'nav-fixes'].forEach(function (id) { var lk = document.getElementById(id); if (lk) lk.style.display = 'inline-block'; }); };
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showAdmin);
       else showAdmin();
     }).catch(function () {});
