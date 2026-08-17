@@ -910,6 +910,40 @@ function createSubItem(idx){
   renderRecord(rec,false);
   showStatus(`✓ נוצר פריט-משנה מדפים ${row.pages||'?'} — מופיע אחרי האינוונטר; הכותר ניתן לעריכה במקום.`,'ok');
 }
+function createTypeItems(){
+  // "פריט לכל סוג חומר" (בקשת 17.8): פריט-משנה אחד לכל סוג-מסמך בתיק — כל
+  // הפרוטוקולים יחד, כל הטפסים יחד — עם איחוד טווחי-הדפים, השפות והתאריכים.
+  // המקטלגת מוחקת את המיותר ועורכת כותרים; לא נוגע בפריטים שכבר קיימים.
+  const rec=state.lastRecord;if(!rec)return;
+  const inv=(rec.document_inventory||[]).filter(d=>d&&(d.doc_type||d.description||d.pages));
+  if(!inv.length)return;
+  const groups=new Map();
+  inv.forEach(d=>{
+    const t=String(d.doc_type||'').trim()||'אחר';
+    if(!groups.has(t))groups.set(t,[]);
+    groups.get(t).push(d);
+  });
+  const full=String(rec.title||'').trim();
+  const over=(full.split(/[::]/)[0]||'').trim()||full;
+  const vol=String((rec._cover&&rec._cover.volume)||'').trim();
+  const volTag=vol?(/^\d+$/.test(vol)?` [כרך ${vol}]`:` [${vol}]`):'';
+  const uniq=a=>[...new Set(a.map(s=>String(s||'').trim()).filter(Boolean))];
+  rec.sub_items=rec.sub_items||[];
+  let made=0;
+  groups.forEach((rows,type)=>{
+    rec.sub_items.push({
+      pages:uniq(rows.map(d=>d.pages)).join(', '),
+      tik_pages:uniq(rows.map(d=>d.tik_pages)).join(', '),
+      doc_type:type,
+      date:uniq(rows.map(d=>d.date)).join(', ').slice(0,60),
+      languages:uniq(rows.flatMap(d=>String(d.languages||'').split(/[,;·]+/))).join(', '),
+      source_desc:`${rows.length} מסמכים מסוג ${type}`,
+      title:(over?over+': ':'')+type+(rows.length>1?` — ${rows.length} מסמכים`:'')+volTag});
+    made++;
+  });
+  renderRecord(rec,false);
+  showStatus(`✓ נוצרו ${made} פריטי-משנה — אחד לכל סוג חומר בתיק. הכותרים ניתנים לעריכה; ✕ להסרת סוג מיותר.`,'ok');
+}
 
 function renderRecord(rec,restored){
   state.lastRecord=rec;
@@ -992,7 +1026,8 @@ function renderRecord(rec,restored){
   // (restart across bundles). Column shown only when the engine stamped tik_pages.
   const hasTikPages=inv.some(d=>String(d.tik_pages||'').trim());
   const invHtml=inv.length
-    ? `<table class="tbl"><thead><tr><th class="rp"></th>${hasTikPages?'<th>עמוד בתיק</th>':''}<th>דפי מקור</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th><th class="act"></th></tr></thead><tbody>`+
+    ? `<div class="inv-actions"><button class="deep-btn type-items-btn" title="צור פריט-משנה אחד לכל סוג-מסמך בתיק — איחוד הדפים, השפות והתאריכים של כל סוג">➕ פריט לכל סוג חומר</button></div>`+
+      `<table class="tbl"><thead><tr><th class="rp"></th>${hasTikPages?'<th>עמוד בתיק</th>':''}<th>דפי מקור</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th><th class="act"></th></tr></thead><tbody>`+
         inv.map((d,i)=>`<tr><td class="rp"><input type="checkbox" class="row-pick" checked title="כלול שורה זו בהעתקה ובדף-ההעתקה"></td>${hasTikPages?`<td>${pgs(d.tik_pages||'—')}</td>`:''}<td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
           `<td class="act">${isTestimony(d)?`<button class="deep-btn" data-pages="${esc(String(d.pages||''))}" data-desc="${esc(String(d.description||d.doc_type||''))}">🔎 תיאור מפורט</button>`:''}`+
           `<button class="deep-btn item-btn" data-idx="${i}" title="פתח פריט-משנה מהמקטע הזה — כותר משלו, כפוף לפריט הכרך (TR.15)">➕ פריט</button></td></tr>`).join('')+
@@ -1303,13 +1338,14 @@ function renderRecord(rec,restored){
   });
   pickCount();
   // bind testimony deep-describe buttons
-  document.querySelectorAll('.deep-btn:not(.item-btn):not(.subitem-del)').forEach(b=>{
+  document.querySelectorAll('.deep-btn:not(.item-btn):not(.subitem-del):not(.type-items-btn)').forEach(b=>{
     b.addEventListener('click',()=>deepDescribeTestimony(b));
   });
-  // bind "צור פריט ממקטע" + עריכת/הסרת פריטי-משנה (TR.15)
+  // bind "צור פריט ממקטע" + "פריט לכל סוג חומר" + עריכת/הסרת פריטי-משנה (TR.15)
   document.querySelectorAll('.item-btn').forEach(b=>{
     b.addEventListener('click',()=>createSubItem(+b.getAttribute('data-idx')));
   });
+  document.querySelector('.type-items-btn')?.addEventListener('click',createTypeItems);
   document.querySelectorAll('.subitem-del').forEach(b=>{
     b.addEventListener('click',()=>{
       const r=state.lastRecord;if(!r||!Array.isArray(r.sub_items))return;
