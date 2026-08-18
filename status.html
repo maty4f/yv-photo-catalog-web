@@ -44,16 +44,37 @@
   .tbl td.nm { font-weight:600; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tbl td.of { color:var(--muted); font-size:11px; direction:ltr; text-align:left; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:ui-monospace,"SF Mono",Menlo,monospace; }
   .tbl tr:hover td { background:var(--card-hover); }
+  .daybar { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .dlbl { font-size:12.5px; color:var(--muted); font-weight:700; }
+  .dbtn { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:var(--radius-sm);
+          padding:5px 12px; cursor:pointer; font-family:inherit; font-size:13px; }
+  .dbtn:hover { background:var(--card-hover); }
+  .dbtn.dtd { color:var(--brand); font-weight:700; }
+  #dsel { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:var(--radius-sm);
+          padding:4px 10px; font-family:inherit; font-size:13px; color-scheme:dark; }
+  #daypanel:not(:empty) { margin-bottom:14px; }
+  #daypanel:not(:empty) ~ .bar, #daypanel:not(:empty) ~ .grid { opacity:.35; pointer-events:auto; }
+  .daycard { background:var(--card); border:1px solid var(--brand); border-radius:var(--radius-sm); padding:14px 16px; }
+  .daycard h2 { margin:0 0 10px; font-size:15px; color:var(--brand); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>מצב מערכת הקטלוג <span class="upd" id="upd">—</span></h1>
   <div class="sub">סרטים · תצלומים · מסמכים — מעקב מפורט · רענון אוטומטי (5 ש׳ בזמן קטלוג, 15 ש׳ אחרת)</div>
+  <div class="daybar">
+    <span class="dlbl">📅 תצוגה יומית:</span>
+    <button id="dprev" class="dbtn" title="יום קודם">◀</button>
+    <input type="date" id="dsel">
+    <button id="dnext" class="dbtn" title="יום הבא">▶</button>
+    <button id="dtoday" class="dbtn dtd">היום (תצוגה חיה)</button>
+    <button id="dweek" class="dbtn dtd">📊 דוח שבועי</button>
+  </div>
+  <div id="daypanel"></div>
   <div class="bar" id="bar"></div>
   <div class="grid" id="grid"><div class="card">טוען…</div></div>
 </div>
-<script src="status.inline1.js?v=20260722e"></script>
+<script src="status.inline1.js?v=20260818b"></script>
 <script src="yv-client-log.js?v=20260725"></script>
 </body>
 </html>

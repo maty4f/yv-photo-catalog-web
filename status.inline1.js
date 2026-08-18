@@ -72,4 +72,99 @@ async function load(){
   schedule((s.active||[]).length>0);
 }
 function schedule(fast){ clearTimeout(window._t); window._t=setTimeout(load, fast?5000:15000); }
+
+// ---- תצוגה יומית (18.8): בורר-יום שקורא /api/day-stats ומציג סיכום לכל יום ----
+function ymdStr(d){ return d.toISOString().slice(0,10); }
+function localToday(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function dayJobsTable(rows){
+  if(!rows||!rows.length) return '<div class="muted">אין עבודות ביום זה</div>';
+  const trs=rows.map(r=>`<tr>
+    <td>${kicon(r.kind)}</td>
+    <td class="nm" title="${esc(r.error||'')}">${esc(r.name)}</td>
+    <td>${sbadge(r.status)}</td>
+    <td>${r.ts?new Date(r.ts).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}):'—'}</td>
+    <td>${fmtDur(r.durationSec)}</td>
+    <td>${r.costUsd!=null?'$'+r.costUsd:'—'}</td>
+    <td class="of">${r.output?esc(r.output):(r.error?esc(r.error):'—')}</td>
+  </tr>`).join('');
+  return `<table class="tbl"><thead><tr><th></th><th>פריט</th><th>סטטוס</th><th>שעה</th><th>משך</th><th>עלות</th><th>פלט / שגיאה</th></tr></thead><tbody>${trs}</tbody></table>`;
+}
+async function loadDay(date){
+  const panel=document.getElementById('daypanel');
+  if(!date||date===localToday()){ panel.innerHTML=''; return; }
+  panel.innerHTML='<div class="daycard"><div class="muted">טוען נתוני יום…</div></div>';
+  let d;
+  try{ d=await (await fetch('/api/day-stats?date='+date,{cache:'no-store'})).json(); }
+  catch(e){ panel.innerHTML='<div class="daycard"><div class="muted">שגיאה בטעינת נתוני היום</div></div>'; return; }
+  if(!d.hasData){ panel.innerHTML=`<div class="daycard"><h2>📅 ${date.split('-').reverse().join('.')}</h2><div class="muted">אין נתונים ליום זה</div></div>`; return; }
+  const kinds=Object.values(d.perKind||{}).map(k=>
+    `<div class="row"><span>${esc(k.label)}</span><b>✓ ${k.done} · ✗ ${k.error}${k.avgDurationSec!=null?' · ממוצע '+fmtDur(k.avgDurationSec):''}</b></div>`).join('') || '<div class="muted">—</div>';
+  panel.innerHTML=`<div class="daycard">
+    <h2>📅 סיכום יום ${date.split('-').reverse().join('.')}</h2>
+    <div class="bar">
+      <div class="tile"><div class="tn">${d.jobsStarted}</div><div class="tl">עבודות שהתחילו</div></div>
+      <div class="tile"><div class="tn">${d.done} / ${d.finished}</div><div class="tl">הושלמו / הסתיימו</div></div>
+      <div class="tile"><div class="tn">${d.successRatePct==null?'—':d.successRatePct+'%'}</div><div class="tl">שיעור הצלחה</div></div>
+      <div class="tile"><div class="tn">${fmtDur(d.avgDurationSec)}</div><div class="tl">משך ממוצע</div></div>
+      <div class="tile"><div class="tn">$${d.spend?.usd??0}</div><div class="tl">עלות Gemini/Claude (אמיתית)</div></div>
+      <div class="tile"><div class="tn">${(d.spend?.tokens??0).toLocaleString('en-US')}</div><div class="tl">טוקנים</div></div>
+    </div>
+    <div class="card" style="margin-bottom:10px"><h3>לפי סוג</h3>${kinds}</div>
+    <div class="card"><h3>עבודות היום (${(d.jobs||[]).length})</h3>${dayJobsTable(d.jobs)}</div>
+  </div>`;
+}
+function shiftDay(delta){
+  const el=document.getElementById('dsel');
+  const cur=el.value||localToday();
+  const d=new Date(cur+'T12:00:00'); d.setDate(d.getDate()+delta);
+  const next=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  if(next>localToday()) return;                       // אין עתיד
+  el.value=next; loadDay(next);
+}
+// ---- דוח שבועי (18.8): 7 הימים האחרונים בטבלה יומית + שורת סיכום ----
+const DOW=['א','ב','ג','ד','ה','ו','ש'];
+async function loadWeek(){
+  const panel=document.getElementById('daypanel');
+  panel.innerHTML='<div class="daycard"><div class="muted">מכין דוח שבועי…</div></div>';
+  let w;
+  try{ w=await (await fetch('/api/week-stats',{cache:'no-store'})).json(); }
+  catch(e){ panel.innerHTML='<div class="daycard"><div class="muted">שגיאה בטעינת הדוח</div></div>'; return; }
+  const t=w.total;
+  const fmtDate=d=>d.split('-').reverse().slice(0,2).join('.');
+  const rows=w.days.map(d=>`<tr${d.hasData?'':' style="opacity:.45"'}>
+    <td><b>${DOW[d.dow]}׳</b> ${fmtDate(d.date)}</td>
+    <td>${d.jobsStarted||'—'}</td>
+    <td>${d.done?`<span class="pill ok" style="font-size:11px;padding:1px 8px">✓ ${d.done}</span>`:'—'}</td>
+    <td>${d.error?`<span class="pill bad" style="font-size:11px;padding:1px 8px">✗ ${d.error}</span>`:'—'}</td>
+    <td>${fmtDur(d.avgDurationSec)}</td>
+    <td>${d.usd?'$'+d.usd:'—'}</td>
+    <td>${d.tokens?d.tokens.toLocaleString('en-US'):'—'}</td>
+  </tr>`).join('');
+  const kinds=Object.values(t.perKind||{}).filter(k=>k.done||k.error).map(k=>
+    `<div class="row"><span>${esc(k.label)}</span><b>✓ ${k.done} · ✗ ${k.error}${k.avgDurationSec!=null?' · ממוצע '+fmtDur(k.avgDurationSec):''}</b></div>`).join('') || '<div class="muted">—</div>';
+  panel.innerHTML=`<div class="daycard">
+    <h2>📊 דוח שבועי — ${fmtDate(w.from)}–${fmtDate(w.to)}</h2>
+    <div class="bar">
+      <div class="tile"><div class="tn">${t.jobsStarted}</div><div class="tl">עבודות שהתחילו</div></div>
+      <div class="tile"><div class="tn">${t.done} / ${t.finished}</div><div class="tl">הושלמו / הסתיימו</div></div>
+      <div class="tile"><div class="tn">${t.successRatePct==null?'—':t.successRatePct+'%'}</div><div class="tl">שיעור הצלחה</div></div>
+      <div class="tile"><div class="tn">${fmtDur(t.avgDurationSec)}</div><div class="tl">משך ממוצע</div></div>
+      <div class="tile"><div class="tn">$${t.usd}</div><div class="tl">עלות שבועית (אמיתית)</div></div>
+      <div class="tile"><div class="tn">${t.tokens.toLocaleString('en-US')}</div><div class="tl">טוקנים</div></div>
+    </div>
+    <div class="card" style="margin-bottom:10px"><h3>יום-יום</h3>
+      <table class="tbl"><thead><tr><th>יום</th><th>התחילו</th><th>הושלמו</th><th>שגיאות</th><th>משך ממוצע</th><th>עלות</th><th>טוקנים</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <div class="card"><h3>לפי סוג (מצטבר שבועי)</h3>${kinds}</div>
+  </div>`;
+}
+(function initDayPicker(){
+  const el=document.getElementById('dsel'); if(!el) return;
+  el.max=localToday(); el.value=localToday();
+  el.addEventListener('change',()=>loadDay(el.value));
+  document.getElementById('dprev').addEventListener('click',()=>shiftDay(-1));
+  document.getElementById('dnext').addEventListener('click',()=>shiftDay(1));
+  document.getElementById('dtoday').addEventListener('click',()=>{el.value=localToday();loadDay(null);});
+  document.getElementById('dweek').addEventListener('click',loadWeek);
+})();
 load();
