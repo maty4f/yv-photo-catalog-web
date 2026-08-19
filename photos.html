@@ -191,16 +191,6 @@
         <div style="margin-top:4px; font-size:11px; color:var(--muted);">⚠ URL זמני — משתנה בכל הפעלה מחדש של ה-tunnel. למשהו קבוע: <code>local-server/SETUP_CLOUDFLARE.md</code></div>
       </div>
     </div>
-    <div class="row">
-      <label>⚙ עקיפת firewall</label>
-      <div style="font-size:12.5px;">
-        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-          <input type="checkbox" id="proxy-gemini-checkbox" style="margin:0;">
-          <span>השתמש בשרת המקומי כ-proxy ל-Gemini (לשימוש ממחשב עבודה שחוסם Google)</span>
-        </label>
-        <div style="margin-top:4px; color:var(--muted); font-size:11px;">אם מסומן: בקשות Gemini עוברות דרך השרת המקומי שלך במקום ישירות מהדפדפן. דורש URL של שרת CLI מקומי למעלה.</div>
-      </div>
-    </div>
 
     <div class="row provider-row" data-provider="anthropic">
       <label>מפתח Anthropic</label>
@@ -798,8 +788,8 @@
 <!-- ============================================ -->
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
-<script src="yv-providers.js?v=20260712"></script>
-<script src="photos.inline3.js?v=20260805a"></script>
+<script src="yv-providers.js?v=20260819"></script>
+<script src="photos.inline3.js?v=20260819a"></script>
 <script src="photos.inline4.js?v=20260722e"></script>
 <script src="yv-client-log.js?v=20260725"></script>
 <script src="yv-chunk.js?v=20260722d"></script>

@@ -18,7 +18,11 @@
     if (c && c.geminiKeyManaged) {
       window.YV_GEMINI_MANAGED = true;
       try { localStorage.removeItem('yv_api_key_gemini'); } catch (e) {}
+      try { localStorage.removeItem('yv_v2_api_key'); } catch (e) {}   // P0-1: legacy per-screen key
       try { if (typeof state === 'object' && state && 'apiKey' in state) state.apiKey = 'server-managed'; } catch (e) {}
+      // The key is no longer persisted (P0-1), so the run gate starts closed —
+      // re-evaluate it now that the server says it holds the key.
+      try { if (typeof refresh === 'function') refresh(); } catch (e) {}
       var _k = document.getElementById('api-key');
       if (_k) {
         var _row = _k.closest('.provider-row') || _k.closest('label') || _k.parentElement;

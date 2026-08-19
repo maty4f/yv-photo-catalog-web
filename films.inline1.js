@@ -4,7 +4,9 @@ const state = {
   provider: (['unified-server','gemini','anthropic'].includes(localStorage.getItem('yv_api_provider')) ? localStorage.getItem('yv_api_provider') : 'unified-server'),
   apiKeys: {
     // review #2: no Anthropic entry — the server proxy injects its own key
-    gemini: localStorage.getItem('yv_api_key_gemini') || '',
+    // P0-1: no Gemini entry either — the key is SESSION-ONLY (typed into the
+    // field, kept in memory, forwarded per-request to the proxy), never stored.
+    gemini: '',
   },
   thesaurus_top: [],
 };
@@ -21,14 +23,12 @@ providerSel.value = state.provider;
 
 // CLI-Hybrid: local server URL
 state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
-state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
 // Auto-config: the dashboard is normally served BY the API server (localhost in
 // dev, films.mf-sr.com via the tunnel) — same origin keeps the Cloudflare Access
 // cookie attached and lets the server proxy Gemini. Adopt the origin unless we're
 // on a static GitHub Pages host (*.pages.dev / *.github.io). Drop stale trycloudflare.
 if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(location.hostname)) {
   state.localServerUrl = location.origin;
-  state.proxyGemini = true;
 } else if (/trycloudflare\.com/.test(state.localServerUrl)) {
   state.localServerUrl = '';
 }
@@ -41,14 +41,9 @@ if (localServerUrlInput) {
     refreshButtons();
   });
 }
-const proxyGeminiCheckbox = document.getElementById('proxy-gemini-checkbox');
-if (proxyGeminiCheckbox) {
-  proxyGeminiCheckbox.checked = state.proxyGemini;
-  proxyGeminiCheckbox.addEventListener('change', () => {
-    state.proxyGemini = proxyGeminiCheckbox.checked;
-    localStorage.setItem('yv_proxy_gemini', state.proxyGemini ? '1' : '0');
-  });
-}
+// P0-1: the "use the local server as a Gemini proxy" checkbox is gone from the
+// markup — proxying is no longer optional, so a toggle would only be able to lie.
+// geminiBase() is ALWAYS the server proxy (configured URL, else this page's origin).
 function geminiBase() { return yvProviders.geminiBase(state); }  // shared — see yv-providers.js
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
 const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
@@ -80,7 +75,9 @@ syncProviderRows();
 
 providerSel.addEventListener('change', () => { state.provider = providerSel.value; localStorage.setItem('yv_api_provider', state.provider); syncProviderRows(); refreshButtons(); });
 try { localStorage.removeItem('yv_api_key_anthropic'); } catch {}   // review #1: purge any persisted Claude key
-apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini); refreshButtons(); });
+// P0-1: purge the Gemini key + the dead firewall-bypass flag an older build stored.
+try { localStorage.removeItem('yv_api_key_gemini'); localStorage.removeItem('yv_proxy_gemini'); } catch {}
+apiKeyGemini.addEventListener('input', () => { state.apiKeys.gemini = apiKeyGemini.value.trim(); refreshButtons(); });   // P0-1: in-memory only
 function syncProviderRows() {
   document.querySelectorAll('.provider-row').forEach(row => {
     const providers = (row.dataset.provider || '').split(/\s+/).filter(Boolean);
@@ -1193,20 +1190,19 @@ async function uploadToGeminiFiles(file, onProgress) {
   }
   let uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
   if (!uploadUrl) throw new Error('Files API לא החזיר URL להעלאה');
-  if (state.proxyGemini && state.localServerUrl) {
-    uploadUrl = uploadUrl.replace('https://generativelanguage.googleapis.com', state.localServerUrl + '/api/gemini-proxy');
-  }
+  // Google returns a direct googleapis.com URL for the upload leg — rewrite it
+  // onto our proxy too (P0-1: unconditional; the firewall would block it, and the
+  // upload must not carry a browser-held key either).
+  uploadUrl = uploadUrl.replace('https://generativelanguage.googleapis.com', geminiBase());
 
   // Step 2: Upload via XHR to track progress
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', uploadUrl);
-    // Proxied Files-API upload goes to our own server → carry the CSRF session
-    // header (the client-log fetch wrapper can't see XHR). Never sent on a
-    // direct-to-Google upload. (review 2026-07-23)
-    if (state.proxyGemini && state.localServerUrl) {
-      try { const sid = sessionStorage.getItem('yvSessionId'); if (sid) xhr.setRequestHeader('x-yv-session', sid); } catch (e) { /* storage blocked */ }
-    }
+    // The Files-API upload always goes to our own server now (P0-1) → always
+    // carry the CSRF session header (the client-log fetch wrapper can't see XHR).
+    // (review 2026-07-23)
+    try { const sid = sessionStorage.getItem('yvSessionId'); if (sid) xhr.setRequestHeader('x-yv-session', sid); } catch (e) { /* storage blocked */ }
     xhr.setRequestHeader('Content-Length', file.size.toString());
     xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
     xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');

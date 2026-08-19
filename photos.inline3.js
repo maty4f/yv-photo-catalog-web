@@ -14,7 +14,9 @@ const state = {
     ? localStorage.getItem('yv_api_provider') : 'unified-server'),
   apiKeys: {
     // review #2: no Anthropic entry — the server proxy injects its own key
-    gemini:    localStorage.getItem('yv_api_key_gemini') || '',
+    // P0-1: no Gemini entry either — the key is SESSION-ONLY (typed into the
+    // field, kept in memory, forwarded per-request to the proxy), never stored.
+    gemini:    '',
   },
   // ─── Collection state ────────────────────────────────────────
   collection: null,    // {id, intake_form, profile, photos[]} when active
@@ -1320,20 +1322,20 @@ const modelSelAnthropic = document.getElementById('api-model-anthropic');
 const modelSelGemini = document.getElementById('api-model-gemini');
 
 // review #1: purge any Anthropic key a previous version persisted in this browser.
-try { localStorage.removeItem('yv_api_key_anthropic'); localStorage.removeItem('yv_api_key'); } catch {}
+// P0-1: the Gemini key + the dead firewall-bypass flag go the same way.
+try { localStorage.removeItem('yv_api_key_anthropic'); localStorage.removeItem('yv_api_key');
+      localStorage.removeItem('yv_api_key_gemini'); localStorage.removeItem('yv_proxy_gemini'); } catch {}
 apiKeyGemini.value = state.apiKeys.gemini;
 providerSel.value = state.provider;
 
 // CLI-Hybrid: local server URL
 state.localServerUrl = (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '');
-state.proxyGemini = localStorage.getItem('yv_proxy_gemini') === '1';
 // Auto-config: the dashboard is normally served BY the API server (localhost in
 // dev, films.mf-sr.com via the tunnel) — same origin keeps the Cloudflare Access
 // cookie attached and lets the server proxy Gemini. Adopt the origin unless we're
 // on a static GitHub Pages host (*.pages.dev / *.github.io). Drop stale trycloudflare.
 if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(location.hostname)) {
   state.localServerUrl = location.origin;
-  state.proxyGemini = true;
 } else if (/trycloudflare\.com/.test(state.localServerUrl)) {
   state.localServerUrl = '';
 }
@@ -1346,14 +1348,9 @@ if (localServerUrlInput) {
     refreshAllButtons();
   });
 }
-const proxyGeminiCheckbox = document.getElementById('proxy-gemini-checkbox');
-if (proxyGeminiCheckbox) {
-  proxyGeminiCheckbox.checked = state.proxyGemini;
-  proxyGeminiCheckbox.addEventListener('change', () => {
-    state.proxyGemini = proxyGeminiCheckbox.checked;
-    localStorage.setItem('yv_proxy_gemini', state.proxyGemini ? '1' : '0');
-  });
-}
+// P0-1: the "use the local server as a Gemini proxy" checkbox is gone from the
+// markup — proxying is no longer optional, so a toggle would only be able to lie.
+// geminiBase() is ALWAYS the server proxy (configured URL, else this page's origin).
 function geminiBase() { return yvProviders.geminiBase(state); }  // shared — see yv-providers.js
 const copyTunnelBtn = document.getElementById('copy-tunnel-btn');
 const fillTunnelBtn = document.getElementById('fill-tunnel-btn');
@@ -1398,8 +1395,7 @@ providerSel.addEventListener('change', () => {
   refreshAllButtons();
 });
 apiKeyGemini.addEventListener('input', () => {
-  state.apiKeys.gemini = apiKeyGemini.value.trim();
-  localStorage.setItem('yv_api_key_gemini', state.apiKeys.gemini);
+  state.apiKeys.gemini = apiKeyGemini.value.trim();   // P0-1: in-memory only, never localStorage
   refreshAllButtons();
 });
 

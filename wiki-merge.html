@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>אישור מיזוגים — ויקי הארכיון</title>
+<link rel="stylesheet" href="yv-theme.css?v=20260819a">
+<style>
+  :root { --accent:var(--tik); --accent-2:#c9a6ff; }
+  body { padding:20px; }
+  .wrap { max-width:1180px; margin:0 auto; padding-bottom:60px; }
+  h1 { font-size:21px; margin:0 0 2px; font-weight:800; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:16px; }
+
+  .srow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); margin-bottom:14px; }
+  .srow input { direction:ltr; text-align:left; padding:5px 9px; border:1px solid var(--line); border-radius:var(--radius-sm);
+                background:var(--tint); color:var(--ink); font-family:inherit; font-size:12.5px; min-width:260px; }
+  .srow input:focus { outline:none; border-color:var(--accent); }
+
+  .counters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .tile { flex:1; min-width:150px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 14px; text-align:center; }
+  .tn { font-size:22px; font-weight:800; color:var(--accent); unicode-bidi:isolate; font-variant-numeric:tabular-nums; }
+  .tl { font-size:11.5px; color:var(--muted); margin-top:2px; }
+
+  .progress-line { font-size:13px; color:var(--ink); margin-bottom:14px; display:flex; align-items:center; gap:10px; }
+  .progress-line b { unicode-bidi:isolate; font-variant-numeric:tabular-nums; }
+  .progress-bar { flex:1; height:8px; border-radius:99px; background:var(--tint); border:1px solid var(--line); overflow:hidden; max-width:320px; }
+  .progress-fill { height:100%; background:var(--good); border-radius:99px; }
+
+  .tabs { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .tab { background:var(--tint); border:1px solid var(--line); border-radius:999px; padding:7px 18px; cursor:pointer;
+         font-family:inherit; font-size:13.5px; color:var(--ink); }
+  .tab.active { background:var(--accent); color:#150a22; font-weight:700; border-color:var(--accent); }
+
+  .cluster-card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; margin-bottom:14px;
+                  box-shadow:0 10px 28px -18px rgba(0,0,0,.7); }
+  .cluster-card.active { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+  .cluster-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .cluster-id { font-weight:800; font-size:12.5px; color:var(--muted); unicode-bidi:isolate; }
+  .status-chip { border-radius:999px; padding:3px 12px; font-size:11.5px; font-weight:700; }
+  .status-chip.pending { background:color-mix(in srgb, var(--warn) 22%, transparent); color:var(--warn); }
+  .status-chip.approved { background:color-mix(in srgb, var(--good) 22%, transparent); color:var(--good); }
+  .status-chip.rejected { background:color-mix(in srgb, var(--error) 22%, transparent); color:var(--error); }
+  .decided-by { font-size:11px; color:var(--muted); unicode-bidi:isolate; }
+
+  .members-grid { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
+  .member { flex:1 1 220px; min-width:210px; background:var(--tint); border:1px solid var(--line); border-radius:var(--radius-sm);
+            padding:10px 12px; font-size:12.5px; color:var(--ink); }
+  .member .nm { font-weight:700; font-size:14.5px; margin-bottom:4px; unicode-bidi:isolate; }
+  .member .nm small { font-weight:400; color:var(--muted); }
+  .member .row { color:var(--muted); margin-bottom:2px; }
+  .member .row b { color:var(--ink); font-weight:600; }
+  .member .tik { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); }
+  .member .tik a { color:var(--accent); text-decoration:none; }
+  .member .tik a:hover { text-decoration:underline; }
+
+  .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .actions button { border:none; border-radius:var(--radius-sm); padding:8px 18px; font-family:inherit; font-size:13.5px;
+                     font-weight:700; cursor:pointer; }
+  .btn-approve { background:var(--good); color:#08210f; }
+  .btn-reject { background:var(--error); color:#2b0808; }
+  .btn-approve:disabled, .btn-reject:disabled { opacity:.55; cursor:default; }
+  .kbd-hint { font-size:11px; color:var(--muted); margin-inline-start:auto; unicode-bidi:isolate; }
+  .note-line { font-size:11.5px; color:var(--muted); margin-top:8px; unicode-bidi:isolate; }
+
+  .empty-state { text-align:center; padding:40px 20px; color:var(--muted); }
+  .empty-state code { display:block; direction:ltr; text-align:center; background:var(--tint); border:1px solid var(--line);
+                       border-radius:var(--radius-sm); padding:10px 14px; margin:14px auto; max-width:560px; font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:13px; color:var(--ink); unicode-bidi:isolate; }
+  .empty-state .big { font-size:15px; color:var(--ink); margin-bottom:6px; }
+  .none { color:var(--muted); text-align:center; padding:24px; }
+
+  .footnote { margin-top:24px; padding:12px 14px; background:var(--tint); border:1px solid var(--line); border-radius:var(--radius-sm);
+              font-size:12.5px; color:var(--muted); text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="index.html" style="text-decoration:none;display:inline-block;margin-bottom:10px">
+    <button type="button" class="gear" style="border-radius:7px;padding:8px 16px;font-size:14px;">← דף הבית</button>
+  </a>
+  <h1>אישור מיזוגים — ויקי הארכיון</h1>
+  <div class="sub">אשכולות מועמדים-למיזוג (Daitch-Mokotoff) שחושבו ע"י <code style="unicode-bidi:isolate">python3 cli/yv.py doc names</code> — לכל אשכול: אותו אדם, או לא? ההחלטה נשמרת כאן בלבד; המיזוג בפועל מתבצע בריצת wiki-ingest הבאה.</div>
+
+  <div class="srow">
+    <span>כתובת שרת מקומי / tunnel:</span>
+    <input type="text" id="server-url" placeholder="ריק = אותו שרת שמגיש דף זה" autocomplete="off">
+    <span id="server-hint"></span>
+  </div>
+
+  <div id="app">
+    <div class="none">טוען…</div>
+  </div>
+
+  <div class="footnote">החלטות נשמרות; המיזוג בפועל מתבצע בריצת wiki-ingest הבאה.</div>
+</div>
+
+<script src="wiki-merge.inline1.js?v=20260819a"></script>
+</body>
+</html>

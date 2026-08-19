@@ -409,12 +409,15 @@ async function geminiPartsFor(files){
   }
   return parts;
 }
-// On localhost, route Gemini through the local proxy (same-origin, no CORS).
-// Off localhost, call Google directly.
+// P0-1 (security): ALWAYS route Gemini through the server proxy — on localhost
+// and off it alike. The old off-localhost branch called Google straight from the
+// browser, which forced the tab to hold an API key (and died behind a firewall
+// that blocks googleapis.com). The server injects the operator's / the
+// requester's personal key; a session-supplied key is forwarded per-request only.
 function geminiBase(){
-  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))
-    return location.origin+'/api/gemini-proxy/v1beta/models/';
-  return 'https://generativelanguage.googleapis.com/v1beta/models/';
+  let base='';
+  try{base=serverBase();}catch(e){base=location.origin;}
+  return base+'/api/gemini-proxy/v1beta/models/';
 }
 async function callGeminiOnParts(parts,promptText){
   const url=geminiBase()+$('model-gemini').value+':generateContent';
@@ -571,6 +574,71 @@ async function synthesizeTik(notes,onStage){
 const stripCertMarks=s=>String(s||'').replace(/[VH][✓~?]/g,'').replace(/\(\s*\)/g,'').replace(/[ \t]{2,}/g,' ');
 function cleanRecForExport(rec){ // עותק-ייצוא נקי; התצוגה עצמה שומרת את הסימונים
   try{return JSON.parse(stripCertMarks(JSON.stringify(rec)));}catch(e){return rec;}
+}
+/* ---------- שער הוולידטור הקנוני ----------
+   רשומת התיק שנבנית כאן נולדת בדפדפן (Gemini בדף → /api/ask-async → renderRecord)
+   ולכן אינה עוברת את הוולידטור של המנוע (cli/yv_shared.check_html, שרץ בתוך
+   _self_correct בכל מסלול-מנוע). השרת מריץ עליה את אותו וולידטור בדיוק דרך
+   POST /api/validate-record, והשער כאן חוסם העתקה/ייצוא כשיש כשלים.
+   fail-CLOSED על כשלי-ולידציה · fail-OPEN כשהוולידטור עצמו אינו זמין
+   (דשבורד ללא שרת — למשל משטח Pages — חייב להמשיך לעבוד; מוצגת אזהרה). */
+function renderValidateBox(){
+  const box=document.getElementById('validate-box'); if(!box)return;
+  const v=state.validate;
+  if(!v){box.innerHTML='';return;}
+  if(v.pending){box.innerHTML=`<div class="vbox pending"><span class="spinner"></span> בודק את הרשומה מול הוולידטור הקנוני…</div>`;return;}
+  if(!v.available){
+    box.innerHTML=`<div class="vbox warn"><b>⚠ הוולידטור לא זמין</b> — הרשומה לא נבדקה מול הוולידטור הקנוני`+
+      (v.reason?`<br><small>${esc(v.reason)}</small>`:'')+`<br><small>ההעתקה והייצוא נשארים פתוחים; בדוק את הרשומה ידנית לפני הזנה לספיר.</small></div>`;
+    return;
+  }
+  if(v.fails&&v.fails.length){
+    box.innerHTML=`<div class="vbox fail"><b>✗ הרשומה נכשלה בוולידציה (${v.fails.length})</b>`+
+      (v.enforce===false?` <small>— אכיפה כבויה (YV_VALIDATE_ENFORCE=0): ההעתקה והייצוא פתוחים</small>`:` <small>— ההעתקה והייצוא חסומים עד לתיקון</small>`)+
+      `<ul>`+v.fails.map(f=>`<li>${esc(f)}</li>`).join('')+`</ul>`+
+      ((v.warns||[]).length?`<div class="vwarns">אזהרות: ${v.warns.map(esc).join(' · ')}</div>`:'')+`</div>`;
+    return;
+  }
+  if((v.warns||[]).length){
+    box.innerHTML=`<div class="vbox warn"><b>! הרשומה עברה עם ${v.warns.length} אזהרות</b><ul>`+
+      v.warns.map(w=>`<li>${esc(w)}</li>`).join('')+`</ul></div>`;
+    return;
+  }
+  box.innerHTML=`<div class="vbox ok">✓ הרשומה עברה את הוולידטור הקנוני</div>`;
+}
+async function validateTikRecord(rec){
+  // renderRecord רץ שוב על כל עריכת פריט-משנה / אישור — הוולידטור מריץ תהליך
+  // פייתון, ולכן נבדק רק כשהתוכן הרלוונטי באמת השתנה.
+  let sig='';
+  try{sig=JSON.stringify([rec&&rec.title,rec&&rec.related_places,rec&&rec.subjects_he,
+                          rec&&rec.additional_info_paragraphs,rec&&rec.summary,rec&&rec.field_confidence]);}catch(e){sig=String(Math.random());}
+  if(state.validate&&state.validate.sig===sig&&!state.validate.pending){renderValidateBox();return;}
+  state.validate={pending:true,sig};
+  renderValidateBox();
+  const mine=rec;
+  try{
+    const r=await fetch(serverBase()+'/api/validate-record',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({record:cleanRecForExport(rec)})});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const v=await r.json();
+    if(state.lastRecord!==mine)return;            // רשומה חדשה נטענה בינתיים
+    state.validate={...v,sig,pending:false};
+  }catch(err){
+    if(state.lastRecord!==mine)return;
+    state.validate={available:false,ok:true,fails:[],warns:[],sig,pending:false,reason:String(err.message||err)};
+  }
+  renderValidateBox();
+}
+/* מחזיר הודעת-חסימה כשהרשומה אינה כשירה להעתקה/ייצוא, או '' כשהיא כשירה. */
+function validateBlockReason(){
+  const v=state.validate;
+  if(!v)return '';                                 // אין רשומה / לא נבדקה — אין מה לחסום
+  if(v.pending)return 'הוולידציה עדיין רצה — המתן רגע ונסה שוב.';
+  if(!v.available)return '';                       // fail-open: הוולידטור אינו זמין
+  if(v.enforce===false)return '';                  // YV_VALIDATE_ENFORCE=0 — אכיפה כבויה
+  if(v.fails&&v.fails.length)
+    return 'הרשומה נכשלה בוולידציה הקנונית ולכן ההעתקה/הייצוא חסומים:\n\n• '+v.fails.join('\n• ');
+  return '';
 }
 function copyCloneOf(el){
   const c=el.cloneNode(true);
@@ -1385,6 +1453,9 @@ function renderRecord(rec,restored){
   });
   $('results').classList.add('show');
   $('tik-export-bar').style.display='block';
+  // שער הוולידטור הקנוני — נבדק על כל רשומה מוצגת (כולל שחזור ועריכות-משנה),
+  // כי כל שינוי ברשומה משנה את מה שיועתק לספיר.
+  validateTikRecord(rec);
   // open a fresh chat about this newly-cataloged תיק
   state.chatHistory=[];
   $('chat-log').innerHTML='';
@@ -1571,6 +1642,10 @@ prog();
 const draftGuard=ev=>{
   const b=ev.target.closest('button'); if(!b)return;
   if(b.id==='approve-rec'||b.classList.contains('deep-btn'))return;
+  // שער הוולידטור הקנוני קודם לשער-הטיוטה: כשל-ולידציה חוסם לגמרי (fail-closed),
+  // ולא מוצע «להמשיך בכל זאת» — יש לתקן את הרשומה.
+  const blocked=validateBlockReason();
+  if(blocked){alert(blocked);ev.stopImmediatePropagation();ev.preventDefault();return;}
   const rec=state.lastRecord;
   if(rec&&!rec._approved&&!confirm('הרשומה בסטטוס «טיוטה» — טרם אושרה לרישום (כפתור «אשר לרישום» מעל הרשומה). להמשיך בכל זאת?')){
     ev.stopImmediatePropagation();ev.preventDefault();
@@ -2241,12 +2316,17 @@ $('engine-mode').addEventListener('change',syncEngineUI);
 syncEngineUI();
 
 /* ---------- persist settings locally ---------- */
-const PERSIST=['engine-mode','key-gemini','model-gemini','model-claude','server-url','chunk-size','img-edge','tiling','tik-source','tik-kind'];
+// P0-1 (security): 'key-gemini' is DELIBERATELY absent — the settings blob must
+// never carry an API key. A key typed into the field lives for the session only
+// and is forwarded per-request to the server proxy.
+const PERSIST=['engine-mode','model-gemini','model-claude','server-url','chunk-size','img-edge','tiling','tik-source','tik-kind'];
 const STORE_KEY='yv-tik-settings';
 function setSaveState(msg,color){const el=$('save-state');if(el){el.textContent=msg;el.style.color=color||'var(--good)';}}
 function loadSettings(){
   let s={};
   try{s=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
+    // P0-1 one-time cleanup: strip a Gemini key an older build wrote into the blob.
+    if(s['key-gemini']!=null){delete s['key-gemini'];try{localStorage.setItem(STORE_KEY,JSON.stringify(s));}catch(e2){}}
     PERSIST.forEach(id=>{if(s[id]!=null&&$(id)&&$(id).value!==s[id])$(id).value=s[id];});}catch(e){}
   // Auto-config the server URL: the dashboard is always served BY the server it
   // must call (localhost during dev, films.mf-sr.com via the tunnel), so the page

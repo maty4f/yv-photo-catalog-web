@@ -19,8 +19,8 @@
 //
 // CONTRACT
 // Each screen passes its own per-screen `state` object. anthropicFetch/anthropicJson
-// read state.localServerUrl; geminiBase also reads state.proxyGemini. Pure logic,
-// no DOM — safe to load before the page's main script.
+// and geminiBase read state.localServerUrl (falling back to location.origin). Pure
+// logic, no DOM — safe to load before the page's main script.
 //
 // DELIBERATELY NOT HERE
 // getActiveApiKey() and syncProviderRows() stay inline in each dashboard: they run
@@ -66,13 +66,20 @@
   }
 
   // ── Gemini transport ──────────────────────────────────────────────────
-  // Proxy-aware base used by films/photos/documents. When proxyGemini is on AND a
-  // local-server URL exists, route through the same-origin proxy (no CORS, key can
-  // be server-managed); otherwise call Google directly.
+  // The base used by films/photos/documents. P0-1 (2026-08-19): ALWAYS the
+  // server proxy — the Google-literal fallback is gone.
+  //
+  // WHY. The old signature was `(state.proxyGemini && state.localServerUrl) ? proxy
+  // : 'https://generativelanguage.googleapis.com'`, i.e. an OPT-IN checkbox decided
+  // whether the browser called Google itself. Whenever it was off, the tab had to
+  // hold a real Gemini key and ship it to Google — the exact browser-held-key
+  // pattern P0-1 removes — and it died behind a firewall that blocks googleapis.com.
+  // Now the server injects the key (its own, or the requester's personal one) and
+  // the browser never needs one. The only remaining choice is WHICH server:
+  // an explicitly configured URL (pages.dev and other off-origin hosts) or, by
+  // default, the origin that served this page — never Google.
   function geminiBase(state) {
-    return (state.proxyGemini && state.localServerUrl)
-      ? state.localServerUrl + '/api/gemini-proxy'
-      : 'https://generativelanguage.googleapis.com';
+    return (state.localServerUrl || location.origin) + '/api/gemini-proxy';
   }
 
   // ── Response JSON extraction + repair ─────────────────────────────────

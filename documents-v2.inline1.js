@@ -4,7 +4,9 @@
 const VALID_MODES = ['unified-server', 'claude-cli', 'gemini-only'];
 const state = {
   mode: VALID_MODES.includes(localStorage.getItem('yv_v2_mode')) ? localStorage.getItem('yv_v2_mode') : 'unified-server',
-  apiKey: localStorage.getItem('yv_v2_api_key') || '',
+  // P0-1 (security): the Gemini key is SESSION-ONLY — typed into the field, kept
+  // in memory, forwarded per-request to the server proxy. Never persisted.
+  apiKey: '',
   // review #2: no Anthropic key in the browser — the server proxy injects its own
   model: localStorage.getItem('yv_v2_model') || 'gemini-3.5-flash',
   claudeModel: localStorage.getItem('yv_v2_claude_model') || 'claude-sonnet-4-6',
@@ -62,11 +64,11 @@ modeSel.addEventListener('change', () => {
   refresh();
 });
 apiKeyInput.addEventListener('input', () => {
-  state.apiKey = apiKeyInput.value.trim();
-  localStorage.setItem('yv_v2_api_key', state.apiKey);
+  state.apiKey = apiKeyInput.value.trim();   // P0-1: in-memory only, never localStorage
   refresh();
 });
 try { localStorage.removeItem('yv_v2_api_key_anthropic'); } catch {}   // review #1: purge any persisted Claude key
+try { localStorage.removeItem('yv_v2_api_key'); } catch {}             // P0-1: purge any Gemini key an older build persisted
 modelSel.addEventListener('change', () => {
   state.model = modelSel.value;
   localStorage.setItem('yv_v2_model', state.model);
@@ -231,8 +233,18 @@ refresh();
 // =====================================================================
 //  Gemini Files API helpers
 // =====================================================================
+// P0-1 (security): every Gemini call goes through the SERVER proxy — the same
+// transport the other dashboards use. The browser never reaches
+// generativelanguage.googleapis.com itself, so it never has to hold a key (the
+// server injects the operator's or the requester's personal one) and a corporate
+// firewall blocking Google doesn't break the screen. The dashboard is normally
+// served BY the API server, so location.origin is the correct fallback.
+function geminiBase() {
+  return (state.localServerUrl || location.origin) + '/api/gemini-proxy';
+}
+
 async function uploadToFiles(file, onProgress) {
-  const startRes = await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
+  const startRes = await fetch(geminiBase() + '/upload/v1beta/files', {
     method: 'POST',
     headers: {
       'X-Goog-Upload-Protocol': 'resumable',
@@ -248,12 +260,18 @@ async function uploadToFiles(file, onProgress) {
     const t = await startRes.text();
     throw new Error(`Files API start failed: ${startRes.status} — ${t.slice(0, 200)}`);
   }
-  const uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
+  let uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
   if (!uploadUrl) throw new Error('Files API לא החזיר X-Goog-Upload-URL');
+  // Google hands back a direct googleapis.com URL — rewrite it onto the proxy so
+  // the upload leg travels the same (firewall-safe, key-injecting) path.
+  uploadUrl = uploadUrl.replace('https://generativelanguage.googleapis.com', geminiBase());
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', uploadUrl);
+    // The upload now goes to OUR server → carry the CSRF session header (the
+    // client-log fetch wrapper can't see XHR).
+    try { const sid = sessionStorage.getItem('yvSessionId'); if (sid) xhr.setRequestHeader('x-yv-session', sid); } catch (e) { /* storage blocked */ }
     xhr.setRequestHeader('Content-Length', file.size.toString());
     xhr.setRequestHeader('X-Goog-Upload-Offset', '0');
     xhr.setRequestHeader('X-Goog-Upload-Command', 'upload, finalize');
@@ -273,7 +291,7 @@ async function uploadToFiles(file, onProgress) {
 
 async function waitForFileActive(fileName, maxAttempts = 90) {
   for (let i = 0; i < maxAttempts; i++) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}`, {
+    const res = await fetch(`${geminiBase()}/v1beta/${fileName}`, {
       headers: { 'x-goog-api-key': state.apiKey },
     });
     if (!res.ok) throw new Error(`File status check failed: HTTP ${res.status}`);
@@ -698,7 +716,7 @@ analyzeBtn.addEventListener('click', async () => {
       : `${stageLabel}Gemini מפיק רישום ארכיוני…`);
     const prompt = buildPrompt(contextEl.value.trim(), sampleInfo?.total || '', sampleInfo);
     parts.push({ text: prompt });
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent`, {
+    const res = await fetch(`${geminiBase()}/v1beta/models/${state.model}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKey },
       body: JSON.stringify({

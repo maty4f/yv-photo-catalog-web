@@ -105,6 +105,15 @@
   .disagree .d{padding:6px 0;border-bottom:1px dashed color-mix(in srgb, var(--warn) 40%, transparent);font-size:13px}
   .disagree .d:last-child{border:none}
   .disagree .src{display:inline-block;min-width:62px;font-weight:600;color:var(--muted)}
+  /* שער הוולידטור הקנוני — אותה שפה ויזואלית של .disagree, RTL */
+  .vbox{direction:rtl;text-align:right;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px;font-size:13px}
+  .vbox ul{margin:6px 0 0;padding-inline-start:0;padding-inline-end:18px}
+  .vbox li{margin:3px 0}
+  .vbox .vwarns{margin-top:6px;color:var(--muted);font-size:12px}
+  .vbox.pending{background:color-mix(in srgb, var(--brand) 12%, var(--card));color:var(--brand)}
+  .vbox.ok{background:color-mix(in srgb, var(--good) 12%, var(--card));color:var(--good)}
+  .vbox.warn{background:color-mix(in srgb, var(--warn) 12%, var(--card));border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);color:var(--warn)}
+  .vbox.fail{background:color-mix(in srgb, var(--error) 12%, var(--card));border:1px solid color-mix(in srgb, var(--error) 45%, transparent);color:var(--error)}
   .none{color:var(--muted);font-style:italic}
   .tbl{width:100%;border-collapse:collapse;font-size:13px;direction:rtl;text-align:right}
   .tbl th,.tbl td{border:1px solid var(--line);padding:5px 8px;text-align:right;vertical-align:top;unicode-bidi:isolate;color:var(--ink);overflow-wrap:anywhere}
@@ -314,6 +323,7 @@
       <button type="button" id="export-arch-btn" class="copy-btn" style="background:#2c5f7c;color:#fff" title="ייצוא לפורמט ארכיוני תקני לייבוא במערכות תיאור ארכיוני">🗄 ייצוא ארכיוני</button>
       <button type="button" id="notebooklm-btn" class="copy-btn" title="ייצוא שמות · תאריכים · הקשר של התיק — קובץ Markdown להעלאה כמקור ב-NotebookLM">🧠 NotebookLM</button>
     </div>
+    <div id="validate-box"></div>
     <div id="disagree-box"></div>
     <div id="record"></div>
 
@@ -331,9 +341,9 @@
 <div class="toast" id="toast">הועתק</div>
 
 <script src="tik-collection.js?v=20260811a"></script>
-<script src="documents-tik.inline1.js?v=20260817c"></script>
+<script src="documents-tik.inline1.js?v=20260819b"></script>
 <script src="documents-tik.inline2.js?v=20260722e"></script>
-<script src="yv-providers.js?v=20260722"></script>
+<script src="yv-providers.js?v=20260819"></script>
 <script src="yv-client-log.js?v=20260725"></script>
 <script src="yv-misid.js?v=20260722b"></script>
 <script src="yv-editcapture.js?v=20260726"></script>
