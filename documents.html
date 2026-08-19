@@ -79,6 +79,17 @@
   .dqp-seg.run { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.28) 0 6px, transparent 6px 12px); background-size: 17px 17px; animation: dqpStripe 1s linear infinite; }
   @keyframes dqpStripe { to { background-position: 17px 0; } }
 
+  /* Canonical record validator — verdict box (mirrors documents-tik.html .vbox) */
+  #validate-box:empty { display: none; }
+  .vbox { direction: rtl; text-align: right; border-radius: var(--radius-sm); padding: 10px 14px; margin: 14px 0; font-size: 13px; }
+  .vbox ul { margin: 6px 0 0; padding-inline-start: 0; padding-inline-end: 18px; }
+  .vbox li { margin: 3px 0; }
+  .vbox .vwarns { margin-top: 6px; color: var(--muted); font-size: 12px; }
+  .vbox.pending { background: color-mix(in srgb, var(--brand) 12%, var(--card)); color: var(--brand); }
+  .vbox.ok { background: color-mix(in srgb, var(--good) 12%, var(--card)); color: var(--good); }
+  .vbox.warn { background: color-mix(in srgb, var(--warn) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); color: var(--warn); }
+  .vbox.fail { background: color-mix(in srgb, var(--error) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--error) 45%, transparent); color: var(--error); }
+
 </style>
 </head>
 <body>
@@ -558,6 +569,8 @@
     </div>
   </section>
 
+  <div id="validate-box"></div>
+
   <div class="download-bar" id="download-bar" style="display:none;">
     <span style="font-size:13px; color:var(--muted)">דוח מוכן:</span>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -581,7 +594,7 @@
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
 <script src="yv-providers.js?v=20260819"></script>
-<script src="documents.inline1.js?v=20260819a"></script>
+<script src="documents.inline1.js?v=20260819b"></script>
 <script src="documents.inline2.js?v=20260722e"></script>
 <script src="yv-client-log.js?v=20260725"></script>
 <script src="yv-misid.js?v=20260722b"></script>

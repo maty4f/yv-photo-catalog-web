@@ -947,10 +947,84 @@ function fillForm(r) {
     if (el) el.value = stripConfidenceMarkup(val);
   }
   $('raw-json').textContent = JSON.stringify(r, null, 2);
+  // שער הוולידטור הקנוני — כל רשומת-עמוד שמוצגת נבדקת מול /api/validate-record
+  // (ראו renderValidateBox/validateDocV2Record/validateBlockReason למטה).
+  validateDocV2Record(r);
+}
+
+/* ---------- שער הוולידטור הקנוני ----------
+   רשומת-העמוד כאן נבנית בדפדפן (Gemini/Claude → fillForm → buildOutputHtml)
+   ולכן, כמו רשומת התיק ב-documents-tik.html, אינה עוברת את הוולידטור של המנוע
+   (cli/yv_shared.check_html). השרת מריץ עליה את אותו וולידטור בדיוק דרך
+   POST /api/validate-record, והשער כאן חוסם העתקה/הורדה כשיש כשלים.
+   fail-CLOSED על כשלי-ולידציה · fail-OPEN כשהוולידטור עצמו אינו זמין. */
+function renderValidateBox() {
+  const box = $('validate-box'); if (!box) return;
+  const v = state.validate;
+  if (!v) { box.innerHTML = ''; return; }
+  if (v.pending) { box.innerHTML = `<div class="vbox pending"><span class="spinner"></span> בודק את הרשומה מול הוולידטור הקנוני…</div>`; return; }
+  const esc = s => window.yvEsc ? yvEsc(s) : String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  if (!v.available) {
+    box.innerHTML = `<div class="vbox warn"><b>⚠ הוולידטור לא זמין</b> — הרשומה לא נבדקה מול הוולידטור הקנוני` +
+      (v.reason ? `<br><small>${esc(v.reason)}</small>` : '') +
+      `<br><small>ההעתקה וההורדה נשארות פתוחות; בדוק את הרשומה ידנית לפני הזנה לספיר.</small></div>`;
+    return;
+  }
+  if (v.fails && v.fails.length) {
+    box.innerHTML = `<div class="vbox fail"><b>✗ הרשומה נכשלה בוולידציה (${v.fails.length})</b>` +
+      (v.enforce === false ? ` <small>— אכיפה כבויה (YV_VALIDATE_ENFORCE=0): ההעתקה וההורדה פתוחות</small>` : ` <small>— ההעתקה וההורדה חסומות עד לתיקון</small>`) +
+      `<ul>` + v.fails.map(f => `<li>${esc(f)}</li>`).join('') + `</ul>` +
+      ((v.warns || []).length ? `<div class="vwarns">אזהרות: ${v.warns.map(esc).join(' · ')}</div>` : '') + `</div>`;
+    return;
+  }
+  if ((v.warns || []).length) {
+    box.innerHTML = `<div class="vbox warn"><b>! הרשומה עברה עם ${v.warns.length} אזהרות</b><ul>` +
+      v.warns.map(w => `<li>${esc(w)}</li>`).join('') + `</ul></div>`;
+    return;
+  }
+  box.innerHTML = `<div class="vbox ok">✓ הרשומה עברה את הוולידטור הקנוני</div>`;
+}
+async function validateDocV2Record(r) {
+  // Debounce/dedupe by content signature (the finished HTML itself) — a
+  // re-render that changed nothing must not re-spawn a python process.
+  let html;
+  try { html = buildOutputHtml(r, new Date().toISOString().slice(0, 10)); } catch (e) { return; }
+  const sig = html;
+  if (state.validate && state.validate.sig === sig && !state.validate.pending) { renderValidateBox(); return; }
+  state.validate = { pending: true, sig };
+  renderValidateBox();
+  const base = state.localServerUrl || location.origin;
+  try {
+    const res = await fetch(base + '/api/validate-record', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const v = await res.json();
+    if (!state.validate || state.validate.sig !== sig) return; // רשומה חדשה נבדקה בינתיים
+    state.validate = { ...v, sig, pending: false };
+  } catch (err) {
+    if (!state.validate || state.validate.sig !== sig) return;
+    state.validate = { available: false, ok: true, fails: [], warns: [], sig, pending: false, reason: String(err.message || err) };
+  }
+  renderValidateBox();
+}
+/* מחזיר הודעת-חסימה כשהרשומה אינה כשירה להעתקה/הורדה, או '' כשהיא כשירה. */
+function validateBlockReason() {
+  const v = state.validate;
+  if (!v) return '';                                 // אין רשומה / לא נבדקה — אין מה לחסום
+  if (v.pending) return 'הוולידציה עדיין רצה — המתן רגע ונסה שוב.';
+  if (!v.available) return '';                        // fail-open: הוולידטור אינו זמין
+  if (v.enforce === false) return '';                  // YV_VALIDATE_ENFORCE=0 — אכיפה כבויה
+  if (v.fails && v.fails.length)
+    return 'הרשומה נכשלה בוולידציה הקנונית ולכן ההעתקה/ההורדה חסומים:\n\n• ' + v.fails.join('\n• ');
+  return '';
 }
 
 $('copy-json-btn').addEventListener('click', async () => {
   if (!state.result) return;
+  // שער הוולידטור הקנוני — כשל-ולידציה חוסם את העתקת ה-JSON (fail-closed).
+  const blocked = validateBlockReason();
+  if (blocked) { alert(blocked); return; }
   try {
     await navigator.clipboard.writeText(JSON.stringify(state.result, null, 2));
     showStatus('✓ JSON הועתק ללוח', 'ok');
@@ -959,6 +1033,9 @@ $('copy-json-btn').addEventListener('click', async () => {
 
 $('download-html-btn').addEventListener('click', () => {
   if (!state.result) return;
+  // שער הוולידטור הקנוני — כשל-ולידציה חוסם את הורדת הרשומה הסופית (fail-closed).
+  const blocked = validateBlockReason();
+  if (blocked) { alert(blocked); return; }
   const r = state.result;
   const today = new Date().toISOString().slice(0, 10);
   const safeName = (state.pdf?.name || 'document').replace(/[^\w.-]+/g, '_').slice(0, 60);

@@ -86,6 +86,17 @@
 
   .links { font-size: 12px; color: var(--muted); margin-top: 18px; text-align: center; }
   .links a { color: var(--brand); margin: 0 8px; }
+
+  /* Canonical record validator — verdict box (mirrors documents-tik.html .vbox) */
+  #validate-box:empty { display: none; }
+  .vbox { direction: rtl; text-align: right; border-radius: var(--radius-sm); padding: 10px 14px; margin: 0 0 16px; font-size: 13px; }
+  .vbox ul { margin: 6px 0 0; padding-inline-start: 0; padding-inline-end: 18px; }
+  .vbox li { margin: 3px 0; }
+  .vbox .vwarns { margin-top: 6px; color: var(--muted); font-size: 12px; }
+  .vbox.pending { background: color-mix(in srgb, var(--brand) 12%, var(--card)); color: var(--brand); }
+  .vbox.ok { background: color-mix(in srgb, var(--good) 12%, var(--card)); color: var(--good); }
+  .vbox.warn { background: color-mix(in srgb, var(--warn) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); color: var(--warn); }
+  .vbox.fail { background: color-mix(in srgb, var(--error) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--error) 45%, transparent); color: var(--error); }
 </style>
 </head>
 <body>
@@ -259,6 +270,8 @@
 
       <div class="row"><label for="r-notes">הערות</label><textarea id="r-notes" rows="2"></textarea></div>
 
+      <div id="validate-box"></div>
+
       <div class="footer-actions">
         <button class="secondary" id="copy-json-btn">📋 העתק JSON</button>
         <button class="secondary" id="download-html-btn">⬇ הורד HTML</button>
@@ -283,7 +296,7 @@
 <!-- shared AI transport (anthropicFetch) — loaded BEFORE the main script
      because it references window.yvProviders -->
 <script src="yv-providers.js?v=20260819"></script>
-<script src="documents-v2.inline1.js?v=20260819a"></script>
+<script src="documents-v2.inline1.js?v=20260819b"></script>
 <script src="documents-v2.inline2.js?v=20260819a"></script>
 <script src="yv-client-log.js?v=20260725"></script>
 <script src="yv-misid.js?v=20260722b"></script>
