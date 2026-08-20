@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "yv-photo-catalog record",
+  "description": "Canonical catalog-record shape consumed by the web edition (derived from the Step-4 result fields in photos.html). The IDEA transfer tool emits an array of these objects.",
+  "type": "object",
+  "properties": {
+    "source_id":      { "type": ["string", "null"], "description": "Original primary key / record id in the IDEA database — kept for traceability, not shown in the UI." },
+    "title_he":       { "type": "string", "description": "כותר עברית — [City], [Country], [content], [date]" },
+    "title_en":       { "type": "string", "description": "Title English — same format" },
+
+    "material":       { "type": "string", "description": "אופי החומר / Material", "default": "26T קובץ סריקה" },
+    "color":          { "type": "string", "description": "צבע / Color" },
+    "rights":         { "type": "string", "description": "בעל הזכויות / Rights holder", "default": "הארכיון" },
+    "classification": { "type": "string", "description": "סיווג / Classification", "default": "בלתי מסווג" },
+    "negative":       { "type": "string", "description": "נגטיב / Negative", "default": "ל" },
+    "photographer":   { "type": "string", "description": "צלם / Photographer (studio)" },
+    "creation_date":  { "type": "string", "description": "תאריך יצירה / Creation date" },
+    "recon_date":     { "type": "string", "description": "ת.ת. משוחזר / Reconstructed date" },
+    "size":           { "type": "string", "description": "גודל / Size", "default": "רגיל" },
+    "www":            { "type": "string", "description": "הצגה ברשת / Internet", "default": "Y" },
+    "intranet":       { "type": "string", "description": "הצגה ברשת פנימית / Intranet", "default": "Y" },
+    "copies":         { "type": "string", "description": "עותקים / Copies", "default": "סרוק" },
+
+    "places":         { "type": "array", "items": { "type": "string" }, "description": "מקומות קשורים / Related places (English)" },
+
+    "donor_he":       { "type": "string", "description": "מוסר (HE)" },
+    "donor_en":       { "type": "string", "description": "Donor (EN)" },
+    "source_he":      { "type": "string", "description": "מקור (HE)" },
+    "source_en":      { "type": "string", "description": "Source (EN)" },
+
+    "visual_he":      { "type": "string" }, "visual_en":       { "type": "string" },
+    "context_he":     { "type": "string" }, "context_en":      { "type": "string" },
+    "persons_he":     { "type": "string" }, "persons_en":      { "type": "string" },
+    "objects_he":     { "type": "string" }, "objects_en":      { "type": "string" },
+    "inscriptions_he":{ "type": "string" }, "inscriptions_en": { "type": "string" },
+    "studio_he":      { "type": "string" }, "studio_en":       { "type": "string" },
+    "bio_he":         { "type": "string" }, "bio_en":          { "type": "string" },
+    "notes_he":       { "type": "string" }, "notes_en":        { "type": "string" },
+
+    "people": {
+      "type": "array",
+      "description": "טבלת זיהוי אנשים / People identification table",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name":        { "type": "string", "description": "שם מלא / Full name" },
+          "position_he": { "type": "string", "description": "מיקום עברית" },
+          "position_en": { "type": "string", "description": "Position English" }
+        },
+        "required": ["name"]
+      }
+    },
+
+    "subjects": {
+      "type": "array",
+      "description": "נושאים מהתזאורוס / Subjects — HE/EN pairs from data/thesaurus_*.json",
+      "items": {
+        "type": "object",
+        "properties": {
+          "he": { "type": "string" },
+          "en": { "type": "string" }
+        }
+      }
+    }
+  }
+}

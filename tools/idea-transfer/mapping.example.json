@@ -1,0 +1,84 @@
+{
+  "_comment": "Edit this file on the machine that has IDEA. Replace every \"column\" value with the REAL column name in your IDEA table/query. Delete field entries you don't have data for — their schema default (or empty string) is used instead. Run: python idea_to_catalog.py --mapping mapping.json --out catalog.json",
+
+  "source": {
+    "type": "db",
+    "_type_options": "db | file",
+
+    "db_url": "REPLACE-ME — SQLAlchemy URL, e.g. sqlite:///C:/idea/catalog.db  |  access(ODBC): access+pyodbc://@?odbc_connect=DRIVER%3D%7BMicrosoft+Access+Driver+(*.mdb,+*.accdb)%7D%3BDBQ%3DC%3A%5Cidea%5Ccatalog.accdb  |  mssql+pyodbc://user:pass@host/DBName?driver=ODBC+Driver+17+for+SQL+Server",
+    "query": "SELECT * FROM catalog",
+    "table": null,
+
+    "_file_source": "used only when type = file",
+    "file": "idea_export.csv",
+    "sheet": null,
+    "encoding": "utf-8-sig"
+  },
+
+  "defaults": {
+    "material": "26T קובץ סריקה",
+    "rights": "הארכיון",
+    "classification": "בלתי מסווג",
+    "negative": "ל",
+    "size": "רגיל",
+    "www": "Y",
+    "intranet": "Y",
+    "copies": "סרוק"
+  },
+
+  "fields": {
+    "source_id":      { "column": "ID" },
+    "title_he":       { "column": "Kotar_He" },
+    "title_en":       { "column": "Title_En" },
+
+    "color":          { "column": "Color" },
+    "photographer":   { "column": "Photographer" },
+    "creation_date":  { "column": "CreationDate" },
+    "recon_date":     { "column": "ReconDate" },
+
+    "places":         { "column": "Places", "split": ";" },
+
+    "donor_he":       { "column": "Donor_He" },
+    "donor_en":       { "column": "Donor_En" },
+    "source_he":      { "column": "Source_He" },
+    "source_en":      { "column": "Source_En" },
+
+    "visual_he":      { "column": "Visual_He" },
+    "visual_en":      { "column": "Visual_En" },
+    "context_he":     { "column": "Context_He" },
+    "context_en":     { "column": "Context_En" },
+    "persons_he":     { "column": "Persons_He" },
+    "persons_en":     { "column": "Persons_En" },
+    "objects_he":     { "column": "Objects_He" },
+    "objects_en":     { "column": "Objects_En" },
+    "inscriptions_he":{ "column": "Inscriptions_He" },
+    "inscriptions_en":{ "column": "Inscriptions_En" },
+    "studio_he":      { "column": "Studio_He" },
+    "studio_en":      { "column": "Studio_En" },
+    "bio_he":         { "column": "Bio_He" },
+    "bio_en":         { "column": "Bio_En" },
+    "notes_he":       { "column": "Notes_He" },
+    "notes_en":       { "column": "Notes_En" }
+  },
+
+  "subjects": {
+    "_comment": "Free-text subjects column, one row's subjects separated by `split`. thesaurus:\"match\" looks each term up in ../../data/thesaurus_photo_archive.json to fill the HE/EN pair; unmatched terms are kept as {he: term, en: \"\"}.",
+    "column": "Subjects",
+    "split": ";",
+    "thesaurus": "match"
+  },
+
+  "people": {
+    "_comment": "Optional. Two ways to fill the identification table. (1) inline: a single column holding all names, split into rows. (2) join: a separate people table keyed by the record id — provide its own mapping. Set mode to \"none\" to skip.",
+    "mode": "none",
+    "inline": { "column": "PeopleNames", "split": ";" },
+    "join": {
+      "db_url": null,
+      "query": "SELECT record_id, full_name, position_he, position_en FROM people",
+      "key": "record_id",
+      "name": "full_name",
+      "position_he": "position_he",
+      "position_en": "position_en"
+    }
+  }
+}

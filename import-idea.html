@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ייבוא קטלוג מ-IDEA</title>
+<link rel="stylesheet" href="yv-theme.css">
+<style>
+  body{max-width:1000px;margin:0 auto;padding:18px;font-family:-apple-system,"Segoe UI",Arial,sans-serif}
+  h1{font-size:22px;margin:6px 0 2px}
+  .sub{color:var(--muted,#8a8a8a);font-size:13.5px;margin-bottom:16px}
+  .card{border:1px solid var(--line,#3333);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:var(--card,transparent)}
+  .drop{border:2px dashed var(--line,#8886);border-radius:10px;padding:26px;text-align:center;cursor:pointer;transition:.15s}
+  .drop.on{border-color:var(--accent,#4aa3ff);background:rgba(74,163,255,.06)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--line,#3333);text-align:right;vertical-align:top}
+  th{font-size:12px;color:var(--muted,#8a8a8a);font-weight:600}
+  tr.rec{cursor:pointer}
+  tr.rec:hover{background:rgba(74,163,255,.07)}
+  tr.rec.sel{background:rgba(74,163,255,.14)}
+  .btn{display:inline-block;border:1px solid var(--line,#8886);border-radius:8px;padding:7px 14px;cursor:pointer;background:transparent;color:inherit;font-size:13.5px}
+  .btn.primary{background:var(--accent,#2c7be5);border-color:transparent;color:#fff;font-weight:600}
+  .btn[disabled]{opacity:.4;cursor:default}
+  .pill{display:inline-block;border:1px solid var(--line,#8886);border-radius:99px;padding:2px 9px;font-size:12px;margin:2px}
+  #detail dt{font-weight:600;font-size:12.5px;color:var(--muted,#8a8a8a);margin-top:9px}
+  #detail dd{margin:2px 0 0;white-space:pre-wrap}
+  .ok{color:#2c9a5b}.warn{color:#c77}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  input[type=search]{border:1px solid var(--line,#8886);border-radius:8px;padding:6px 10px;background:transparent;color:inherit;min-width:220px}
+</style>
+</head>
+<body>
+
+<h1>🗄 ייבוא קטלוג מ-IDEA</h1>
+<div class="sub">
+  טוען קובץ <code>catalog.json</code> שהופק ע"י
+  <code>tools/idea-transfer/idea_to_catalog.py</code> מבסיס הנתונים של IDEA,
+  ומזרים כל רשומה למסך הקיטלוג (<a href="photos.html">photos.html</a>) דרך מנגנון השחזור המקומי.
+  הכול בדפדפן — שום דבר לא נשלח לשרת.
+</div>
+
+<div class="card">
+  <div class="drop" id="drop">
+    📂 גרור לכאן את <b>catalog.json</b> (או NDJSON) — או לחץ לבחירה
+    <input type="file" id="file" accept=".json,.ndjson,application/json" style="display:none">
+  </div>
+  <div class="bar" id="loadinfo" style="display:none">
+    <span id="count"></span>
+    <input type="search" id="q" placeholder="🔎 סינון לפי כותר / מקום / מזהה">
+  </div>
+</div>
+
+<div class="card" id="listcard" style="display:none">
+  <table>
+    <thead><tr><th style="width:36px">#</th><th style="width:90px">מזהה מקור</th><th>כותר (HE)</th><th>Title (EN)</th><th style="width:110px">תאריך</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<div class="card" id="detailcard" style="display:none">
+  <div class="bar">
+    <button class="btn primary" id="send">📤 שלח למסך הקיטלוג ופתח אותו</button>
+    <button class="btn" id="copyjson">📋 העתק כ-JSON</button>
+    <span id="sendmsg"></span>
+  </div>
+  <dl id="detail"></dl>
+</div>
+
+<script>
+(function(){
+'use strict';
+// The autosave key photos.html reads on load (yv-autosave.js):
+// PAGE = location.pathname.replace(/[^\w.-]+/g,'_')  →  e.g. "/photos.html" → "_photos.html".
+// photos.html sits next to this page, so swap the last path segment before slugging.
+var AUTOSAVE_KEY = 'yv_autosave_' +
+  location.pathname.replace(/[^\/]*$/, 'photos.html').replace(/[^\w.-]+/g, '_');
+
+var records = [], selected = -1;
+
+// record field -> photos.html element id
+var MAP = {
+  title_he:'r-title-he', title_en:'r-title-en',
+  material:'r-material', color:'r-color', rights:'r-rights',
+  classification:'r-class', negative:'r-negative', photographer:'r-photographer',
+  creation_date:'r-creation-date', recon_date:'r-recon-date', size:'r-size',
+  www:'r-www', intranet:'r-intra', copies:'r-copies',
+  donor_he:'r-donor-he', donor_en:'r-donor-en',
+  source_he:'r-source-he', source_en:'r-source-en',
+  visual_he:'r-visual-he', visual_en:'r-visual-en',
+  context_he:'r-context-he', context_en:'r-context-en',
+  persons_he:'r-persons-he', persons_en:'r-persons-en',
+  objects_he:'r-objects-he', objects_en:'r-objects-en',
+  inscriptions_he:'r-inscriptions-he', inscriptions_en:'r-inscriptions-en',
+  studio_he:'r-studio-he', studio_en:'r-studio-en',
+  bio_he:'r-bio-he', bio_en:'r-bio-en',
+  notes_he:'r-notes-he', notes_en:'r-notes-en'
+};
+var LABELS = {
+  source_id:'מזהה מקור', title_he:'כותר (HE)', title_en:'Title (EN)',
+  material:'אופי החומר', color:'צבע', rights:'זכויות', classification:'סיווג',
+  negative:'נגטיב', photographer:'צלם', creation_date:'תאריך יצירה',
+  recon_date:'ת.ת. משוחזר', size:'גודל', www:'אינטרנט', intranet:'אינטרא-נט',
+  copies:'עותקים', places:'מקומות', donor_he:'מוסר (HE)', donor_en:'Donor (EN)',
+  source_he:'מקור (HE)', source_en:'Source (EN)', visual_he:'תיאור ויזואלי (HE)',
+  visual_en:'Visual (EN)', context_he:'קונטקסט (HE)', context_en:'Context (EN)',
+  persons_he:'אישים (HE)', persons_en:'Persons (EN)', objects_he:'אובייקטים (HE)',
+  objects_en:'Objects (EN)', inscriptions_he:'כיתובים (HE)', inscriptions_en:'Inscriptions (EN)',
+  studio_he:'סטודיו (HE)', studio_en:'Studio (EN)', bio_he:'ביוגרפיה (HE)',
+  bio_en:'Biography (EN)', notes_he:'הערות (HE)', notes_en:'Notes (EN)',
+  subjects:'נושאים', people:'טבלת זיהוי'
+};
+
+function esc(s){var d=document.createElement('span');d.textContent=s==null?'':String(s);return d.innerHTML;}
+
+function parseCatalog(text){
+  text = text.replace(/^﻿/,'').trim();
+  if (!text) return [];
+  if (text[0] === '[') { var a = JSON.parse(text); return Array.isArray(a) ? a : []; }
+  if (text[0] === '{' && text.indexOf('\n') > 0) {           // NDJSON
+    return text.split(/\r?\n/).filter(Boolean).map(function(l){return JSON.parse(l);});
+  }
+  var one = JSON.parse(text);
+  return Array.isArray(one) ? one : [one];
+}
+
+function render(){
+  var q = (document.getElementById('q').value||'').trim().toLowerCase();
+  var tb = document.getElementById('rows'); tb.innerHTML = '';
+  records.forEach(function(r,i){
+    var hay = [r.source_id, r.title_he, r.title_en, (r.places||[]).join(' ')].join(' ').toLowerCase();
+    if (q && hay.indexOf(q) < 0) return;
+    var tr = document.createElement('tr');
+    tr.className = 'rec' + (i===selected?' sel':'');
+    tr.innerHTML = '<td>'+(i+1)+'</td><td>'+esc(r.source_id||'')+'</td><td>'+esc(r.title_he||'')+
+                   '</td><td dir="ltr" style="text-align:left">'+esc(r.title_en||'')+'</td><td>'+esc(r.creation_date||'')+'</td>';
+    tr.onclick = function(){ select(i); };
+    tb.appendChild(tr);
+  });
+  document.getElementById('listcard').style.display = records.length ? '' : 'none';
+  document.getElementById('count').textContent = '✓ נטענו ' + records.length + ' רשומות';
+  document.getElementById('loadinfo').style.display = records.length ? 'flex' : 'none';
+}
+
+function select(i){
+  selected = i; render();
+  var r = records[i], dl = document.getElementById('detail'); dl.innerHTML = '';
+  Object.keys(LABELS).forEach(function(k){
+    var v = r[k];
+    if (v == null || v === '' || (Array.isArray(v) && !v.length)) return;
+    var dt = document.createElement('dt'); dt.textContent = LABELS[k]; dl.appendChild(dt);
+    var dd = document.createElement('dd');
+    if (k === 'subjects') dd.innerHTML = v.map(function(s){return '<span class="pill">'+esc(s.he||'')+(s.en?' · '+esc(s.en):'')+'</span>';}).join('');
+    else if (k === 'people') dd.innerHTML = v.map(function(p){return '<span class="pill">'+esc(p.name||'')+(p.position_he?' — '+esc(p.position_he):'')+'</span>';}).join('');
+    else if (k === 'places') dd.textContent = v.join('; ');
+    else dd.textContent = String(v);
+    dl.appendChild(dd);
+  });
+  document.getElementById('detailcard').style.display = '';
+  document.getElementById('sendmsg').textContent = '';
+}
+
+// Write the record as an autosave draft for photos.html, then open it —
+// its yv-autosave.js will offer "💾 שחזר" and fill every mapped field.
+function send(){
+  if (selected < 0) return;
+  var r = records[selected], data = {};
+  Object.keys(MAP).forEach(function(k){
+    var v = r[k];
+    if (v != null && String(v).trim() !== '') data[MAP[k]] = String(v);
+  });
+  if (r.places && r.places.length) data['r-places'] = r.places.join('; ');
+  // subjects/people have no static input ids — appended into the notes/persons
+  // text so nothing from IDEA is lost even before chips are re-added manually.
+  if (r.subjects && r.subjects.length) {
+    var subj = r.subjects.map(function(s){return (s.he||'') + (s.en ? ' / ' + s.en : '');}).join('; ');
+    data['r-notes-he'] = ((data['r-notes-he']||'') + '\nנושאים (IDEA): ' + subj).trim();
+  }
+  if (r.people && r.people.length) {
+    var ppl = r.people.map(function(p){return p.name + (p.position_he ? ' — ' + p.position_he : '');}).join('\n');
+    data['r-persons-he'] = ((data['r-persons-he']||'') + '\n' + ppl).trim();
+  }
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ ts: Date.now(), page: 'import-idea', data: data }));
+    document.getElementById('sendmsg').innerHTML = '<span class="ok">✓ נשלח — במסך שנפתח לחץ "שחזר"</span>';
+    window.open('photos.html', '_blank');
+  } catch (e) {
+    document.getElementById('sendmsg').innerHTML = '<span class="warn">שגיאה: ' + esc(e.message) + '</span>';
+  }
+}
+
+function copyJSON(){
+  if (selected < 0) return;
+  var t = JSON.stringify(records[selected], null, 2);
+  (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject())
+    .then(function(){ document.getElementById('sendmsg').innerHTML = '<span class="ok">✓ הועתק</span>'; })
+    .catch(function(){
+      var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand('copy'); } catch(e){} ta.remove();
+      document.getElementById('sendmsg').innerHTML = '<span class="ok">✓ הועתק</span>';
+    });
+}
+
+function loadFile(f){
+  var rd = new FileReader();
+  rd.onload = function(){
+    try { records = parseCatalog(String(rd.result)); selected = -1; render(); }
+    catch (e) { alert('קובץ לא תקין: ' + e.message); }
+  };
+  rd.readAsText(f, 'utf-8');
+}
+
+var drop = document.getElementById('drop'), file = document.getElementById('file');
+drop.onclick = function(){ file.click(); };
+file.onchange = function(){ if (file.files[0]) loadFile(file.files[0]); };
+['dragover','dragenter'].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('on'); }); });
+['dragleave','drop'].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('on'); }); });
+drop.addEventListener('drop', function(e){ if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+document.getElementById('q').addEventListener('input', render);
+document.getElementById('send').onclick = send;
+document.getElementById('copyjson').onclick = copyJSON;
+})();
+</script>
+</body>
+</html>
