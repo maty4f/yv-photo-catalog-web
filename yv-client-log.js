@@ -201,7 +201,7 @@
       btn.textContent = '🛟 דווח בעיה';
       btn.setAttribute('style',
         'position:fixed;bottom:12px;left:12px;z-index:99999;direction:rtl;' +
-        'background:#8b1e2d;color:#fff;border:none;border-radius:20px;' +
+        'background:var(--error);color:var(--on-fill);border:none;border-radius:20px;' +
         'padding:8px 14px;font-size:13px;cursor:pointer;opacity:.75;' +
         'box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:inherit;');
       btn.onmouseenter = function () { btn.style.opacity = '1'; };
@@ -288,7 +288,7 @@
         b.id = 'yv-auth-banner';
         b.setAttribute('dir', 'rtl');
         b.style.cssText = 'position:fixed;top:0;right:0;left:0;z-index:9999;' +
-          'background:#b71c1c;color:#fff;padding:10px 16px;text-align:center;' +
+          'background:var(--error);color:var(--on-fill);padding:10px 16px;text-align:center;' +
           'font-size:15px;font-family:inherit';
         b.textContent = '⚠ ההתחברות פגה (401/403) — רענן את הדף והתחבר מחדש; העבודה בשרת ממשיכה ותופיע לאחר הרענון';
         document.body.appendChild(b);

@@ -13,35 +13,47 @@
   let CFG = null;
   const seen = new WeakSet();
 
+  // Colours come from yv-theme.css tokens — the buttons ride on whatever material
+  // accent the host screen sets, and the popover matches the dark surface.
   const css = `
   .yvm-btn{display:inline-block;margin-inline-start:8px;padding:0 7px;font-size:11px;line-height:18px;
-    border:1px solid #d0a0a0;border-radius:10px;background:#fff;color:#a33;cursor:pointer;
+    border:1px solid color-mix(in srgb, var(--error) 45%, transparent);border-radius:10px;
+    background:color-mix(in srgb, var(--error) 12%, var(--card));color:var(--error);cursor:pointer;
     vertical-align:middle;user-select:none;unicode-bidi:isolate;font-family:inherit}
-  .yvm-btn:hover{background:#fdeaea;border-color:#b66}
-  .yvm-btn.yvm-sent{color:#1a7f37;border-color:#9c9;background:#effaf1;cursor:default}
-  .yvm-btn.yvm-err{border-color:#e60;color:#e60}
-  .yvm-btn.yvm-imp{border-color:#c9b458;color:#7a6a10}
-  .yvm-btn.yvm-imp:hover{background:#fdf7dd;border-color:#b09a2e}
-  .yvm-btn.yvm-imp.yvm-sent{color:#1a7f37;border-color:#9c9;background:#effaf1}
-  .yvm-btn.yvm-ok{border-color:#8bc79b;color:#1a7f37}
-  .yvm-btn.yvm-ok:hover{background:#effaf1;border-color:#5aa96e}
+  .yvm-btn:hover{background:color-mix(in srgb, var(--error) 22%, var(--card));
+    border-color:color-mix(in srgb, var(--error) 70%, transparent)}
+  .yvm-btn.yvm-sent{color:var(--good);border-color:color-mix(in srgb, var(--good) 45%, transparent);
+    background:color-mix(in srgb, var(--good) 12%, var(--card));cursor:default}
+  .yvm-btn.yvm-err{border-color:color-mix(in srgb, var(--warn) 70%, transparent);color:var(--warn)}
+  .yvm-btn.yvm-imp{border-color:color-mix(in srgb, var(--warn) 50%, transparent);color:var(--warn);
+    background:color-mix(in srgb, var(--warn) 10%, var(--card))}
+  .yvm-btn.yvm-imp:hover{background:color-mix(in srgb, var(--warn) 20%, var(--card));
+    border-color:color-mix(in srgb, var(--warn) 70%, transparent)}
+  .yvm-btn.yvm-imp.yvm-sent{color:var(--good);border-color:color-mix(in srgb, var(--good) 45%, transparent);
+    background:color-mix(in srgb, var(--good) 12%, var(--card))}
+  .yvm-btn.yvm-ok{border-color:color-mix(in srgb, var(--good) 50%, transparent);color:var(--good);
+    background:color-mix(in srgb, var(--good) 10%, var(--card))}
+  .yvm-btn.yvm-ok:hover{background:color-mix(in srgb, var(--good) 20%, var(--card));
+    border-color:color-mix(in srgb, var(--good) 70%, transparent)}
   .yvm-group{display:inline-flex;gap:4px;margin-inline-start:8px;vertical-align:middle;
     white-space:nowrap;align-items:center}
   .yvm-group .yvm-btn{margin-inline-start:0}
-  .yvm-pop{position:fixed;z-index:99999;background:#fffdf3;border:1px solid #c9b458;border-radius:8px;
-    box-shadow:0 4px 14px rgba(0,0,0,.18);padding:10px;width:min(340px,92vw);
+  .yvm-pop{position:fixed;z-index:99999;background:var(--card);border:1px solid var(--line-strong);border-radius:8px;
+    box-shadow:0 4px 18px rgba(0,0,0,.55);padding:10px;width:min(340px,92vw);
     direction:rtl;text-align:right;font-family:inherit}
   .yvm-pop textarea{width:100%;box-sizing:border-box;min-height:64px;resize:vertical;font-family:inherit;
-    font-size:13px;direction:rtl;text-align:right;border:1px solid #ccc;border-radius:6px;padding:6px}
-  .yvm-pop .yvm-pop-title{font-size:12px;color:#7a6a10;margin-bottom:6px;font-weight:bold}
-  .yvm-pop .yvm-pop-val{background:#f6f2df;border:1px dashed #c9b458;border-radius:6px;padding:6px 8px;
-    font-size:12px;color:#444;max-height:96px;overflow:auto;margin-bottom:6px;white-space:pre-wrap;
+    font-size:13px;direction:rtl;text-align:right;border:1px solid var(--line-strong);border-radius:6px;padding:6px;
+    background:var(--bg);color:var(--ink)}
+  .yvm-pop .yvm-pop-title{font-size:12px;color:var(--warn);margin-bottom:6px;font-weight:bold}
+  .yvm-pop .yvm-pop-val{background:var(--tint);border:1px dashed var(--line-strong);border-radius:6px;padding:6px 8px;
+    font-size:12px;color:var(--muted);max-height:96px;overflow:auto;margin-bottom:6px;white-space:pre-wrap;
     direction:rtl;text-align:right;unicode-bidi:plaintext}
   .yvm-pop .yvm-pop-actions{margin-top:8px;display:flex;gap:8px;justify-content:flex-start}
-  .yvm-pop button{padding:3px 14px;font-size:12px;border-radius:6px;border:1px solid #b09a2e;
-    background:#f7edc0;color:#5c4f0a;cursor:pointer;font-family:inherit}
-  .yvm-pop button.yvm-cancel{background:#fff;border-color:#bbb;color:#666}
-  .yvm-pop .yvm-pop-err{color:#c00;font-size:12px;margin-top:6px;display:none}`;
+  .yvm-pop button{padding:3px 14px;font-size:12px;border-radius:6px;
+    border:1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+    background:var(--warn);color:var(--on-warn);cursor:pointer;font-family:inherit}
+  .yvm-pop button.yvm-cancel{background:var(--tint);border-color:var(--line-strong);color:var(--muted)}
+  .yvm-pop .yvm-pop-err{color:var(--error);font-size:12px;margin-top:6px;display:none}`;
 
   function ensureStyle() {
     if (document.getElementById('yvm-style')) return;

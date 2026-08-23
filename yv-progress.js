@@ -41,43 +41,53 @@
     var s = document.createElement('style');
     s.id = 'yv-progress-style';
     s.textContent =
+      // Colours come from yv-theme.css tokens, so the widget follows the screen's
+      // material accent instead of carrying its own (light) palette.
       '.yv-prog{direction:rtl;text-align:right;display:flex;gap:16px;align-items:center;' +
-      'background:#fff;border:1px solid #d7dde3;border-radius:12px;padding:14px 18px;margin:10px 0;' +
-      'box-shadow:0 1px 3px rgba(0,0,0,.06);font-family:inherit;flex-wrap:wrap}' +
-      '.yv-prog.done{border-color:#9c9;background:#f2fbf4}.yv-prog.err{border-color:#e0a0a0;background:#fdf2f2}' +
+      'background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:10px 0;' +
+      'box-shadow:0 1px 3px rgba(0,0,0,.35);font-family:inherit;flex-wrap:wrap}' +
+      '.yv-prog.done{border-color:color-mix(in srgb, var(--good) 45%, transparent);' +
+      'background:color-mix(in srgb, var(--good) 12%, var(--card))}' +
+      '.yv-prog.err{border-color:color-mix(in srgb, var(--error) 45%, transparent);' +
+      'background:color-mix(in srgb, var(--error) 12%, var(--card))}' +
       '.yv-prog .ring{position:relative;width:118px;height:118px;flex:0 0 auto}' +
       '.yv-prog .ring svg{transform:rotate(-90deg)}' +
+      '.yv-prog .ring circle{stroke:var(--tint)}' +
+      '.yv-prog .ring circle.arc{stroke:var(--accent)}' +
+      '.yv-prog .ring.done circle.arc{stroke:var(--good)}' +
+      '.yv-prog .ring.err circle.arc{stroke:var(--error)}' +
       '.yv-prog .ring .pct{position:absolute;inset:0;display:flex;flex-direction:column;' +
       'align-items:center;justify-content:center;unicode-bidi:isolate}' +
-      '.yv-prog .ring .pct b{font-size:26px;color:#2c5f7c;line-height:1}' +
-      '.yv-prog .ring.done .pct b{color:#1a7f37}.yv-prog .ring.err .pct b{color:#c0392b}' +
-      '.yv-prog .ring .pct small{font-size:11px;color:#8a97a3;margin-top:2px}' +
+      '.yv-prog .ring .pct b{font-size:26px;color:var(--accent);line-height:1}' +
+      '.yv-prog .ring.done .pct b{color:var(--good)}.yv-prog .ring.err .pct b{color:var(--error)}' +
+      '.yv-prog .ring .pct small{font-size:11px;color:var(--muted);margin-top:2px}' +
       '.yv-prog .body{flex:1 1 220px;min-width:200px}' +
-      '.yv-prog .clock{font-size:22px;font-weight:700;color:#33475b;unicode-bidi:isolate;' +
+      '.yv-prog .clock{font-size:22px;font-weight:700;color:var(--ink);unicode-bidi:isolate;' +
       'font-variant-numeric:tabular-nums;letter-spacing:.5px}' +
-      '.yv-prog .clock .eta{font-size:12px;font-weight:400;color:#8a97a3;margin-inline-start:10px}' +
-      '.yv-prog .stage{font-size:13px;color:#4a5b6b;margin:6px 0 8px;unicode-bidi:isolate;' +
+      '.yv-prog .clock .eta{font-size:12px;font-weight:400;color:var(--muted);margin-inline-start:10px}' +
+      '.yv-prog .stage{font-size:13px;color:var(--muted);margin:6px 0 8px;unicode-bidi:isolate;' +
       'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}' +
-      '.yv-prog .bar{height:8px;border-radius:5px;background:#e8edf1;overflow:hidden}' +
+      '.yv-prog .bar{height:8px;border-radius:5px;background:var(--tint);overflow:hidden}' +
       '.yv-prog .bar > i{display:block;height:100%;width:0;border-radius:5px;' +
-      'background:linear-gradient(90deg,#2c5f7c,#4a90b8);transition:width .5s ease}' +
-      '.yv-prog.done .bar > i{background:#1a7f37}.yv-prog.err .bar > i{background:#c0392b}' +
+      'background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .5s ease}' +
+      '.yv-prog.done .bar > i{background:var(--good)}.yv-prog.err .bar > i{background:var(--error)}' +
       // metrics chips (window N/M · pages · model) + the live work-trail log
       '.yv-prog .meta{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}' +
-      '.yv-prog .meta .chip{font-size:11.5px;background:#eef3f7;color:#33586e;border-radius:999px;' +
+      '.yv-prog .meta .chip{font-size:11.5px;background:var(--tint);color:var(--muted);border-radius:999px;' +
       'padding:2px 9px;unicode-bidi:isolate;font-variant-numeric:tabular-nums}' +
-      '.yv-prog .meta .chip.model{background:#e7f0ff;color:#2a5db0}' +
-      '.yv-prog .trail-wrap{flex:1 1 100%;margin:10px 0 0;border-top:1px solid #edf1f4;padding-top:8px}' +
-      '.yv-prog .trail-wrap > summary{cursor:pointer;font-size:12px;color:#6b7a89;list-style:none;user-select:none}' +
+      '.yv-prog .meta .chip.model{background:color-mix(in srgb, var(--brand) 16%, var(--card));color:var(--brand)}' +
+      '.yv-prog .trail-wrap{flex:1 1 100%;margin:10px 0 0;border-top:1px solid var(--line);padding-top:8px}' +
+      '.yv-prog .trail-wrap > summary{cursor:pointer;font-size:12px;color:var(--muted);list-style:none;user-select:none}' +
       '.yv-prog .trail-wrap > summary::-webkit-details-marker{display:none}' +
-      '.yv-prog .trail-wrap > summary b{color:#33475b}' +
+      '.yv-prog .trail-wrap > summary b{color:var(--ink)}' +
       '.yv-prog .trail{margin:8px 0 0;padding:0 2px 0 0;max-height:150px;overflow-y:auto;list-style:none;' +
-      'font-size:12px;line-height:1.7;color:#4a5b6b;unicode-bidi:isolate}' +
+      'font-size:12px;line-height:1.7;color:var(--muted);unicode-bidi:isolate}' +
       '.yv-prog .trail li{display:flex;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
-      '.yv-prog .trail li .t{color:#9aa7b3;font-variant-numeric:tabular-nums;flex:0 0 auto}' +
+      '.yv-prog .trail li .t{color:color-mix(in srgb, var(--muted) 78%, var(--card));' +
+      'font-variant-numeric:tabular-nums;flex:0 0 auto}' +
       '.yv-prog .trail li .m{overflow:hidden;text-overflow:ellipsis}' +
-      '.yv-prog .trail li.now{color:#1f2d3a;font-weight:600}' +
-      '.yv-prog .trail li.warn{color:#b26a00}.yv-prog .trail li.bad{color:#c0392b}';
+      '.yv-prog .trail li.now{color:var(--ink);font-weight:600}' +
+      '.yv-prog .trail li.warn{color:var(--warn)}.yv-prog .trail li.bad{color:var(--error)}';
     document.head.appendChild(s);
   }
 
@@ -92,8 +102,8 @@
     el.className = 'yv-prog';
     el.innerHTML =
       '<div class="ring"><svg width="118" height="118" viewBox="0 0 118 118">' +
-      '<circle cx="59" cy="59" r="52" fill="none" stroke="#e8edf1" stroke-width="11"></circle>' +
-      '<circle class="arc" cx="59" cy="59" r="52" fill="none" stroke="#2c5f7c" stroke-width="11" ' +
+      '<circle cx="59" cy="59" r="52" fill="none" stroke-width="11"></circle>' +
+      '<circle class="arc" cx="59" cy="59" r="52" fill="none" stroke-width="11" ' +
       'stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + C.toFixed(1) + '"></circle>' +
       '</svg><div class="pct"><b>0%</b><small>התקדמות</small></div></div>' +
       '<div class="body"><div class="clock">00:00<span class="eta"></span></div>' +

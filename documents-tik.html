@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>קטלוג תיק (Claude קורא ומסנתז)</title>
-<link rel="stylesheet" href="yv-theme.css?v=20260802a">
+<link rel="stylesheet" href="yv-theme.css?v=20260823a">
 <style>
-  :root{ --accent:var(--tik); --accent-2:#c9a6ff; --diamond:var(--brand); --high:var(--good); --mid:var(--warn); --low:var(--error); }
+  :root{ --accent:var(--tik); --accent-2:var(--tik-2); --accent-ink:var(--on-tik); --diamond:var(--brand); --high:var(--good); --mid:var(--warn); --low:var(--error); }
   body{ font-size:15px; line-height:1.6; }
   .wrap{max-width:1080px;margin:0 auto;padding:20px 16px 80px}
   h1{font-size:20px;margin:0 0 4px;font-weight:800}
@@ -26,16 +26,16 @@
   .drop.over{background:color-mix(in srgb, var(--accent) 14%, var(--card));border-color:var(--accent)}
   .filelist{margin-top:10px;font-size:13px}
   .filelist .f{display:flex;justify-content:space-between;padding:4px 8px;background:var(--card-hover);border-radius:5px;margin:3px 0}
-  button.go{background:var(--accent);color:#150a22;border:none;border-radius:var(--radius-sm);padding:11px 20px;font-size:15px;
+  button.go{background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius-sm);padding:11px 20px;font-size:15px;
        font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 0 14px color-mix(in srgb, var(--accent) 35%, transparent)}
   button.go:hover:not(:disabled){background:var(--accent-2)}
-  button.go:disabled{background:#3a4152;color:#7d8598;cursor:not-allowed;box-shadow:none}
+  button.go:disabled{background:var(--disabled);color:var(--disabled-ink);cursor:not-allowed;box-shadow:none}
   .status{margin-top:12px;font-size:13.5px;padding:8px 12px;border-radius:var(--radius-sm);display:none}
   .status.show{display:block}
   .status.info{background:color-mix(in srgb, var(--brand) 14%, var(--card));color:var(--brand)}
   .status.ok{background:color-mix(in srgb, var(--good) 14%, var(--card));color:var(--good)}
   .status.err{background:color-mix(in srgb, var(--error) 14%, var(--card));color:var(--error);white-space:pre-wrap}
-  .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:#150a22;
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:var(--accent-ink);
        border-radius:50%;animation:sp .7s linear infinite;margin-left:7px;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
 
@@ -47,10 +47,10 @@
        padding:6px 12px;border-bottom:1px solid var(--line)}
   .field .label{font-weight:600;font-size:13px}
   .field .body{padding:10px 14px;direction:rtl;text-align:right;unicode-bidi:isolate;white-space:pre-wrap}
-  .copy-btn{background:var(--accent);color:#150a22;border:none;border-radius:var(--radius-sm);padding:4px 12px;font-size:12px;
+  .copy-btn{background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius-sm);padding:4px 12px;font-size:12px;
        cursor:pointer;font-family:inherit;font-weight:700}
   .copy-btn:hover{background:var(--accent-2)}
-  .copy-btn.copied{background:var(--good);color:#06210f}
+  .copy-btn.copied{background:var(--good);color:var(--on-good)}
   /* בחירת שדות להעברה לדף הקטלוג (ברירת-מחדל: הכל מסומן) */
   .field .head{gap:8px}
   .field .label{flex:1}
@@ -60,7 +60,7 @@
   .pick-bar{display:flex;align-items:center;gap:10px;direction:rtl;background:var(--card);
        border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px;margin:0 0 4px;
        position:sticky;top:0;z-index:5}
-  #copy-picked{background:var(--accent);color:#150a22;border:none;border-radius:var(--radius-sm);
+  #copy-picked{background:var(--accent);color:var(--accent-ink);border:none;border-radius:var(--radius-sm);
        padding:6px 14px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700}
   #copy-picked:hover{background:var(--accent-2)}
   .pick-count{color:var(--muted);font-size:12px}
@@ -80,7 +80,7 @@
   .deep-btn{background:transparent;border:1px solid var(--accent);color:var(--accent);
        border-radius:var(--radius-sm);padding:3px 8px;font-size:11.5px;cursor:pointer;
        font-family:inherit;white-space:nowrap}
-  .deep-btn:hover{background:var(--accent);color:#150a22}
+  .deep-btn:hover{background:var(--accent);color:var(--accent-ink)}
   .deep-btn:disabled{opacity:.6;cursor:default}
   /* פריט-משנה (TR.15): כותר הניתן לעריכה במקום */
   .subitem-title{border-bottom:1px dashed var(--accent);cursor:text;unicode-bidi:isolate}
@@ -150,7 +150,7 @@
   <!-- שתי רמות קטלוג מסמכים: קטלוג ברמת תיק (המסך הזה) ↔ תיאור מסמך מלא (documents.html) -->
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--tint);border:1px solid var(--line);border-radius:10px;padding:9px 14px;margin-bottom:16px;font-size:13.5px" role="navigation" aria-label="רמת קטלוג">
     <b style="color:var(--accent)">רמת הקטלוג:</b>
-    <span style="background:var(--accent);color:#150a22;border-radius:7px;padding:4px 12px;font-weight:600">🗂 קטלוג ברמת תיק <small style="font-weight:400;opacity:.85">— תיאור כללי אחד לכל התיק (המסך הזה)</small></span>
+    <span style="background:var(--accent);color:var(--accent-ink);border-radius:7px;padding:4px 12px;font-weight:600">🗂 קטלוג ברמת תיק <small style="font-weight:400;opacity:.85">— תיאור כללי אחד לכל התיק (המסך הזה)</small></span>
     <a href="documents.html" style="text-decoration:none;color:var(--accent);border:1px solid var(--accent);border-radius:7px;padding:4px 12px;background:var(--card)">📄 תיאור מסמך מלא <small style="color:var(--muted)">— תעתיק, תרגום וניתוח מלא לכל מסמך</small></a>
   </div>
 
@@ -192,7 +192,7 @@
         <input type="password" id="key-gemini" class="ltr" placeholder="AIza…" autocomplete="off">
         <div class="hint">נדרש רק במצב דו-מנועי. נשמר מקומית במכשיר זה בלבד.</div>
       </div>
-      <div id="gemini-managed-note" class="hint" style="display:none;color:#7fd4a0">🔒 מפתח Gemini מנוהל בשרת — אין צורך להזין מפתח.</div>
+      <div id="gemini-managed-note" class="hint" style="display:none;color:var(--good)">🔒 מפתח Gemini מנוהל בשרת — אין צורך להזין מפתח.</div>
     </div>
     <div class="row2">
       <div>
@@ -252,8 +252,8 @@
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
       <label id="pick-folder" class="upload-btn" for="folder-input" style="color:var(--films);border-color:var(--films)" title="תיקייה של סריקות = תיק אחד · תיקייה עם תת-תיקיות או כמה PDF = תור תיקים (כל תת-תיקייה / כל PDF = תיק נפרד)">📁 העלה תיקייה שלמה</label>
       <button type="button" id="pick-drive" class="upload-btn" style="color:var(--good);border-color:var(--good)" title="בחירת תיק ישירות מגוגל דרייב — השרת מוריד אותו לדיסק (rclone) ואז מקטלג. בלי קריאה מהמאונט, בלי בניית PDF בדפדפן ובלי העלאה">☁ תיק מהדרייב</button>
-      <button type="button" id="download-tik-pdf" class="copy-btn" style="background:var(--brand);color:#04222a" disabled title="איחוד כל דפי התיק לקובץ PDF אחד והורדתו למחשב">⬇ הורד את התיק כ-PDF</button>
-      <button type="button" id="clear-files" class="copy-btn" style="background:var(--error);color:#fff">נקה</button>
+      <button type="button" id="download-tik-pdf" class="copy-btn" style="background:var(--brand);color:var(--on-brand)" disabled title="איחוד כל דפי התיק לקובץ PDF אחד והורדתו למחשב">⬇ הורד את התיק כ-PDF</button>
+      <button type="button" id="clear-files" class="copy-btn" style="background:var(--error);color:var(--on-fill)">נקה</button>
     </div>
     <div class="hint">תיקייה של סריקות = תיק אחד; תיקייה שמכילה <b>תת-תיקיות</b>, כמה קובצי PDF בתיקייה, או <b>כמה קובצי PDF שנגררו יחד</b> — נכנסים ל<b>תור תיקים</b>: כל תת-תיקייה / כל PDF מקוטלגים כתיק נפרד, תיק אחרי תיק, וכל רשומה נשמרת. כל הדפים מעובדים במנות (chunks) — כיסוי מלא, לא דגימה. גודל המנה נקבע בהגדרות.</div>
 
@@ -264,7 +264,7 @@
         <div style="font-weight:700; font-size:13.5px;">☁ תיקים בגוגל דרייב <span id="drive-path" style="font-weight:400; font-size:12px; color:var(--muted); margin-inline-start:6px; unicode-bidi:isolate;"></span></div>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button type="button" id="drive-up" class="copy-btn" style="padding:3px 9px; font-size:11.5px; background:var(--card); color:var(--fg); border:1px solid var(--muted);">↑ תיקייה למעלה</button>
-          <button type="button" id="drive-close" class="copy-btn" style="padding:3px 9px; font-size:11.5px; background:var(--error); color:#fff;">✕ סגור</button>
+          <button type="button" id="drive-close" class="copy-btn" style="padding:3px 9px; font-size:11.5px; background:var(--error); color:var(--on-fill);">✕ סגור</button>
         </div>
       </div>
       <div id="drive-list"></div>
@@ -279,9 +279,9 @@
         <div style="font-weight:700; font-size:13.5px;">📚 תור תיקים <span id="tik-queue-summary" style="font-weight:400; font-size:12px; color:var(--muted); margin-inline-start:6px;"></span></div>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <label id="tik-queue-add-btn" class="upload-btn" for="folder-input" style="padding:3px 9px; font-size:11.5px; color:var(--films); border-color:var(--films);">+ הוסף תיקייה</label>
-          <button type="button" id="tik-queue-pause" class="copy-btn" style="display:none; padding:3px 9px; font-size:11.5px; background:var(--brand); color:#04222a;" title="עצירה מסודרת: התיק שרץ כרגע ממשיך בשרת עד סופו ורשומתו נשמרת, והתור נעצר אחריו. הממתינים נשארים ברשימה — גם אחרי סגירת הדפדפן">⏸ עצור אחרי התיק הנוכחי</button>
-          <button type="button" id="tik-queue-retry" class="copy-btn" style="display:none; padding:3px 9px; font-size:11.5px; background:var(--good); color:#06210f;">🔄 נסה כושלים מחדש</button>
-          <button type="button" id="tik-queue-clear" class="copy-btn" style="padding:3px 9px; font-size:11.5px; background:var(--error); color:#fff;">🗑 נקה תור</button>
+          <button type="button" id="tik-queue-pause" class="copy-btn" style="display:none; padding:3px 9px; font-size:11.5px; background:var(--brand); color:var(--on-brand);" title="עצירה מסודרת: התיק שרץ כרגע ממשיך בשרת עד סופו ורשומתו נשמרת, והתור נעצר אחריו. הממתינים נשארים ברשימה — גם אחרי סגירת הדפדפן">⏸ עצור אחרי התיק הנוכחי</button>
+          <button type="button" id="tik-queue-retry" class="copy-btn" style="display:none; padding:3px 9px; font-size:11.5px; background:var(--good); color:var(--on-good);">🔄 נסה כושלים מחדש</button>
+          <button type="button" id="tik-queue-clear" class="copy-btn" style="padding:3px 9px; font-size:11.5px; background:var(--error); color:var(--on-fill);">🗑 נקה תור</button>
         </div>
       </div>
       <div id="tik-queue-list"></div>
@@ -300,7 +300,7 @@
 
   <div class="yv-flow-mount" style="margin:8px 0"></div>
   <button class="go" id="run" disabled>קטלג תיק</button>
-  <button class="go" id="describe-fast" disabled style="background:var(--films);color:#04121f;margin-inline-start:8px">⚡ תיאור מהיר (Gemini→Claude)</button>
+  <button class="go" id="describe-fast" disabled style="background:var(--films);color:var(--on-films);margin-inline-start:8px">⚡ תיאור מהיר (Gemini→Claude)</button>
   <div class="status" id="status"></div>
   <div id="pdf-bar" style="display:none;margin-top:10px;font-size:13.5px;padding:8px 12px;border-radius:6px;background:color-mix(in srgb, var(--brand) 14%, var(--card));color:var(--brand)"></div>
 
@@ -310,17 +310,17 @@
   <div id="results">
     <div id="tik-export-bar" style="display:none; margin-bottom:12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
       <span style="font-size:12.5px;color:var(--muted)">הורדת הקטלוג:</span>
-      <button type="button" id="copysheet-btn" class="copy-btn" style="background:#6a3fb5;color:#fff" title="קובץ HTML עצמאי למקטלג — נפתח בכל מחשב בדאבל-קליק, כפתור העתקה לכל שדה, מעקב '✓ הוזן'. נכנסים אליו רק השדות המסומנים בתיבות-הסימון">📋 דף-העתקה למקטלג</button>
-      <button type="button" id="export-xlsx-btn" class="copy-btn" style="background:#1a7f4b;color:#fff" title="הורדת הרשומה כקובץ Excel רב-גיליונות (רשומה · מפת התיק · מפתח שמות · ציר זמן), RTL">📊 Excel</button>
-      <button type="button" id="export-pdf-btn" class="copy-btn" style="background:#b2432e;color:#fff" title="הורדת הרשומה כ-PDF דרך חלון ההדפסה של הדפדפן (בחר 'שמור כ-PDF')">📄 PDF</button>
-      <select id="export-arch-fmt" class="copy-btn" style="background:#2c5f7c;color:#fff;padding-inline:8px" title="פורמט חילופין ארכיוני תקני">
+      <button type="button" id="copysheet-btn" class="copy-btn" style="background:var(--exp-sheet);color:var(--on-fill)" title="קובץ HTML עצמאי למקטלג — נפתח בכל מחשב בדאבל-קליק, כפתור העתקה לכל שדה, מעקב '✓ הוזן'. נכנסים אליו רק השדות המסומנים בתיבות-הסימון">📋 דף-העתקה למקטלג</button>
+      <button type="button" id="export-xlsx-btn" class="copy-btn" style="background:var(--exp-xlsx);color:var(--on-fill)" title="הורדת הרשומה כקובץ Excel רב-גיליונות (רשומה · מפת התיק · מפתח שמות · ציר זמן), RTL">📊 Excel</button>
+      <button type="button" id="export-pdf-btn" class="copy-btn" style="background:var(--exp-pdf);color:var(--on-fill)" title="הורדת הרשומה כ-PDF דרך חלון ההדפסה של הדפדפן (בחר 'שמור כ-PDF')">📄 PDF</button>
+      <select id="export-arch-fmt" class="copy-btn" style="background:var(--exp-arch);color:var(--on-fill);padding-inline:8px" title="פורמט חילופין ארכיוני תקני">
         <option value="ead2002">EAD 2002 (XML)</option>
         <option value="dc">Dublin Core (XML)</option>
         <option value="csv-atom">AtoM (CSV)</option>
         <option value="isa">ארכיון המדינה (דף הזנה)</option>
         <option value="eliach">אוסף יפה אליאך (דף הזנה בשדות ספיר)</option>
       </select>
-      <button type="button" id="export-arch-btn" class="copy-btn" style="background:#2c5f7c;color:#fff" title="ייצוא לפורמט ארכיוני תקני לייבוא במערכות תיאור ארכיוני">🗄 ייצוא ארכיוני</button>
+      <button type="button" id="export-arch-btn" class="copy-btn" style="background:var(--exp-arch);color:var(--on-fill)" title="ייצוא לפורמט ארכיוני תקני לייבוא במערכות תיאור ארכיוני">🗄 ייצוא ארכיוני</button>
       <button type="button" id="notebooklm-btn" class="copy-btn" title="ייצוא שמות · תאריכים · הקשר של התיק — קובץ Markdown להעלאה כמקור ב-NotebookLM">🧠 NotebookLM</button>
     </div>
     <div id="validate-box"></div>
@@ -344,12 +344,12 @@
 <script src="documents-tik.inline1.js?v=20260819b"></script>
 <script src="documents-tik.inline2.js?v=20260722e"></script>
 <script src="yv-providers.js?v=20260819"></script>
-<script src="yv-client-log.js?v=20260725"></script>
-<script src="yv-misid.js?v=20260722b"></script>
+<script src="yv-client-log.js?v=20260823a"></script>
+<script src="yv-misid.js?v=20260823a"></script>
 <script src="yv-editcapture.js?v=20260726"></script>
 <script src="documents-tik.inline3.js?v=20260722e"></script>
-<script src="yv-flow.js?v=20260721"></script>
+<script src="yv-flow.js?v=20260823a"></script>
 <script src="documents-tik.inline4.js?v=20260722e"></script>
-<script src="yv-progress.js?v=20260805a"></script>
+<script src="yv-progress.js?v=20260823a"></script>
 </body>
 </html>

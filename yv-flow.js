@@ -26,11 +26,11 @@
     s.id = 'yv-flow-style';
     s.textContent =
       '.yv-flow{display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;' +
-      'direction:rtl;text-align:right;font-size:13px;color:#33475b;margin:6px 0}' +
+      'direction:rtl;text-align:right;font-size:13px;color:var(--muted);margin:6px 0}' +
       '.yv-flow > b{font-weight:600}' +
-      '.yv-flow select{font:inherit;padding:3px 8px;border:1px solid #c3ccd6;' +
-      'border-radius:7px;background:#fff;color:#1f3a4d;cursor:pointer;unicode-bidi:isolate}' +
-      '.yv-flow-hint{color:#7a8794;font-size:12px;unicode-bidi:isolate}';
+      '.yv-flow select{font:inherit;padding:3px 8px;border:1px solid var(--line-strong);' +
+      'border-radius:7px;background:var(--tint);color:var(--ink);cursor:pointer;unicode-bidi:isolate}' +
+      '.yv-flow-hint{color:var(--muted);font-size:12px;unicode-bidi:isolate}';
     document.head.appendChild(s);
   }
 

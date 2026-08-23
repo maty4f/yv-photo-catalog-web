@@ -10,9 +10,15 @@
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-<link rel="stylesheet" href="yv-theme.css?v=20260802a">
+<link rel="stylesheet" href="yv-theme.css?v=20260823a">
 <style>
-  :root { --accent: var(--photos); --accent-2: #ffcb70; --accent-ink: #1a1206; }
+  :root {
+    --accent: var(--photos); --accent-2: var(--photos-2); --accent-ink: var(--on-photos);
+    /* The zoom overlay sits directly against a photograph the archivist is colour-judging,
+       so its chrome stays NEUTRAL grey and deliberately does not follow the amber accent. */
+    --iv-bar:rgba(20,20,20,.95); --iv-btn:#2a2a2a; --iv-btn-hover:#3a3a3a;
+    --iv-line:#444; --iv-line-soft:#333; --iv-ink:#eee; --iv-ink-2:#ddd; --iv-muted:#aaa;
+  }
   .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
 
   /* English-content fields — LTR, right-aligned to sit naturally in the RTL form */
@@ -44,15 +50,15 @@
   .photo-slot .label-tag { position: absolute; top: 8px; right: 8px; background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; z-index: 2; direction: rtl; unicode-bidi: isolate; }
   .photo-slot.has-file .delete-btn { display: block; }
   /* מגדיל תצלום: כפתור 🔍 ליד ה-✕ (מחוץ ל-label — לא פותח דיאלוג קבצים) */
-  .photo-slot .zoom-btn { position: absolute; top: 8px; left: 40px; background: color-mix(in srgb, var(--accent) 30%, black); color: #fff; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: zoom-in; font-size: 13px; line-height: 1; display: none; z-index: 2; }
+  .photo-slot .zoom-btn { position: absolute; top: 8px; left: 40px; background: color-mix(in srgb, var(--accent) 30%, black); color: var(--on-fill); border: none; width: 26px; height: 26px; border-radius: 50%; cursor: zoom-in; font-size: 13px; line-height: 1; display: none; z-index: 2; }
   .photo-slot.has-file .zoom-btn { display: block; }
-  .photo-slot .zoom-btn:hover { background: var(--accent); color: #1a1206; }
+  .photo-slot .zoom-btn:hover { background: var(--accent); color: var(--accent-ink); }
   /* שכבת המגדיל — זום/פאן/סיבוב/בהירות/ניגודיות (וורסו דהוי) */
   #img-viewer { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,.93); display: flex; flex-direction: column; }
-  #img-viewer .iv-bar { direction: rtl; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 14px; background: rgba(20,20,20,.95); border-bottom: 1px solid #333; color: #ddd; font-size: 13px; }
-  #img-viewer .iv-bar button { background: #2a2a2a; color: #eee; border: 1px solid #444; border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
-  #img-viewer .iv-bar button:hover { background: #3a3a3a; }
-  #img-viewer .iv-bar label { display: flex; gap: 5px; align-items: center; color: #aaa; font-size: 12px; }
+  #img-viewer .iv-bar { direction: rtl; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 14px; background: var(--iv-bar); border-bottom: 1px solid var(--iv-line-soft); color: var(--iv-ink-2); font-size: 13px; }
+  #img-viewer .iv-bar button { background: var(--iv-btn); color: var(--iv-ink); border: 1px solid var(--iv-line); border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+  #img-viewer .iv-bar button:hover { background: var(--iv-btn-hover); }
+  #img-viewer .iv-bar label { display: flex; gap: 5px; align-items: center; color: var(--iv-muted); font-size: 12px; }
   #img-viewer .iv-bar input[type=range] { width: 90px; }
   #img-viewer .iv-stage { flex: 1; overflow: hidden; cursor: grab; touch-action: none; position: relative; }
   #img-viewer .iv-stage.dragging { cursor: grabbing; }
@@ -185,8 +191,8 @@
         <div style="margin-top:6px; padding:6px 10px; background:var(--tint); border:1px solid var(--line); border-radius:6px; font-size:12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span style="color:var(--muted); font-weight:600;">📋 שרת פעיל:</span>
           <code id="active-tunnel-url" style="flex:1; min-width:0; direction:ltr; unicode-bidi:isolate; background:var(--card-hover); color:var(--ink); padding:3px 8px; border-radius:4px; font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">https://bryant-widespread-building-fingers.trycloudflare.com</code>
-          <button type="button" id="copy-tunnel-btn" style="padding:3px 10px; font-size:11px; background:var(--accent); color:#1a1206; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">📋 העתק</button>
-          <button type="button" id="fill-tunnel-btn" style="padding:3px 10px; font-size:11px; background:var(--accent-2); color:#1a1206; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">⬇ הזן</button>
+          <button type="button" id="copy-tunnel-btn" style="padding:3px 10px; font-size:11px; background:var(--accent); color:var(--accent-ink); border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">📋 העתק</button>
+          <button type="button" id="fill-tunnel-btn" style="padding:3px 10px; font-size:11px; background:var(--accent-2); color:var(--accent-ink); border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">⬇ הזן</button>
         </div>
         <div style="margin-top:4px; font-size:11px; color:var(--muted);">⚠ URL זמני — משתנה בכל הפעלה מחדש של ה-tunnel. למשהו קבוע: <code>local-server/SETUP_CLOUDFLARE.md</code></div>
       </div>
@@ -229,10 +235,10 @@
       .ms-chain{display:flex; align-items:center; gap:2px; flex-wrap:wrap}
       .ms-node{display:flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--muted); font-size:12px; position:relative; unicode-bidi:isolate; margin-top:9px}
       .ms-node.active{border-color:var(--accent); color:var(--ink); box-shadow:0 0 0 1px var(--accent); font-weight:700}
-      .ms-node.active::after{content:'▶ פעיל'; position:absolute; top:-9px; inset-inline-start:6px; background:var(--accent); color:#1a1206; font-size:9px; font-weight:800; padding:0 5px; border-radius:5px; white-space:nowrap}
+      .ms-node.active::after{content:'▶ פעיל'; position:absolute; top:-9px; inset-inline-start:6px; background:var(--accent); color:var(--accent-ink); font-size:9px; font-weight:800; padding:0 5px; border-radius:5px; white-space:nowrap}
       .ms-arr{color:var(--muted); font-size:14px; padding:0 3px}
-      .ms-dot{width:9px; height:9px; border-radius:50%; background:#556; flex:none}
-      .ms-dot.up{background:#34d399} .ms-dot.limited{background:#fbbf24} .ms-dot.down{background:#f87171} .ms-dot.standby{background:#556}
+      .ms-dot{width:9px; height:9px; border-radius:50%; background:var(--dot-idle); flex:none}
+      .ms-dot.up{background:var(--good)} .ms-dot.limited{background:var(--warn)} .ms-dot.down{background:var(--error)} .ms-dot.standby{background:var(--dot-idle)}
       .ms-legend{display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; padding-top:9px; border-top:1px solid var(--line); font-size:11px; color:var(--muted); align-items:center}
       .ms-legend .ms-dot{display:inline-block; vertical-align:middle; margin-inline-end:4px}
       .ms-active-key{color:var(--accent); font-weight:700}
@@ -791,13 +797,13 @@
 <script src="yv-providers.js?v=20260819"></script>
 <script src="photos.inline3.js?v=20260819a"></script>
 <script src="photos.inline4.js?v=20260722e"></script>
-<script src="yv-client-log.js?v=20260725"></script>
+<script src="yv-client-log.js?v=20260823a"></script>
 <script src="yv-chunk.js?v=20260722d"></script>
-<script src="yv-misid.js?v=20260722b"></script>
+<script src="yv-misid.js?v=20260823a"></script>
 <script src="yv-editcapture.js?v=20260726"></script>
 <script src="photos.inline5.js?v=20260722e"></script>
-<script src="yv-flow.js?v=20260721"></script>
+<script src="yv-flow.js?v=20260823a"></script>
 <script src="photos.inline6.js?v=20260722e"></script>
-<script src="yv-progress.js?v=20260805a"></script>
+<script src="yv-progress.js?v=20260823a"></script>
 </body>
 </html>

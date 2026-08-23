@@ -3,10 +3,14 @@
    --accent / --accent-2 to its material color (photos=amber, films=blue,
    docs=green, tik=violet) and may add page-specific rules below this file. */
 
-@font-face { font-family:'Heebo'; font-style:normal; font-weight:400; font-display:swap; src:url('vendor/fonts/heebo-400-hebrew.woff2') format('woff2'); unicode-range:U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F; }
-@font-face { font-family:'Heebo'; font-style:normal; font-weight:400; font-display:swap; src:url('vendor/fonts/heebo-400-latin.woff2') format('woff2'); unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
-@font-face { font-family:'Heebo'; font-style:normal; font-weight:700; font-display:swap; src:url('vendor/fonts/heebo-700-hebrew.woff2') format('woff2'); unicode-range:U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F; }
-@font-face { font-family:'Heebo'; font-style:normal; font-weight:700; font-display:swap; src:url('vendor/fonts/heebo-700-latin.woff2') format('woff2'); unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+/* Heebo is a VARIABLE font (wght axis 100-900) — the 400 and 700 files Google serves
+   are the same file byte-for-byte. Declaring a single font-weight per face made the
+   face cover only that one weight, so every `font-weight:600` and `:800` in the app
+   fell back to the 700 face and rendered at 700. One face per subset carrying the
+   whole range lets the browser instance the real weight. The `-400-` in the filename
+   is historical; it is the full variable font. */
+@font-face { font-family:'Heebo'; font-style:normal; font-weight:100 900; font-display:swap; src:url('vendor/fonts/heebo-400-hebrew.woff2') format('woff2'); unicode-range:U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F; }
+@font-face { font-family:'Heebo'; font-style:normal; font-weight:100 900; font-display:swap; src:url('vendor/fonts/heebo-400-latin.woff2') format('woff2'); unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 
 :root {
   --bg:#0a0d13; --card:#141925; --card-hover:#1b2130; --ink:#eef1f7; --muted:#8993a8;
@@ -17,6 +21,24 @@
   --accent:var(--brand); --accent-2:var(--brand-2);
   --tint:#171c28; --drop:#171208; --drop-active:#211a0d;
   --he-tint:#191510; --en-tint:#0f151f;
+
+  /* ink ON a saturated fill — the near-black counterpart of an accent. A page sets
+     --accent-ink to its own material ink; shared components just use var(--accent-ink),
+     so a copy button on the photos screen reads amber-black and on films blue-black. */
+  --accent-ink:#0c0a06;
+  --on-brand:#04222a; --on-photos:#1a1206; --on-films:#04121f;
+  --on-docs:#04160c;  --on-tik:#150a22;
+  --on-good:#06210f;  --on-warn:#20180a; --on-error:#2b0705; --on-fill:#fff;
+  /* the lighter partner of each accent — a page's --accent-2, and hover fills */
+  --brand-hover:#5fe3f5; --error-hover:#ff8a8a;
+  --photos-2:#ffcb70; --films-2:#7cb0ff; --docs-2:#5ee0a3; --tik-2:#c9a6ff;
+  /* disabled control */
+  --disabled:#3a4152; --disabled-ink:#7d8598;
+  /* export buttons — these carry FORMAT identity (Excel green, PDF red), deliberately
+     not the material accent, so they stay recognisable on every screen. */
+  --exp-sheet:#6a3fb5; --exp-xlsx:#1a7f4b; --exp-pdf:#b2432e; --exp-arch:#2c5f7c;
+  /* mesh status dot, idle/standby */
+  --dot-idle:#556;
   --radius:14px; --radius-sm:8px;
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px;
 }
@@ -35,19 +57,19 @@ html, body {
 
 /* ---------- buttons / inputs ---------- */
 button {
-  background:var(--accent); color:#0c0a06; border:none; padding:10px 20px;
+  background:var(--accent); color:var(--accent-ink); border:none; padding:10px 20px;
   border-radius:var(--radius-sm); font-family:inherit; font-size:14.5px; font-weight:700;
   cursor:pointer; transition:background .15s, box-shadow .15s; box-shadow:0 0 0 rgba(0,0,0,0);
 }
 button:hover:not(:disabled) { background:var(--accent-2); box-shadow:0 0 16px color-mix(in srgb, var(--accent) 45%, transparent); }
-button:disabled { background:#3a4152; color:#7d8598; cursor:not-allowed; opacity:.7; }
+button:disabled { background:var(--disabled); color:var(--disabled-ink); cursor:not-allowed; opacity:.7; }
 button.big { padding:14px 28px; font-size:16px; }
-button.primary { background:var(--brand); color:#04222a; }
-button.primary:hover:not(:disabled) { background:#5fe3f5; }
+button.primary { background:var(--brand); color:var(--on-brand); }
+button.primary:hover:not(:disabled) { background:var(--brand-hover); }
 button.secondary { background:var(--card-hover); color:var(--ink); border:1px solid var(--line-strong); }
-button.secondary:hover:not(:disabled) { background:#232a3a; }
-button.danger { background:var(--error); color:#2b0705; }
-button.danger:hover:not(:disabled) { background:#ff8a8a; }
+button.secondary:hover:not(:disabled) { background:var(--line); }
+button.danger { background:var(--error); color:var(--on-error); }
+button.danger:hover:not(:disabled) { background:var(--error-hover); }
 button.ghost { background:transparent; color:var(--accent); padding:8px 14px; border:1px dashed var(--accent); }
 button.ghost:hover { background:color-mix(in srgb, var(--accent) 10%, transparent); }
 button.gear { background:transparent; color:var(--muted); padding:6px 10px; border:1px solid var(--line); border-radius:var(--radius-sm); font-size:13px; }
@@ -111,7 +133,7 @@ textarea:focus, input:focus, select:focus { outline:none; border-color:var(--acc
 .mini-status .dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-inline-end:5px; background:currentColor; vertical-align:middle; box-shadow:0 0 6px currentColor; }
 .mini-status .meta { display:inline-block; background:var(--tint); border:1px solid var(--line); border-radius:var(--radius-sm); padding:1px 7px; font-size:11px; color:var(--muted); margin-inline-start:6px; font-family:ui-monospace,"SF Mono",Menlo,monospace; direction:ltr; unicode-bidi:isolate; }
 
-.spinner { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.25); border-top-color:#0c0a06; border-radius:50%; animation:yv-spin .7s linear infinite; vertical-align:middle; margin-inline-end:6px; }
+.spinner { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.25); border-top-color:var(--accent-ink); border-radius:50%; animation:yv-spin .7s linear infinite; vertical-align:middle; margin-inline-end:6px; }
 @keyframes yv-spin { to { transform:rotate(360deg); } }
 
 .c-high { color:var(--good); font-weight:700; text-shadow:0 0 8px color-mix(in srgb, var(--good) 55%, transparent); }
@@ -141,15 +163,15 @@ textarea:focus, input:focus, select:focus { outline:none; border-color:var(--acc
 .field > .head .label { font-weight:700; color:var(--ink); font-size:14px; margin:0; }
 .field > .head .label small { color:var(--muted); font-weight:400; margin-inline-start:8px; font-size:12px; }
 
-.copy-btn { background:var(--accent); color:#0c0a06; border:none; border-radius:var(--radius-sm); padding:5px 12px; font-size:12px; cursor:pointer; font-family:inherit; font-weight:700; box-shadow:0 0 10px color-mix(in srgb, var(--accent) 35%, transparent); }
+.copy-btn { background:var(--accent); color:var(--accent-ink); border:none; border-radius:var(--radius-sm); padding:5px 12px; font-size:12px; cursor:pointer; font-family:inherit; font-weight:700; box-shadow:0 0 10px color-mix(in srgb, var(--accent) 35%, transparent); }
 .copy-btn:hover { background:var(--accent-2); }
-.copy-btn.copied { background:var(--good) !important; color:#06210f !important; box-shadow:none !important; }
+.copy-btn.copied { background:var(--good) !important; color:var(--on-good) !important; box-shadow:none !important; }
 .copy-btn.alt { background:transparent; color:var(--brand); border:1px solid color-mix(in srgb, var(--brand) 45%, transparent); box-shadow:none; }
 .copy-btn.alt:hover { background:color-mix(in srgb, var(--brand) 10%, transparent); }
 
 .copy-corner { position:absolute; top:5px; left:5px; background:var(--card); border:1px solid var(--line); color:var(--muted); border-radius:var(--radius-sm); padding:2px 7px; font-size:11px; cursor:pointer; z-index:3; font-family:inherit; font-weight:600; opacity:.85; transition:all .15s; line-height:1.3; min-width:30px; text-align:center; }
-.copy-corner:hover { opacity:1; background:var(--accent); color:#0c0a06; border-color:var(--accent); }
-.copy-corner.copied { background:var(--good) !important; color:#06210f !important; border-color:var(--good) !important; opacity:1 !important; }
+.copy-corner:hover { opacity:1; background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.copy-corner.copied { background:var(--good) !important; color:var(--on-good) !important; border-color:var(--good) !important; opacity:1 !important; }
 .input-wrap { position:relative; display:block; }
 .input-wrap input, .input-wrap textarea { padding-left:50px !important; padding-right:12px !important; }
 
@@ -183,7 +205,7 @@ textarea:focus, input:focus, select:focus { outline:none; border-color:var(--acc
   white-space:nowrap; transition:background .12s, color .12s, border-color .12s, box-shadow .12s;
 }
 .jumpnav a:hover { color:var(--ink); border-color:var(--accent); }
-.jumpnav a.active { background:var(--accent); border-color:var(--accent); color:#0c0a06; font-weight:700; box-shadow:0 0 14px color-mix(in srgb, var(--accent) 45%, transparent); }
+.jumpnav a.active { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; box-shadow:0 0 14px color-mix(in srgb, var(--accent) 45%, transparent); }
 
 /* ---------- gateway material cards (index.html) ----------
    Scoped to .cards so the generic .card panel on tik/status/names/onboarding
