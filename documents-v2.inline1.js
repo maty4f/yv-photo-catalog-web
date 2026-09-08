@@ -972,7 +972,7 @@ function renderValidateBox() {
   }
   if (v.fails && v.fails.length) {
     box.innerHTML = `<div class="vbox fail"><b>✗ הרשומה נכשלה בוולידציה (${v.fails.length})</b>` +
-      (v.enforce === false ? ` <small>— אכיפה כבויה (YV_VALIDATE_ENFORCE=0): ההעתקה וההורדה פתוחות</small>` : ` <small>— ההעתקה וההורדה חסומות עד לתיקון</small>`) +
+      (v.enforce === false ? ` <small>— אכיפה כבויה (MF_VALIDATE_ENFORCE=0): ההעתקה וההורדה פתוחות</small>` : ` <small>— ההעתקה וההורדה חסומות עד לתיקון</small>`) +
       `<ul>` + v.fails.map(f => `<li>${esc(f)}</li>`).join('') + `</ul>` +
       ((v.warns || []).length ? `<div class="vwarns">אזהרות: ${v.warns.map(esc).join(' · ')}</div>` : '') + `</div>`;
     return;
@@ -1014,7 +1014,7 @@ function validateBlockReason() {
   if (!v) return '';                                 // אין רשומה / לא נבדקה — אין מה לחסום
   if (v.pending) return 'הוולידציה עדיין רצה — המתן רגע ונסה שוב.';
   if (!v.available) return '';                        // fail-open: הוולידטור אינו זמין
-  if (v.enforce === false) return '';                  // YV_VALIDATE_ENFORCE=0 — אכיפה כבויה
+  if (v.enforce === false) return '';                  // MF_VALIDATE_ENFORCE=0 — אכיפה כבויה
   if (v.fails && v.fails.length)
     return 'הרשומה נכשלה בוולידציה הקנונית ולכן ההעתקה/ההורדה חסומים:\n\n• ' + v.fails.join('\n• ');
   return '';

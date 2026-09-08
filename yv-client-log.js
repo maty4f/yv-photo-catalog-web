@@ -128,7 +128,7 @@
   // Sends the message + a frames-only stack head: V8's first stack line repeats
   // the message, and parse errors carry the raw model output on err.rawText —
   // neither is forwarded, so transcription content (PII) never enters the
-  // client stream regardless of YV_LOG_REDACT_PII. Batched like every event.
+  // client stream regardless of MF_LOG_REDACT_PII. Batched like every event.
   window.yvLogError = function (err, ctx) {
     try {
       var frames = String((err && err.stack) || '').split('\n').filter(function (l) {

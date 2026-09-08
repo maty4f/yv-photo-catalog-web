@@ -594,7 +594,7 @@ function renderValidateBox(){
   }
   if(v.fails&&v.fails.length){
     box.innerHTML=`<div class="vbox fail"><b>✗ הרשומה נכשלה בוולידציה (${v.fails.length})</b>`+
-      (v.enforce===false?` <small>— אכיפה כבויה (YV_VALIDATE_ENFORCE=0): ההעתקה והייצוא פתוחים</small>`:` <small>— ההעתקה והייצוא חסומים עד לתיקון</small>`)+
+      (v.enforce===false?` <small>— אכיפה כבויה (MF_VALIDATE_ENFORCE=0): ההעתקה והייצוא פתוחים</small>`:` <small>— ההעתקה והייצוא חסומים עד לתיקון</small>`)+
       `<ul>`+v.fails.map(f=>`<li>${esc(f)}</li>`).join('')+`</ul>`+
       ((v.warns||[]).length?`<div class="vwarns">אזהרות: ${v.warns.map(esc).join(' · ')}</div>`:'')+`</div>`;
     return;
@@ -635,7 +635,7 @@ function validateBlockReason(){
   if(!v)return '';                                 // אין רשומה / לא נבדקה — אין מה לחסום
   if(v.pending)return 'הוולידציה עדיין רצה — המתן רגע ונסה שוב.';
   if(!v.available)return '';                       // fail-open: הוולידטור אינו זמין
-  if(v.enforce===false)return '';                  // YV_VALIDATE_ENFORCE=0 — אכיפה כבויה
+  if(v.enforce===false)return '';                  // MF_VALIDATE_ENFORCE=0 — אכיפה כבויה
   if(v.fails&&v.fails.length)
     return 'הרשומה נכשלה בוולידציה הקנונית ולכן ההעתקה/הייצוא חסומים:\n\n• '+v.fails.join('\n• ');
   return '';
@@ -1993,7 +1993,7 @@ async function catalogTik(){
     // When the server manages the Gemini key (owner), the proxy injects it and
     // overrides x-goog-api-key — the browser never needs a key. Use the sentinel
     // instead of the (intentionally hidden, empty) input so the gate never blocks.
-    state.keyGemini=window.YV_GEMINI_MANAGED?'server-managed':$('key-gemini').value.trim();
+    state.keyGemini=window.MF_GEMINI_MANAGED?'server-managed':$('key-gemini').value.trim();
     if(!state.keyGemini){showStatus('מצב דו-מנועי דורש מפתח Gemini (הקריאה הויזואלית של הדפים).','err');return false;}
   }
   const reader=engine==='dual'?'Gemini':'Claude';
@@ -2151,8 +2151,8 @@ async function fastDescribe(){
     // shared non-file fields — the finalize of a chunked upload sends them without the blob.
     // context is written server-side as the standard <pdf>.context.txt sidecar.
     const fields={prompt,context:[$('context').value.trim(),(state.intakeText||'').trim()].filter(Boolean).join('\n\n')};
-    fields.tik_source=tikSource();   // מוסדי/פרטי — עובר למנוע (YV_TIK_SOURCE)
-    fields.tik_kind=tikSource()==='institutional'?tikKind():'';   // סוג-החומר המוסדי (YV_TIK_KIND)
+    fields.tik_source=tikSource();   // מוסדי/פרטי — עובר למנוע (MF_TIK_SOURCE)
+    fields.tik_kind=tikSource()==='institutional'?tikKind():'';   // סוג-החומר המוסדי (MF_TIK_KIND)
     if(window.yvFlow)fields.reader=yvFlow.current('documents-tik');   // אוטומטי / Claude / Gemini
     if(window.yvFlow&&yvFlow.backend)fields.backend=yvFlow.backend('documents-tik');   // Claude: מנוי / API
     const t=Date.now();
@@ -2306,7 +2306,7 @@ $('describe-fast').addEventListener('click',()=>{
 /* ---------- engine-mode toggle: reveal Gemini fields only in dual mode ---------- */
 function syncEngineUI(){
   const dual=$('engine-mode').value==='dual';
-  const managed=!!window.YV_GEMINI_MANAGED;
+  const managed=!!window.MF_GEMINI_MANAGED;
   // In dual mode show the key field ONLY when the server does not manage the key.
   $('gemini-key-wrap').style.display=(dual&&!managed)?'block':'none';
   const gm=$('gemini-managed-note');if(gm)gm.style.display=(dual&&managed)?'block':'none';

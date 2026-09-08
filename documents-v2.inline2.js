@@ -1,4 +1,4 @@
-/* White-label: one server env (YV_ARCHIVE_NAME) sets the archive name shown here. Empty = generic. */
+/* White-label: one server env (MF_ARCHIVE_NAME) sets the archive name shown here. Empty = generic. */
 (function () {
   function apply(name) {
     if (!name) return;
@@ -16,7 +16,7 @@
     // the flag, so the owner saw an empty/stale personal-key field — exactly
     // the regression the managed-key feature exists to prevent.
     if (c && c.geminiKeyManaged) {
-      window.YV_GEMINI_MANAGED = true;
+      window.MF_GEMINI_MANAGED = true;
       try { localStorage.removeItem('yv_api_key_gemini'); } catch (e) {}
       try { localStorage.removeItem('yv_v2_api_key'); } catch (e) {}   // P0-1: legacy per-screen key
       try { if (typeof state === 'object' && state && 'apiKey' in state) state.apiKey = 'server-managed'; } catch (e) {}

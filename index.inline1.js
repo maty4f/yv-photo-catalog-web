@@ -1,4 +1,4 @@
-/* White-label: one server env (YV_ARCHIVE_NAME) sets the archive name shown here. Empty = generic. */
+/* White-label: one server env (MF_ARCHIVE_NAME) sets the archive name shown here. Empty = generic. */
 (function () {
   function apply(name) {
     if (!name) return;

@@ -1410,7 +1410,7 @@ function syncProviderRows() {
   });
   // Managed Gemini key: a provider toggle must not resurrect the hidden key
   // row (system review 2026-07-21 #14 — reproducible clobber).
-  if (window.YV_GEMINI_MANAGED) {
+  if (window.MF_GEMINI_MANAGED) {
     const _gk = document.getElementById('api-key-gemini') || document.getElementById('key-gemini');
     const _row = _gk && _gk.closest('.provider-row');
     if (_row) _row.style.display = 'none';
@@ -2693,7 +2693,7 @@ function buildFinalHTML() {
   const infoHE = composeInfoBody(get('r-visual-he'), get('r-context-he'), get('r-persons-he'), get('r-objects-he'), get('r-inscriptions-he'), get('r-studio-he'), get('r-bio-he'), get('r-notes-he'), 'he');
   const infoEN = composeInfoBody(get('r-visual-en'), get('r-context-en'), get('r-persons-en'), get('r-objects-en'), get('r-inscriptions-en'), get('r-studio-en'), get('r-bio-en'), get('r-notes-en'), 'en');
 
-  return YV_TEMPLATE
+  return MF_TEMPLATE
     .replace(/\{\{TITLE_HE\}\}/g, esc(get('r-title-he')))
     .replace(/\{\{TITLE_EN\}\}/g, esc(get('r-title-en')))
     .replace(/\{\{PLACES_EN\}\}/g, esc(get('r-places')))
@@ -3074,7 +3074,7 @@ previewBtn.addEventListener('click', () => {
 // =====================================================================
 //  TEMPLATE — embedded photo_yv structure
 // =====================================================================
-const YV_TEMPLATE = `<!DOCTYPE html>
+const MF_TEMPLATE = `<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head><meta charset="UTF-8"><title>{{TITLE_HE}}</title>
 <style>

@@ -1,4 +1,4 @@
-/* White-label: one server env (YV_ARCHIVE_NAME) sets the archive name shown here. Empty = generic. */
+/* White-label: one server env (MF_ARCHIVE_NAME) sets the archive name shown here. Empty = generic. */
 (function () {
   function apply(name) {
     if (!name) return;
@@ -18,7 +18,7 @@
     // the server overrides x-goog-api-key, so this value never reaches Google
     // and nothing is persisted client-side. No-op if the server has no key.
     if (c && c.geminiKeyManaged) {
-      window.YV_GEMINI_MANAGED = true;   // owner: proxy injects the key — never prompt for one
+      window.MF_GEMINI_MANAGED = true;   // owner: proxy injects the key — never prompt for one
       try { localStorage.removeItem('yv_api_key_gemini'); } catch (e) {}
       try {
         if (typeof state === 'object' && state) {

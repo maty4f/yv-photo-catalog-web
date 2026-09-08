@@ -85,7 +85,7 @@ function syncProviderRows() {
   });
   // Managed Gemini key: a provider toggle must not resurrect the hidden key
   // row (system review 2026-07-21 #14 — reproducible clobber).
-  if (window.YV_GEMINI_MANAGED) {
+  if (window.MF_GEMINI_MANAGED) {
     const _gk = document.getElementById('api-key-gemini') || document.getElementById('key-gemini');
     const _row = _gk && _gk.closest('.provider-row');
     if (_row) _row.style.display = 'none';
