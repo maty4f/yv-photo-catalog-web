@@ -249,7 +249,7 @@
       // upload/enqueue time when the caller passes cfg.t0, so the displayed clock
       // counts the true upload→done span (matching the queue-card timer) instead of
       // the moment this widget happened to start tracking the job.
-      A = { el: el, kind: cfg.kind, est: cfg.estSec || EST[cfg.kind] || 120, jobId: cfg.jobId || null,
+      A = { el: el, kind: cfg.kind, est: cfg.estSec || EST[cfg.kind] || 120, jobId: cfg.jobId || null, base: cfg.base || '', noArc: !!cfg.noArc, lastJobId: null,
             t0: now(), clockT0: (typeof cfg.t0 === 'number' && cfg.t0 <= now()) ? cfg.t0 : now(),
             now: now, pct: 0, floor: 0, state: 'run', stageHe: '', frozen: null, timer: null,
             trailCount: 0, winDone: 0, winTotal: 0, pageA: 0, pageB: 0, pageTotal: 0, model: '', lastLi: null };
@@ -266,6 +266,7 @@
       // photos were still being cataloged. A card claimed by a jobId accepts only
       // that job; cards begun without one (single-job screens) behave as before.
       if (A.jobId && job.id && job.id !== A.jobId) return;
+      if (job.id) A.lastJobId = job.id;      // for the "open in the archive" link on done
       // Server-computed HONEST percent (e.g. tik window pages / total pages) beats
       // any milestone guess — adopt it as the floor, and project a real ETA from it
       // (elapsed / pct) instead of the static per-kind estimate.
@@ -317,6 +318,23 @@
                          (ok ? '✓ הקטלוג הושלם' : '✗ ' + esc(String(msg || 'שגיאה').slice(0, 140))) + '</span>';
           ol.appendChild(li);
           ol.scrollTop = ol.scrollHeight;
+          // catalog → archive repository: when the server keeps the archive DB
+          // (arc/), the finished job is ingested there and archive.html#job=<id>
+          // opens the record card. Same-origin by default; cfg.base overrides.
+          var jid = ok && (A.jobId || A.lastJobId);
+          if (jid && !A.noArc && typeof fetch === 'function') {
+            var base = A.base || '';
+            fetch(base + '/api/arc/status').then(function (r) { return r.ok ? r.json() : null; }).then(function (st) {
+              if (!st || !st.enabled || !li.parentNode) return;
+              var a = document.createElement('a');
+              a.href = base + '/archive.html#job=' + encodeURIComponent(jid);
+              a.target = '_blank'; a.rel = 'noopener';
+              a.className = 'arc';
+              a.style.cssText = 'margin-inline-start:8px;color:var(--brand);font-weight:700;text-decoration:underline';
+              a.textContent = '🗂 פתח את הרשומה במאגר הארכיון';
+              li.querySelector('.m').appendChild(a);
+            }).catch(function () { /* no archive layer — link stays absent */ });
+          }
         }
       }
       render();

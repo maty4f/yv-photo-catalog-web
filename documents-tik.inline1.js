@@ -2240,7 +2240,7 @@ async function pollTikJob(jobId,t){
       const j=await pr.json();
       const evs=Array.isArray(j.events)?j.events:[];
       if(evs.length>lastEvCount){lastEvCount=evs.length;started=Date.now();}   // progress → slide the deadline
-      if(window.yvProgress)yvProgress.pump({status:j.status==='done'?'done':(j.status==='error'?'error':'running'),events:evs,progressPct:j.progressPct});
+      if(window.yvProgress)yvProgress.pump({id:j.id||j.jobId||null,status:j.status==='done'?'done':(j.status==='error'?'error':'running'),events:evs,progressPct:j.progressPct});
       // Live line: what the engine checks RIGHT NOW + which model + real elapsed.
       const lastEv=evs.length?String(evs[evs.length-1].text||'').trim():'';
       const mdl=j.progressModel?` · מודל: ${esc(j.progressModel)}`:'';

@@ -37,6 +37,14 @@
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showKey);
       else showKey();
     }).catch(function () {});
+    // Archive-management screen (archive.html): shown only when the server
+    // runs on Postgres — on the file backend the tree/record API answers 503.
+    fetch(base + '/api/arc/status').then(function (r) { return r.ok ? r.json() : null; }).then(function (st) {
+      if (!st || !st.enabled) return;
+      var showArc = function () { var lk = document.getElementById('nav-archive'); if (lk) lk.style.display = 'inline-block'; };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showArc);
+      else showArc();
+    }).catch(function () {});
     fetch(base + '/api/admin/users').then(function (r) {
       if (!r.ok) return;
       var showAdmin = function () { ['nav-logs', 'nav-trends', 'nav-users', 'nav-edits', 'nav-fixes'].forEach(function (id) { var lk = document.getElementById(id); if (lk) lk.style.display = 'inline-block'; }); };

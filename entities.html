@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ישויות וקישורים — ניהול הארכיון</title>
+<link rel="stylesheet" href="yv-theme.css?v=20260823a">
+<style>
+  /* entities.html — the identity screen: who/where appears across ALL the
+     materials. Left list · right detail (RTL: list on the right). The machine
+     proposes (candidates, merge pairs); a person decides. Same tokens as
+     archive.html. */
+  :root { --accent:var(--brand); --accent-2:var(--brand-hover); --accent-ink:var(--on-brand); --list-w:420px; }
+  body { padding:0; direction:rtl; text-align:right; }
+  .topbar { display:flex; align-items:center; gap:14px; padding:12px 20px; border-bottom:1px solid var(--line);
+            background:color-mix(in srgb, var(--card) 70%, var(--bg)); position:sticky; top:0; z-index:20; direction:rtl; flex-wrap:wrap; }
+  .topbar h1 { font-size:18px; margin:0; font-weight:800; white-space:nowrap; }
+  .topbar .grow { flex:1; }
+  .stats { display:flex; gap:8px; flex-wrap:wrap; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); padding:5px 12px; font-size:12px; color:var(--muted); white-space:nowrap; }
+  .stat b { color:var(--ink); font-size:14px; margin-inline-end:4px; font-variant-numeric:tabular-nums; unicode-bidi:isolate; }
+  .stat.warn b { color:var(--warn); } .stat.good b { color:var(--good); } .stat.link b { color:var(--brand); }
+
+  .tabs { display:flex; gap:6px; padding:10px 20px 0; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--card) 45%, var(--bg)); }
+  .tab { background:transparent; color:var(--muted); border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0; padding:8px 16px; font-size:13.5px; font-weight:600; box-shadow:none; }
+  .tab:hover { background:var(--card-hover); box-shadow:none; color:var(--ink); }
+  .tab.active { background:var(--card); color:var(--accent); border-color:var(--line); }
+  .tab .n { font-size:11px; color:var(--muted); margin-inline-start:6px; font-variant-numeric:tabular-nums; }
+
+  .layout { display:grid; grid-template-columns:var(--list-w) minmax(0,1fr); direction:rtl; min-height:calc(100vh - 110px); }
+  .listpane { border-inline-start:1px solid var(--line); background:color-mix(in srgb, var(--card) 45%, var(--bg)); display:flex; flex-direction:column; position:sticky; top:104px; height:calc(100vh - 104px); }
+  .filters { padding:10px 12px; border-bottom:1px solid var(--line); display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .filters input[type=text] { flex:1; min-width:160px; font-size:13.5px; padding:7px 10px; }
+  .filters select { width:auto; font-size:12px; padding:5px 8px; }
+  .filters button { padding:5px 10px; font-size:12px; }
+  .listbody { flex:1; overflow:auto; }
+  .row { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent); cursor:pointer; font-size:13.5px; }
+  .row:hover { background:var(--card-hover); }
+  .row.sel { background:color-mix(in srgb, var(--accent) 16%, var(--card)); }
+  .row .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; unicode-bidi:isolate; }
+  .row .nm small { color:var(--muted); font-size:11.5px; margin-inline-start:6px; direction:ltr; unicode-bidi:isolate; }
+  .row .cnt { font-size:11.5px; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .row .cnt b { color:var(--ink); }
+  .tag { font-size:10px; padding:0 6px; border-radius:4px; border:1px solid var(--line-strong); color:var(--muted); white-space:nowrap; }
+  .tag.cand { color:var(--tik); border-color:color-mix(in srgb, var(--tik) 50%, transparent); }
+  .tag.appr { color:var(--good); border-color:color-mix(in srgb, var(--good) 50%, transparent); }
+  .tag.rej { color:var(--error); border-color:color-mix(in srgb, var(--error) 50%, transparent); }
+  .tag.sus { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 50%, transparent); }
+  .tag.match { color:var(--brand); border-color:color-mix(in srgb, var(--brand) 50%, transparent); }
+  .kd { width:7px; height:7px; border-radius:50%; display:inline-block; margin-inline-start:2px; background:var(--muted); }
+  .kd.photo { background:var(--photos); } .kd.film { background:var(--films); } .kd.doc { background:var(--docs); } .kd.tik { background:var(--tik); }
+  .listfoot { padding:8px 12px; font-size:12px; color:var(--muted); border-top:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .listfoot button { padding:4px 10px; font-size:12px; }
+  .empty { color:var(--muted); font-size:14px; padding:60px 20px; text-align:center; border:1px dashed var(--line); border-radius:var(--radius); }
+
+  /* match rows */
+  .mrow { padding:10px 12px; border-bottom:1px solid var(--line); font-size:13px; }
+  .mrow .pair { display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:center; }
+  .mrow .side { unicode-bidi:isolate; min-width:0; }
+  .mrow .side b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mrow .side small { color:var(--muted); font-size:11px; display:block; direction:ltr; text-align:right; unicode-bidi:isolate; }
+  .mrow .eq { color:var(--muted); font-size:16px; }
+  .mrow .why { color:var(--muted); font-size:11.5px; margin-top:4px; direction:ltr; text-align:right; unicode-bidi:isolate; }
+  .mrow .acts { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .mrow .acts button { padding:5px 10px; font-size:12px; }
+  .score { font-size:11px; padding:1px 7px; border-radius:999px; background:var(--tint); border:1px solid var(--line); color:var(--muted); font-variant-numeric:tabular-nums; direction:ltr; }
+
+  /* detail */
+  .detail { padding:18px 22px 60px; }
+  .detail h2 { margin:0; font-size:22px; font-weight:800; unicode-bidi:isolate; }
+  .detail .en { font-family:Georgia,'Times New Roman',serif; color:var(--muted); font-size:15px; direction:ltr; text-align:left; unicode-bidi:isolate; }
+  .badges { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 14px; align-items:center; }
+  .badge { font-size:11.5px; padding:2px 9px; border-radius:999px; border:1px solid var(--line-strong); background:var(--card); color:var(--muted); unicode-bidi:isolate; }
+  .badge.cand { color:var(--tik); border-color:color-mix(in srgb, var(--tik) 55%, transparent); }
+  .badge.appr { color:var(--good); border-color:color-mix(in srgb, var(--good) 55%, transparent); }
+  .badge.rej, .badge.sus { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 55%, transparent); }
+  section.area { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; margin-bottom:14px; }
+  section.area > h3 { margin:0 0 10px; font-size:13px; font-weight:700; color:var(--accent); display:flex; gap:8px; align-items:center; }
+  section.area > h3 small { color:var(--muted); font-weight:400; font-size:11px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:0; }
+  .actions button { padding:7px 14px; font-size:13px; }
+  .frow { display:grid; grid-template-columns:140px minmax(0,1fr); gap:8px 14px; align-items:start; padding:6px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+  .frow:last-child { border-bottom:none; }
+  .frow label { font-size:12.5px; color:var(--muted); padding-top:8px; }
+  .frow input, .frow textarea, .frow select { font-size:14px; }
+  .frow textarea { min-height:60px; }
+  .frow .v { padding-top:6px; font-size:14px; unicode-bidi:isolate; }
+  .changed { border-color:var(--warn) !important; }
+  .app { display:grid; grid-template-columns:auto 1fr auto auto; gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent); font-size:13.5px; }
+  .app:last-child { border-bottom:none; }
+  .app .t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; unicode-bidi:isolate; }
+  .app .t small { color:var(--muted); font-size:11px; margin-inline-start:6px; direction:ltr; unicode-bidi:isolate; }
+  .app a { color:var(--accent); text-decoration:none; font-size:12px; white-space:nowrap; }
+  .app .role { font-size:11px; color:var(--muted); }
+  .app button.x { background:transparent; color:var(--muted); border:1px solid var(--line); padding:1px 7px; font-size:12px; }
+  .app button.x:hover { color:var(--error); border-color:var(--error); box-shadow:none; background:transparent; }
+  .forms { display:flex; gap:6px; flex-wrap:wrap; }
+  .forms .chip { font-size:12px; }
+  .linkrow { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  .linkrow input { flex:1; min-width:180px; font-size:13px; padding:7px 9px; }
+  .linkrow select { width:auto; font-size:12.5px; padding:6px 8px; }
+  .linkrow button { padding:7px 12px; font-size:12.5px; }
+  #toast { position:fixed; bottom:18px; left:18px; z-index:50; background:var(--card); border:1px solid var(--line-strong); border-radius:var(--radius-sm); padding:10px 16px; font-size:13.5px; box-shadow:0 12px 30px -10px rgba(0,0,0,.7); opacity:0; transform:translateY(8px); transition:opacity .2s, transform .2s; pointer-events:none; max-width:min(520px, 90vw); }
+  #toast.show { opacity:1; transform:none; }
+  #toast.ok { border-color:var(--good); } #toast.err { border-color:var(--error); }
+
+  @media (max-width:1100px) { :root { --list-w:360px; } .frow { grid-template-columns:1fr; gap:4px; } .frow label { padding-top:0; } }
+  @media (max-width:760px) {
+    .layout { grid-template-columns:1fr; }
+    .listpane { position:static; height:auto; max-height:50vh; border-inline-start:none; border-bottom:1px solid var(--line); }
+    .mrow .pair { grid-template-columns:1fr; } .mrow .eq { display:none; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a href="archive.html" style="text-decoration:none"><button type="button" class="gear">← ניהול הארכיון</button></a>
+  <h1>ישויות וקישורים</h1>
+  <div class="grow"></div>
+  <div class="stats" id="stats"></div>
+</header>
+<nav class="tabs" id="tabs">
+  <button type="button" class="tab active" data-tab="agents">אישים וגופים<span class="n" id="n-agents"></span></button>
+  <button type="button" class="tab" data-tab="matches">התאמות לאישור<span class="n" id="n-matches"></span></button>
+  <button type="button" class="tab" data-tab="places">מקומות<span class="n" id="n-places"></span></button>
+  <button type="button" class="tab" data-tab="subjects">נושאים<span class="n" id="n-subjects"></span></button>
+</nav>
+<div class="layout">
+  <aside class="listpane">
+    <div class="filters" id="filters"></div>
+    <div class="listbody" id="list"><div class="empty" style="margin:20px">טוען…</div></div>
+    <div class="listfoot" id="listfoot"></div>
+  </aside>
+  <main class="detail" id="detail">
+    <div class="empty">בחרי ישות ברשימה.<br><small>הכרטיס מציג היכן היא מופיעה בכל החומרים, ומה המכונה מציעה למזג.</small></div>
+  </main>
+</div>
+<div id="toast"></div>
+<script src="entities.inline1.js?v=20260914a"></script>
+</body>
+</html>
