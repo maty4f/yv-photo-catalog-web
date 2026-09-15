@@ -70,11 +70,17 @@
 </div>
 
 <div class="toolbar">
-  <input type="text" id="q" placeholder="חיפוש אדם / מקום / תיק — Enter להתמקד" autocomplete="off">
+  <input type="text" id="q" placeholder="חיפוש אדם / מקום / תיק / נושא — Enter להתמקד" autocomplete="off">
+  <label title="מוקדים = אוספים, תיקים, מקומות, נושאים, שנים, ארגונים — בלי אנשים; ישויות = הכול">רמה <select id="level"><option value="hubs" selected>מוקדים</option><option value="entities">ישויות</option></select></label>
+  <label><input type="checkbox" id="t-collection" checked><span class="sw" style="background:#fff"></span>אוספים</label>
   <label><input type="checkbox" id="t-tik" checked><span class="sw" style="background:var(--c-tik)"></span>תיקים</label>
   <label><input type="checkbox" id="t-photo"><span class="sw" style="background:var(--c-photo)"></span>תצלומים</label>
   <label><input type="checkbox" id="t-person" checked><span class="sw" style="background:var(--c-person)"></span>אנשים</label>
   <label><input type="checkbox" id="t-place" checked><span class="sw" style="background:var(--c-place)"></span>מקומות</label>
+  <label><input type="checkbox" id="t-subject" checked><span class="sw" style="background:#4c90ff"></span>נושאים</label>
+  <label><input type="checkbox" id="t-year" checked><span class="sw" style="background:#8993a8"></span>שנים</label>
+  <label><input type="checkbox" id="t-org" checked><span class="sw" style="background:#ff6b6b"></span>ארגונים</label>
+  <a class="act" href="wiki.html" style="text-decoration:none">📚 דפדפן-הוויקי</a>
   <label title="ישות שמופיעה ביותר מפריט אחד"><input type="checkbox" id="bridging" checked>רק מגשרים (≥2)</label>
   <label>עומק מיקוד <select id="depth"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label>
   <button type="button" class="act" id="clear">הצג הכול</button>
@@ -85,11 +91,12 @@
 <div class="main">
   <div id="panel"><div class="empty">לחיצה על צומת מציגה פרטים, קשרים ודף-ויקי.<br>לחיצה כפולה ממקדת את הגרף סביבו.</div></div>
   <div id="graph"><div id="canvas"></div><div class="hint" id="hint">טוען את הגרף…</div>
-    <div class="legend"><span><i class="sw" style="background:var(--c-tik);width:10px;height:10px;border-radius:50%;display:inline-block"></i> תיק</span><span><i style="background:var(--c-photo);width:10px;height:10px;border-radius:50%;display:inline-block"></i> תצלום</span><span><i style="background:var(--c-person);width:10px;height:10px;border-radius:50%;display:inline-block"></i> אדם</span><span><i style="background:var(--c-place);width:10px;height:10px;border-radius:50%;display:inline-block"></i> מקום</span><span>טבעת אדומה = נספה · אפור = ודאות נמוכה</span></div>
+    <div class="legend"><span><i class="sw" style="background:var(--c-tik);width:10px;height:10px;border-radius:50%;display:inline-block"></i> תיק</span><span><i style="background:var(--c-photo);width:10px;height:10px;border-radius:50%;display:inline-block"></i> תצלום</span><span><i style="background:var(--c-person);width:10px;height:10px;border-radius:50%;display:inline-block"></i> אדם</span><span><i style="background:var(--c-place);width:10px;height:10px;border-radius:50%;display:inline-block"></i> מקום</span><span><i style="background:#4c90ff;width:10px;height:10px;border-radius:50%;display:inline-block"></i> נושא</span><span><i style="background:#8993a8;width:10px;height:10px;border-radius:50%;display:inline-block"></i> שנה</span><span>טבעת אדומה = נספה · אפור = ודאות נמוכה</span></div>
   </div>
 </div>
 
-<script src="force-graph.min.js?v=1.47.0"></script>   <!-- vendored (MIT) — no CDN dependency, works air-gapped -->
-<script src="graph.inline1.js?v=20260915a"></script>
+<script src="force-graph.min.js?v=1.47.0"></script>
+<script src="yv-wikimd.js?v=20260915a"></script>   <!-- vendored (MIT) — no CDN dependency, works air-gapped -->
+<script src="graph.inline1.js?v=20260915d"></script>
 </body>
 </html>

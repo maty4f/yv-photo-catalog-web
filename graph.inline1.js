@@ -23,12 +23,17 @@ function serverBase(){
   return window.yvServerBase ? yvServerBase({ inputEl: serverUrlInput })
        : (serverUrlInput.value || '').trim().replace(/\/$/, '');
 }
+const COLLECTION = (new URLSearchParams(location.search).get('collection') || '').replace(/[^a-z0-9_-]/gi, '');
+const withCollection = p => COLLECTION ? p + (p.includes('?') ? '&' : '?') + 'collection=' + encodeURIComponent(COLLECTION) : p;
 const api = p => (serverBase() ? serverBase() + p : p);
 
 /* ---------- vocabulary ---------- */
-const TYPE_OF = id => id.startsWith('tik:') ? 'tik' : id.startsWith('photo:') ? 'photo' : id.startsWith('person:') ? 'person' : 'place';
-const TYPE_HE = { tik: 'תיק', photo: 'תצלום', person: 'אדם', place: 'מקום' };
-const COLOR = { tik: '#b083ff', photo: '#f2b13d', person: '#ff8fb1', place: '#35d189' };
+const KINDS = ['collection', 'tik', 'photo', 'person', 'place', 'subject', 'year', 'org'];
+const TYPE_OF = id => { const k = id.split(':')[0]; return KINDS.includes(k) ? k : 'place'; };
+const TYPE_HE = { collection: 'אוסף', tik: 'תיק', photo: 'תצלום', person: 'אדם', place: 'מקום', subject: 'נושא', year: 'שנה', org: 'ארגון' };
+const COLOR = { collection: '#ffffff', tik: '#b083ff', photo: '#f2b13d', person: '#ff8fb1', place: '#35d189', subject: '#4c90ff', year: '#8993a8', org: '#ff6b6b' };
+const HUB_KINDS = new Set(['collection', 'tik', 'place', 'subject', 'year', 'org']);   // level "מוקדים": no people, no photos
+const WIKI_DIR_OF = { collection: 'collections', tik: 'tiks', person: 'people', place: 'places', subject: 'subjects', year: 'events', org: 'organizations' };
 const CONF_HE = { high: '✓ גבוהה', mid: '~ בינונית', medium: '~ בינונית', low: '? נמוכה' };
 /* edge label → how it reads from the SOURCE side / from the TARGET side */
 const REL = {
@@ -38,6 +43,10 @@ const REL = {
   MENTIONS_PLACE:    ['מקום מוזכר', 'מוזכר ב'],
   TAKEN_AT:          ['צולם ב', 'תצלומים מהמקום'],
   ASSOCIATED_WITH:   ['קשור/ה למקום', 'אנשים קשורים'],
+  IN_COLLECTION:     ['באוסף', 'תיקים באוסף'],
+  HAS_SUBJECT:       ['נושא', 'תיקים בנושא'],
+  DATED:             ['מתוארך ל', 'תיקים מהשנה'],
+  MENTIONS_ORG:      ['מזכיר ארגון', 'מוזכר ב'],
   PASSED_THROUGH:    ['עבר/ה דרך', 'עברו דרכו'],
   PERISHED_AT:       ['נספה/תה ב', 'נספו במקום'],
   REPORTED_DEATH_OF: ['דיווח/ה על מותו/ה של', 'מותו/ה דווח על-ידי'],
@@ -50,13 +59,18 @@ const PROP_HE = {
   wikidata: 'Wikidata', doc_type: 'סוג פריט', origin: 'מקור הנתון',
 };
 const CATEGORY_HE = { jew: 'יהודי/ה', perpetrator: 'גרמני/משתף-פעולה', other: 'אחר' };
-const HIDE_PROPS = new Set(['catalog_id', 'address', 'city', 'output', 'wiki_page']);
+const HIDE_PROPS = new Set(['catalog_id', 'address', 'city', 'output', 'wiki_page', 'viewer']);
 
 /* ---------- state ---------- */
 const state = { nodes: [], edges: [], byId: new Map(), adj: new Map(), focus: null, selected: null, fg: null, shown: new Set() };
 
 function degreeOf(id){ return (state.adj.get(id) || []).length; }
-function typeOn(t){ return $('t-' + t).checked; }
+function levelHubs(){ return $('level').value === 'hubs'; }
+function typeOn(t){
+  const el = $('t-' + t);
+  if (levelHubs() && !state.focus) return HUB_KINDS.has(t) && (!el || el.checked);
+  return el ? el.checked : true;
+}
 
 /* Which nodes are drawn: type filters ∩ (focus neighbourhood | bridging filter). Capped
    for the canvas — the whole archive is thousands of nodes; focus is the real tool. */
@@ -79,12 +93,12 @@ function visibleIds(){
     }
   } else {
     const bridging = $('bridging').checked;
-    ids = new Set(state.nodes.filter(n => !bridging || n.t === 'tik' || n.t === 'photo' || n.deg >= 2).map(n => n.id));
+    ids = new Set(state.nodes.filter(n => !bridging || n.t !== 'person' || n.deg >= 2).map(n => n.id));
   }
   let out = [...ids].filter(id => typeOn(TYPE_OF(id)));
   if (!state.focus) {
     // without a focus, keep items only when they touch a shown entity — a bare tik ring says nothing
-    const ent = new Set(out.filter(id => TYPE_OF(id) === 'person' || TYPE_OF(id) === 'place'));
+    const ent = new Set(out.filter(id => !['tik', 'photo'].includes(TYPE_OF(id))));
     out = out.filter(id => ent.has(id) || (state.adj.get(id) || []).some(e => ent.has(e.source === id ? e.target : e.source)));
   }
   const cap = state.focus ? CAP : OVERVIEW_CAP;
@@ -97,7 +111,7 @@ function render(){
   state.shown = ids;
   const nodes = state.nodes.filter(n => ids.has(n.id));
   const links = state.edges.filter(e => ids.has(e.source) && ids.has(e.target)).map(e => ({ source: e.source, target: e.target, label: e.label }));
-  $('stats').textContent = `מוצגים ${nodes.length.toLocaleString('he')} מתוך ${state.nodes.length.toLocaleString('he')} צמתים · ${links.length.toLocaleString('he')} קשרים` + (state.focus ? ` · מיקוד: ${state.byId.get(state.focus).label}` : '');
+  $('stats').textContent = `${levelHubs() && !state.focus ? 'רמת מוקדים · ' : ''}מוצגים ${nodes.length.toLocaleString('he')} מתוך ${state.nodes.length.toLocaleString('he')} צמתים · ${links.length.toLocaleString('he')} קשרים` + (state.focus ? ` · ${crumbs(state.focus)}` : '');
   $('hint').style.display = nodes.length ? 'none' : 'flex';
   if (!nodes.length) $('hint').textContent = 'אין מה להציג עם המסננים הנוכחיים.';
   if (!state.focus && ids.size >= OVERVIEW_CAP) $('stats').textContent += ' · סקירה: המקושרים ביותר — חפשו ישות כדי להתמקד';
@@ -105,6 +119,18 @@ function render(){
   if (state.focus) setTimeout(() => state.fg.zoomToFit(400, 40), 500);
 }
 
+function crumbs(id){
+  // collection › hub (place/subject/year) › entity — read from the focused node's edges
+  const n = state.byId.get(id); const parts = [];
+  const coll = COLLECTION ? COLLECTION.toUpperCase() : (state.nodes.find(x => x.t === 'collection') || {}).label;
+  if (coll) parts.push(coll);
+  if (n.t === 'person' || n.t === 'tik') {
+    const hub = (state.adj.get(id) || []).map(e => state.byId.get(e.source === id ? e.target : e.source)).find(o => o && (o.t === 'place' || o.t === 'subject'));
+    if (hub) parts.push(hub.label);
+  }
+  parts.push(n.label);
+  return parts.join(' › ');
+}
 /* ---------- drawing ---------- */
 function initGraph(){
   const box = $('graph'), el = $('canvas');   // the library owns #canvas; hint + legend stay siblings
@@ -113,9 +139,9 @@ function initGraph(){
     .backgroundColor('rgba(0,0,0,0)')
     .nodeId('id')
     .nodeLabel(n => `${esc(n.label)} · ${TYPE_HE[n.t]}${n.data.confidence ? ' · ' + CONF_HE[n.data.confidence] : ''}`)
-    .nodeVal(n => n.t === 'person' || n.t === 'place' ? 2 + Math.min(10, n.deg) : 3)
+    .nodeVal(n => n.t === 'tik' || n.t === 'photo' ? 3 : 2 + Math.min(14, n.deg))
     .nodeCanvasObject((n, ctx, scale) => {
-      const r = Math.sqrt(Math.max(1, n.t === 'person' || n.t === 'place' ? 2 + Math.min(10, n.deg) : 3)) * 2;
+      const r = Math.sqrt(Math.max(1, n.t === 'tik' || n.t === 'photo' ? 3 : 2 + Math.min(14, n.deg))) * 2;
       ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
       const low = n.data.confidence === 'low';
       ctx.fillStyle = low ? '#6b7280' : COLOR[n.t];
@@ -153,8 +179,9 @@ function select(id){ state.selected = id; showPanel(id); }   /* the canvas re-re
 
 function outputLink(n){
   const out = n.data.output;
-  if (!out) return '';
-  return `<a class="ext" href="${esc(api('/api/output/' + encodeURIComponent(out)))}" target="_blank" rel="noopener">פתח את רשומת התיק ↗</a>`;
+  if (out) return `<a class="ext" href="${esc(api('/api/output/' + encodeURIComponent(out)))}" target="_blank" rel="noopener">פתח את רשומת התיק ↗</a>`;
+  if (n.data.viewer) return `<a class="ext" href="${esc(n.data.viewer)}" target="_blank" rel="noopener">פתח בקטלוג האוסף ↗</a>`;
+  return '';
 }
 
 function showPanel(id){
@@ -192,35 +219,17 @@ function showPanel(id){
     if (others.length > 60) html += `<div class="empty" style="padding:4px">… ועוד ${others.length - 60}</div>`;
   }
   html += `<div style="margin-top:12px"><button type="button" class="act primary" id="focus-btn">מקד סביב הצומת</button></div>`;
-  if (d.wiki_page) html += `<h3>דף ויקי — ${esc(d.wiki_page)}</h3><div class="wiki" id="wiki">טוען…</div>`;
+  const wikiPage = d.wiki_page || (WIKI_DIR_OF[n.t] ? WIKI_DIR_OF[n.t] + '/' + (n.t === 'tik' ? id.slice(4) : n.t === 'year' ? id.slice(5) : slugOf(n.label)) + '.md' : '');
+  if (wikiPage) html += `<div style="margin-top:8px"><a class="ext" href="wiki.html?page=${encodeURIComponent(wikiPage)}${COLLECTION ? '&collection=' + encodeURIComponent(COLLECTION) : ''}">פתח בדפדפן-הוויקי ↗</a></div><h3>דף ויקי — ${esc(wikiPage)}</h3><div class="wiki" id="wiki">טוען…</div>`;
   $('panel').innerHTML = html;
   $('focus-btn').onclick = () => focus(id);
   $('panel').querySelectorAll('.nb').forEach(a => a.onclick = () => { const t = a.dataset.id; if (state.shown.has(t)) select(t); else focus(t); });
-  if (d.wiki_page) loadWiki(d.wiki_page);
+  if (wikiPage) loadWiki(wikiPage);
 }
+function slugOf(name){ return String(name || '').replace(/[\\/:*?"<>|]/g, ' ').trim().replace(/\s+/g, '-'); }
 
-/* tiny, safe markdown for our own wiki pages: escape first, then headings / bullets /
-   bold / tik references → links. No HTML from the page is ever trusted. */
-function mdToHtml(md){
-  const lines = md.split('\n');
-  let out = '', inList = false;
-  const close = () => { if (inList) { out += '</ul>'; inList = false; } };
-  for (let raw of lines) {
-    let line = esc(raw);
-    if (/^&lt;!-- YV:TIK-INGEST START --&gt;/.test(line)) { close(); out += '<div class="managed">— בלוק מנוהל (wiki-ingest) —</div>'; continue; }
-    if (/^&lt;!-- YV:TIK-INGEST END --&gt;/.test(line)) { close(); out += '<div class="managed">— סוף הבלוק —</div>'; continue; }
-    line = line.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-               .replace(/\[(tik_[^\]\s]+\.html)\]/g, (_, f) => `<a class="ext" href="${esc(api('/api/output/' + encodeURIComponent(f)))}" target="_blank" rel="noopener">${f}</a>`);
-    const h = /^(#{1,4})\s+(.*)$/.exec(line);
-    if (h) { close(); out += `<h4>${h[2]}</h4>`; continue; }
-    const li = /^\s*-\s+(.*)$/.exec(line);
-    if (li) { if (!inList) { out += '<ul>'; inList = true; } out += `<li>${li[1]}</li>`; continue; }
-    close();
-    if (line.trim()) out += `<div>${line}</div>`;
-  }
-  close();
-  return out;
-}
+/* markdown → HTML: the shared safe renderer (yv-wikimd.js); [[links]] open wiki.html */
+function mdToHtml(md){ return window.yvWikiMd ? yvWikiMd(md, { outputUrl: f => api('/api/output/' + encodeURIComponent(f)), pageHref: rel => 'wiki.html?page=' + encodeURIComponent(rel + '.md') + (COLLECTION ? '&collection=' + encodeURIComponent(COLLECTION) : '') }) : esc(md); }
 async function loadWiki(page){
   try {
     const r = await fetch(api('/api/graph/wiki?page=' + encodeURIComponent(page)));
@@ -234,15 +243,18 @@ $('q').addEventListener('keydown', ev => {
   if (ev.key !== 'Enter') return;
   const q = $('q').value.trim().toLowerCase();
   if (!q) return;
-  const hit = state.nodes.find(n => n.label.toLowerCase() === q)
-           || state.nodes.filter(n => n.label.toLowerCase().includes(q)).sort((a, b) => b.deg - a.deg)[0];
+  // rank: exact label › label starts with › contains; at the hubs level a place/subject/
+  // collection beats a person of the same rank (searching "טרבלינקה" should land on the camp)
+  const rank = n => { const l = n.label.toLowerCase(); return l === q ? 3 : l.startsWith(q) ? 2 : l.includes(q) ? 1 : 0; };
+  const hubBoost = n => (levelHubs() && HUB_KINDS.has(n.t)) ? 0.5 : 0;
+  const hit = state.nodes.filter(n => rank(n) > 0).sort((a, b) => (rank(b) + hubBoost(b)) - (rank(a) + hubBoost(a)) || b.deg - a.deg)[0];
   if (hit) focus(hit.id); else $('stats').textContent = 'לא נמצא: ' + q;
 });
-['t-tik', 't-photo', 't-person', 't-place', 'bridging', 'depth'].forEach(id => $(id).addEventListener('change', render));
+['t-collection', 't-tik', 't-photo', 't-person', 't-place', 't-subject', 't-year', 't-org', 'bridging', 'depth', 'level'].forEach(id => { const el = $(id); if (el) el.addEventListener('change', render); });
 $('clear').onclick = () => { state.focus = null; $('q').value = ''; render(); };
 $('rebuild').onclick = async () => {
   $('stats').textContent = 'בונה מחדש (רשומות + ויקי)…';
-  try { const r = await fetch(api('/api/graph/rebuild'), { method: 'POST' }); if (!r.ok) throw new Error(r.status); await load(); }
+  try { const r = await fetch(api(withCollection('/api/graph/rebuild')), { method: 'POST' }); if (!r.ok) throw new Error(r.status); await load(); }
   catch (e) { $('stats').textContent = 'הבנייה נכשלה (' + e.message + ')'; }
 };
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') { state.selected = null; } });
@@ -251,7 +263,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') { state.se
 async function load(){
   $('hint').style.display = 'flex'; $('hint').textContent = 'טוען את הגרף…';
   try {
-    const r = await fetch(api('/api/graph'));
+    const r = await fetch(api(withCollection('/api/graph')));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const g = await r.json();
     state.byId = new Map(); state.adj = new Map();
@@ -262,7 +274,8 @@ async function load(){
     for (const n of state.nodes) n.deg = state.adj.get(n.id).length;
     if (!state.fg) initGraph();
     const st = g.stats || {};
-    document.title = `גרף הישויות — ${(st.nodes || state.nodes.length).toLocaleString('he')} צמתים`;
+    document.title = `גרף הישויות${COLLECTION ? ' — ' + COLLECTION.toUpperCase() : ''} — ${(st.nodes || state.nodes.length).toLocaleString('he')} צמתים`;
+    if (COLLECTION) { const h = document.querySelector('h1'); if (h && !h.dataset.coll) { h.dataset.coll = '1'; h.textContent += ' — אוסף ' + COLLECTION.toUpperCase(); } }
     render();
     const fromHash = decodeURIComponent((location.hash || '').slice(1));
     if (fromHash && state.byId.has(fromHash)) focus(fromHash);
