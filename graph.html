@@ -81,6 +81,8 @@
   <label><input type="checkbox" id="t-year" checked><span class="sw" style="background:#8993a8"></span>שנים</label>
   <label><input type="checkbox" id="t-org" checked><span class="sw" style="background:#ff6b6b"></span>ארגונים</label>
   <a class="act" href="wiki.html" style="text-decoration:none">📚 דפדפן-הוויקי</a>
+  <label class="act" for="import-file" title="כל מידע ארכיוני: טבלת CSV/Excel של שמות, JSON, רשומות — המערכת מנתחת את העמודות ובונה גרף" style="cursor:pointer">📥 ייבוא מקור</label>
+  <input type="file" id="import-file" accept=".csv,.tsv,.xlsx,.xlsm,.json" style="display:none">
   <label title="ישות שמופיעה ביותר מפריט אחד"><input type="checkbox" id="bridging" checked>רק מגשרים (≥2)</label>
   <label>עומק מיקוד <select id="depth"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label>
   <button type="button" class="act" id="clear">הצג הכול</button>
@@ -97,6 +99,6 @@
 
 <script src="force-graph.min.js?v=1.47.0"></script>
 <script src="yv-wikimd.js?v=20260915a"></script>   <!-- vendored (MIT) — no CDN dependency, works air-gapped -->
-<script src="graph.inline1.js?v=20260915d"></script>
+<script src="graph.inline1.js?v=20260915e"></script>
 </body>
 </html>

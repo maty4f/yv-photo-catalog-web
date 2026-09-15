@@ -17,8 +17,8 @@ const COLLECTION = (PARAMS.get('collection') || '').replace(/[^a-z0-9_-]/gi, '')
 const withCollection = p => COLLECTION ? p + (p.includes('?') ? '&' : '?') + 'collection=' + encodeURIComponent(COLLECTION) : p;
 if (COLLECTION) $('graph-link').href = 'graph.html?collection=' + encodeURIComponent(COLLECTION);
 
-const KIND_HE = { collection: 'אוספים', tik: 'תיקים', person: 'אנשים מגשרים', place: 'מקומות', subject: 'נושאים', year: 'שנים', org: 'ארגונים', region: 'אזורים' };
-const DIR_OF = { collection: 'collections', tik: 'tiks', person: 'people', place: 'places', subject: 'subjects', year: 'events', org: 'organizations' };
+const KIND_HE = { collection: 'אוספים', tik: 'תיקים', photo: 'תצלומים', film: 'סרטים', doc: 'מסמכים', item: 'פריטים', person: 'אנשים מגשרים', place: 'מקומות', subject: 'נושאים', year: 'שנים', org: 'ארגונים', region: 'אזורים' };
+const DIR_OF = { collection: 'collections', tik: 'tiks', photo: 'photos', film: 'films', doc: 'docs', item: 'items', person: 'people', place: 'places', subject: 'subjects', year: 'events', org: 'organizations' };
 const state = { nodes: [], byId: new Map(), adj: new Map(), page: '', pageNode: null };
 const kindOf = id => id.split(':')[0];
 function slugOf(name){ return String(name || '').replace(/[\\/:*?"<>|]/g, ' ').trim().replace(/\s+/g, '-'); }
@@ -35,7 +35,7 @@ function pageOf(id){
   const n = state.byId.get(id); if (!n) return '';
   const k = kindOf(id);
   if (n.data.wiki_page) return n.data.wiki_page;
-  if (k === 'tik') return `tiks/${id.slice(4)}.md`;
+  if (['tik', 'photo', 'film', 'doc', 'item'].includes(k)) return `${DIR_OF[k]}/${slugOf(id.slice(id.indexOf(':') + 1))}.md`;
   if (k === 'year') return `events/${id.slice(5)}.md`;
   if (k === 'place') return `places/${slugOf(n.data.name_he || n.label)}.md`;
   return DIR_OF[k] ? `${DIR_OF[k]}/${slugOf(n.label)}.md` : '';
@@ -69,8 +69,9 @@ function buildTree(filter){
     bindTree(); return;
   }
   const colls = all.filter(n => kindOf(n.id) === 'collection').map(n => n.id);
-  const tiksIn = new Set(colls.flatMap(c => neighbors(c, ['tik'])));
-  const looseTiks = all.filter(n => kindOf(n.id) === 'tik' && !tiksIn.has(n.id)).map(n => n.id);
+  const ITEM = ['tik', 'photo', 'film', 'doc', 'item'];
+  const tiksIn = new Set(colls.flatMap(c => neighbors(c, ITEM)));
+  const looseTiks = all.filter(n => ITEM.includes(kindOf(n.id)) && !tiksIn.has(n.id)).map(n => n.id);
   const subjects = all.filter(n => kindOf(n.id) === 'subject').map(n => n.id);
   const years = all.filter(n => kindOf(n.id) === 'year').map(n => n.id).sort();
   const orgs = all.filter(n => kindOf(n.id) === 'org').map(n => n.id);
@@ -78,8 +79,8 @@ function buildTree(filter){
   const regions = new Map();
   for (const n of all) if (kindOf(n.id) === 'place') { const c = n.data.country && n.data.country !== 'unknown' ? n.data.country : '— ללא אזור —'; if (!regions.has(c)) regions.set(c, []); regions.get(c).push(n.id); }
   let html = '';
-  html += branch('אוספים', colls, c => `<details open><summary>${leaf(c)}</summary>` + neighbors(c, ['tik']).slice(0, CAP).map(tikBranch).join('') + '</details>', true);
-  html += branch('תיקים (ללא אוסף)', looseTiks, tikBranch);
+  html += branch('אוספים', colls, c => `<details open><summary>${leaf(c)}</summary>` + neighbors(c, ITEM).slice(0, CAP).map(tikBranch).join('') + '</details>', true);
+  html += branch('פריטים (ללא אוסף)', looseTiks, tikBranch);
   html += branch('נושאים', subjects, s => `<details><summary>${leaf(s)}</summary>${neighbors(s, ['tik']).slice(0, CAP).map(t => leaf(t)).join('')}</details>`);
   html += `<details><summary>אזורים ומקומות <span class="n">(${regions.size})</span></summary>` +
     [...regions.entries()].sort((a, b) => b[1].length - a[1].length).map(([c, ids]) =>
@@ -99,7 +100,7 @@ function crumbs(page){
   const [dir, file] = page.split('/');
   const label = { collections: 'אוספים', tiks: 'תיקים', people: 'אנשים', places: 'מקומות', subjects: 'נושאים', events: 'שנים', organizations: 'ארגונים', regions: 'אזורים' }[dir] || dir;
   let html = `<a data-page="index.md">עץ הידע</a> › ${esc(label)}`;
-  if (state.pageNode && kindOf(state.pageNode) === 'tik') {
+  if (state.pageNode && ['tik', 'photo', 'film', 'doc', 'item'].includes(kindOf(state.pageNode))) {
     const coll = neighbors(state.pageNode, ['collection'])[0];
     if (coll) html += ` › <a data-page="${esc(pageOf(coll))}">${esc(state.byId.get(coll).label)}</a>`;
   }
@@ -127,10 +128,10 @@ async function openPage(page, nodeId){
   bindPage();
 }
 function findNodeForPage(page){
-  const m = /^(collections|tiks|people|places|subjects|events|organizations)\/(.+)\.md$/.exec(page);
+  const m = /^(collections|tiks|photos|films|docs|items|people|places|subjects|events|organizations)\/(.+)\.md$/.exec(page);
   if (!m) return null;
   const [, dir, stem] = m;
-  const kind = { collections: 'collection', tiks: 'tik', people: 'person', places: 'place', subjects: 'subject', events: 'year', organizations: 'org' }[dir];
+  const kind = { collections: 'collection', tiks: 'tik', photos: 'photo', films: 'film', docs: 'doc', items: 'item', people: 'person', places: 'place', subjects: 'subject', events: 'year', organizations: 'org' }[dir];
   const direct = state.byId.get(`${kind}:${stem}`); if (direct) return direct.id;
   const hit = state.nodes.find(n => kindOf(n.id) === kind && (slugOf(n.label) === stem || slugOf(n.data.name_he || '') === stem || n.data.wiki_page === page));
   return hit ? hit.id : null;

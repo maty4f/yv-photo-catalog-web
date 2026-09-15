@@ -28,12 +28,12 @@ const withCollection = p => COLLECTION ? p + (p.includes('?') ? '&' : '?') + 'co
 const api = p => (serverBase() ? serverBase() + p : p);
 
 /* ---------- vocabulary ---------- */
-const KINDS = ['collection', 'tik', 'photo', 'person', 'place', 'subject', 'year', 'org'];
+const KINDS = ['collection', 'tik', 'photo', 'film', 'doc', 'item', 'person', 'place', 'subject', 'year', 'org'];
 const TYPE_OF = id => { const k = id.split(':')[0]; return KINDS.includes(k) ? k : 'place'; };
-const TYPE_HE = { collection: 'אוסף', tik: 'תיק', photo: 'תצלום', person: 'אדם', place: 'מקום', subject: 'נושא', year: 'שנה', org: 'ארגון' };
-const COLOR = { collection: '#ffffff', tik: '#b083ff', photo: '#f2b13d', person: '#ff8fb1', place: '#35d189', subject: '#4c90ff', year: '#8993a8', org: '#ff6b6b' };
-const HUB_KINDS = new Set(['collection', 'tik', 'place', 'subject', 'year', 'org']);   // level "מוקדים": no people, no photos
-const WIKI_DIR_OF = { collection: 'collections', tik: 'tiks', person: 'people', place: 'places', subject: 'subjects', year: 'events', org: 'organizations' };
+const TYPE_HE = { collection: 'אוסף', tik: 'תיק', photo: 'תצלום', film: 'סרט', doc: 'מסמך', item: 'פריט', person: 'אדם', place: 'מקום', subject: 'נושא', year: 'שנה', org: 'ארגון' };
+const COLOR = { collection: '#ffffff', tik: '#b083ff', photo: '#f2b13d', film: '#4c90ff', doc: '#35d189', item: '#c9a6ff', person: '#ff8fb1', place: '#35d189', subject: '#4c90ff', year: '#8993a8', org: '#ff6b6b' };
+const HUB_KINDS = new Set(['collection', 'tik', 'photo', 'film', 'doc', 'item', 'place', 'subject', 'year', 'org']);   // level "מוקדים": no people, no photos
+const WIKI_DIR_OF = { collection: 'collections', tik: 'tiks', photo: 'photos', film: 'films', doc: 'docs', item: 'items', person: 'people', place: 'places', subject: 'subjects', year: 'events', org: 'organizations' };
 const CONF_HE = { high: '✓ גבוהה', mid: '~ בינונית', medium: '~ בינונית', low: '? נמוכה' };
 /* edge label → how it reads from the SOURCE side / from the TARGET side */
 const REL = {
@@ -67,7 +67,7 @@ const state = { nodes: [], edges: [], byId: new Map(), adj: new Map(), focus: nu
 function degreeOf(id){ return (state.adj.get(id) || []).length; }
 function levelHubs(){ return $('level').value === 'hubs'; }
 function typeOn(t){
-  const el = $('t-' + t);
+  const el = $('t-' + (['film', 'doc', 'item'].includes(t) ? 'tik' : t));
   if (levelHubs() && !state.focus) return HUB_KINDS.has(t) && (!el || el.checked);
   return el ? el.checked : true;
 }
@@ -98,7 +98,7 @@ function visibleIds(){
   let out = [...ids].filter(id => typeOn(TYPE_OF(id)));
   if (!state.focus) {
     // without a focus, keep items only when they touch a shown entity — a bare tik ring says nothing
-    const ent = new Set(out.filter(id => !['tik', 'photo'].includes(TYPE_OF(id))));
+    const ent = new Set(out.filter(id => !['tik', 'photo', 'film', 'doc', 'item'].includes(TYPE_OF(id))));
     out = out.filter(id => ent.has(id) || (state.adj.get(id) || []).some(e => ent.has(e.source === id ? e.target : e.source)));
   }
   const cap = state.focus ? CAP : OVERVIEW_CAP;
@@ -139,9 +139,9 @@ function initGraph(){
     .backgroundColor('rgba(0,0,0,0)')
     .nodeId('id')
     .nodeLabel(n => `${esc(n.label)} · ${TYPE_HE[n.t]}${n.data.confidence ? ' · ' + CONF_HE[n.data.confidence] : ''}`)
-    .nodeVal(n => n.t === 'tik' || n.t === 'photo' ? 3 : 2 + Math.min(14, n.deg))
+    .nodeVal(n => ['tik', 'photo', 'film', 'doc', 'item'].includes(n.t) ? 3 : 2 + Math.min(14, n.deg))
     .nodeCanvasObject((n, ctx, scale) => {
-      const r = Math.sqrt(Math.max(1, n.t === 'tik' || n.t === 'photo' ? 3 : 2 + Math.min(14, n.deg))) * 2;
+      const r = Math.sqrt(Math.max(1, ['tik', 'photo', 'film', 'doc', 'item'].includes(n.t) ? 3 : 2 + Math.min(14, n.deg))) * 2;
       ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
       const low = n.data.confidence === 'low';
       ctx.fillStyle = low ? '#6b7280' : COLOR[n.t];
@@ -219,7 +219,7 @@ function showPanel(id){
     if (others.length > 60) html += `<div class="empty" style="padding:4px">… ועוד ${others.length - 60}</div>`;
   }
   html += `<div style="margin-top:12px"><button type="button" class="act primary" id="focus-btn">מקד סביב הצומת</button></div>`;
-  const wikiPage = d.wiki_page || (WIKI_DIR_OF[n.t] ? WIKI_DIR_OF[n.t] + '/' + (n.t === 'tik' ? id.slice(4) : n.t === 'year' ? id.slice(5) : slugOf(n.label)) + '.md' : '');
+  const wikiPage = d.wiki_page || (WIKI_DIR_OF[n.t] ? WIKI_DIR_OF[n.t] + '/' + (['tik', 'photo', 'film', 'doc', 'item'].includes(n.t) ? slugOf(id.slice(id.indexOf(':') + 1)) : n.t === 'year' ? id.slice(5) : slugOf(n.label)) + '.md' : '');
   if (wikiPage) html += `<div style="margin-top:8px"><a class="ext" href="wiki.html?page=${encodeURIComponent(wikiPage)}${COLLECTION ? '&collection=' + encodeURIComponent(COLLECTION) : ''}">פתח בדפדפן-הוויקי ↗</a></div><h3>דף ויקי — ${esc(wikiPage)}</h3><div class="wiki" id="wiki">טוען…</div>`;
   $('panel').innerHTML = html;
   $('focus-btn').onclick = () => focus(id);
@@ -236,6 +236,55 @@ async function loadWiki(page){
     if (!r.ok) throw new Error(r.status);
     const el = $('wiki'); if (el) el.innerHTML = mdToHtml(await r.text());
   } catch (e) { const el = $('wiki'); if (el) el.textContent = 'דף הוויקי לא נטען (' + e.message + ')'; }
+}
+
+/* ---------- import any archival source: analyze → mapping editor → import ---------- */
+const ROLE_HE = { item_id: 'מזהה פריט', person: 'אדם', person_original: 'כתיב מקורי', role: 'תפקיד', birth: 'לידה', death: 'פטירה', place: 'מקום', fate: 'גורל', date: 'תאריך', subject: 'נושא', org: 'ארגון', title: 'כותר', pages: 'עמודים', text: 'טקסט', ignore: 'התעלם' };
+let pendingImport = null;
+$('import-file').addEventListener('change', async () => {
+  const f = $('import-file').files[0]; if (!f) return;
+  $('stats').textContent = 'מנתח את הקובץ…';
+  const fd = new FormData(); fd.append('file', f);
+  try {
+    const r = await fetch(api('/api/graph/analyze'), { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || r.status);
+    pendingImport = { file: f, analysis: j };
+    showImportPanel(j, f.name);
+    $('stats').textContent = 'ניתוח הושלם — בדקו את המיפוי ולחצו «צור אוסף»';
+  } catch (e) { $('stats').textContent = 'הניתוח נכשל: ' + e.message; }
+  $('import-file').value = '';
+});
+function showImportPanel(j, fname){
+  const src = (j.sources || [])[0] || {};
+  let html = `<h2>📥 ייבוא: ${esc(fname)}</h2><div style="color:var(--muted);font-size:12.5px;white-space:pre-wrap">${esc(j.summary_he || '')}</div>`;
+  html += `<dl><dt>סוג</dt><dd>${esc(src.kind || '')}</dd>${src.rows != null ? `<dt>שורות</dt><dd>${src.rows}</dd>` : ''}</dl>`;
+  if (src.columns) {
+    html += '<h3>עמודה → תפקיד (ניתן לשנות)</h3><table style="width:100%;font-size:12.5px;border-collapse:collapse">';
+    for (const c of src.columns) {
+      html += `<tr><td style="padding:3px 4px;border-bottom:1px solid var(--line)"><b>${esc(c.name)}</b><br><small style="color:var(--muted)">${esc((c.samples || []).join(' · '))}</small></td><td style="padding:3px 4px;border-bottom:1px solid var(--line)"><select class="act map-role" data-col="${esc(c.name)}">` +
+        Object.entries(ROLE_HE).map(([k, l]) => `<option value="${k}"${k === c.role ? ' selected' : ''}>${l}</option>`).join('') +
+        `</select><br><small class="${c.confidence === 'high' ? 'conf-high' : c.confidence === 'mid' ? 'conf-mid' : 'conf-low'}">${esc(c.why || '')}</small></td></tr>`;
+    }
+    html += '</table>';
+  }
+  html += `<div style="margin-top:10px"><label>שם האוסף <input id="import-name" class="act" style="width:180px;direction:ltr" placeholder="latin-name" value="${esc(fname.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-'))}"></label></div>`;
+  html += `<div style="margin-top:8px"><button type="button" class="act primary" id="import-go">צור אוסף וגרף</button> <span class="msg" id="import-msg"></span></div>`;
+  $('panel').innerHTML = html;
+  $('import-go').onclick = doImport;
+}
+async function doImport(){
+  if (!pendingImport) return;
+  const name = $('import-name').value.trim();
+  const mapping = {}; $('panel').querySelectorAll('.map-role').forEach(s => { mapping[s.dataset.col] = s.value; });
+  const fd = new FormData(); fd.append('file', pendingImport.file); fd.append('name', name); fd.append('mapping', JSON.stringify({ [pendingImport.file.name]: mapping }));
+  $('import-msg').textContent = 'מייבא ובונה…';
+  try {
+    const r = await fetch(api('/api/graph/import'), { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || r.status);
+    location.href = 'graph.html?collection=' + encodeURIComponent(j.collection);
+  } catch (e) { $('import-msg').textContent = 'נכשל: ' + e.message; }
 }
 
 /* ---------- search ---------- */
