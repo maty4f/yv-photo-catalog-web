@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>גרף הישויות — ויקי הארכיון</title>
+<link rel="stylesheet" href="yv-theme.css?v=20260823a">
+<style>
+  :root { --accent:var(--tik); --c-tik:var(--tik); --c-photo:var(--photos); --c-person:#ff8fb1; --c-place:var(--docs); }
+  html, body { height:100%; }
+  body { padding:14px 20px; display:flex; flex-direction:column; direction:rtl; text-align:right; }
+  .top { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:8px; }
+  h1 { font-size:20px; margin:0; font-weight:800; }
+  .sub { color:var(--muted); font-size:12.5px; }
+  .srow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); }
+  .srow input { direction:ltr; text-align:left; padding:5px 9px; border:1px solid var(--line); border-radius:var(--radius-sm);
+                background:var(--tint); color:var(--ink); font-family:inherit; font-size:12.5px; min-width:220px; }
+  .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; background:var(--card); border:1px solid var(--line);
+             border-radius:var(--radius); padding:10px 14px; margin-bottom:10px; font-size:13px; }
+  .toolbar label { display:inline-flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap; }
+  .toolbar .sw { display:inline-block; width:10px; height:10px; border-radius:50%; }
+  #q { min-width:240px; flex:1; padding:8px 12px; border:1px solid var(--line); border-radius:var(--radius-sm);
+       background:var(--tint); color:var(--ink); font-family:inherit; font-size:14px; direction:rtl; text-align:right; }
+  #q:focus { outline:none; border-color:var(--accent); }
+  select, button.act { padding:7px 12px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--tint);
+                       color:var(--ink); font-family:inherit; font-size:13px; cursor:pointer; }
+  button.act.primary { background:var(--accent); color:#150a22; font-weight:700; border-color:var(--accent); }
+  .stats { color:var(--muted); font-size:12px; margin-inline-start:auto; unicode-bidi:isolate; font-variant-numeric:tabular-nums; }
+
+  .main { flex:1; min-height:0; display:flex; gap:12px; }
+  #panel { width:380px; flex:none; background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+           padding:14px 16px; overflow:auto; font-size:13.5px; }
+  #panel h2 { font-size:17px; margin:0 0 4px; word-break:break-word; }
+  #panel .badge { display:inline-block; font-size:11px; padding:1px 9px; border-radius:999px; color:#150a22; font-weight:700; margin-inline-end:6px; }
+  #panel dl { display:grid; grid-template-columns:auto 1fr; gap:3px 10px; margin:10px 0; }
+  #panel dt { color:var(--muted); white-space:nowrap; }
+  #panel dd { margin:0; unicode-bidi:isolate; word-break:break-word; }
+  #panel h3 { font-size:13px; margin:14px 0 4px; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:3px; }
+  #panel .nb { display:block; color:var(--ink); text-decoration:none; padding:2px 0; cursor:pointer; }
+  #panel .nb:hover { color:var(--accent); }
+  #panel .nb small { color:var(--muted); }
+  #panel a.ext { color:var(--accent); }
+  .conf-high { color:var(--good); } .conf-mid { color:var(--warn); } .conf-low { color:var(--error); }
+  .wiki { background:var(--tint); border:1px solid var(--line); border-radius:var(--radius-sm); padding:8px 12px; margin-top:6px;
+          font-size:12.5px; line-height:1.6; }
+  .wiki h4 { font-size:13px; margin:8px 0 2px; } .wiki ul { padding-right:18px; padding-left:0; margin:4px 0; }
+  .wiki li { unicode-bidi:isolate; } .wiki a { color:var(--accent); }
+  .wiki .managed { color:var(--muted); font-size:11px; }
+  #graph { flex:1; min-width:0; min-height:420px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; position:relative; }
+  #canvas { position:absolute; inset:0; }
+  @media (max-width: 900px) { .main { flex-direction:column; } #panel { width:auto; max-height:40vh; order:2; } #graph { height:56vh; flex:none; order:1; } }
+  #graph .hint { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:14px; text-align:center; padding:30px; pointer-events:none; }
+  .legend { position:absolute; bottom:10px; left:12px; direction:rtl; background:color-mix(in srgb, var(--card) 85%, transparent); border:1px solid var(--line);
+            border-radius:var(--radius-sm); padding:6px 10px; font-size:11.5px; color:var(--muted); display:flex; gap:12px; }
+  .legend span { display:inline-flex; align-items:center; gap:4px; }
+  .empty { color:var(--muted); text-align:center; padding:30px 10px; }
+  .empty code { display:block; direction:ltr; margin-top:8px; font-family:ui-monospace,Menlo,monospace; font-size:12px; unicode-bidi:isolate; }
+</style>
+</head>
+<body>
+<div class="top">
+  <a href="index.html" style="text-decoration:none"><button type="button" class="gear" style="border-radius:7px;padding:8px 16px;font-size:14px;">← דף הבית</button></a>
+  <div>
+    <h1>🕸️ גרף הישויות — ויקי הארכיון</h1>
+    <div class="sub">תיקים · תצלומים · אנשים · מקומות — מתיאורי-התיק ומהוויקי החוצה-פריטים. קשר קיים רק כשהרשומה או דף-הוויקי אומרים זאת; ודאות נמוכה מסומנת. תצוגה בלבד — לא מקור-אמת.</div>
+  </div>
+  <div class="srow" style="margin-inline-start:auto">
+    <span>שרת:</span><input type="text" id="server-url" placeholder="ריק = אותו שרת" autocomplete="off">
+  </div>
+</div>
+
+<div class="toolbar">
+  <input type="text" id="q" placeholder="חיפוש אדם / מקום / תיק — Enter להתמקד" autocomplete="off">
+  <label><input type="checkbox" id="t-tik" checked><span class="sw" style="background:var(--c-tik)"></span>תיקים</label>
+  <label><input type="checkbox" id="t-photo"><span class="sw" style="background:var(--c-photo)"></span>תצלומים</label>
+  <label><input type="checkbox" id="t-person" checked><span class="sw" style="background:var(--c-person)"></span>אנשים</label>
+  <label><input type="checkbox" id="t-place" checked><span class="sw" style="background:var(--c-place)"></span>מקומות</label>
+  <label title="ישות שמופיעה ביותר מפריט אחד"><input type="checkbox" id="bridging" checked>רק מגשרים (≥2)</label>
+  <label>עומק מיקוד <select id="depth"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label>
+  <button type="button" class="act" id="clear">הצג הכול</button>
+  <button type="button" class="act" id="rebuild" title="הרצה מחדש של yv doc graph על הרשומות והוויקי">↻ בנה מחדש</button>
+  <span class="stats" id="stats">טוען…</span>
+</div>
+
+<div class="main">
+  <div id="panel"><div class="empty">לחיצה על צומת מציגה פרטים, קשרים ודף-ויקי.<br>לחיצה כפולה ממקדת את הגרף סביבו.</div></div>
+  <div id="graph"><div id="canvas"></div><div class="hint" id="hint">טוען את הגרף…</div>
+    <div class="legend"><span><i class="sw" style="background:var(--c-tik);width:10px;height:10px;border-radius:50%;display:inline-block"></i> תיק</span><span><i style="background:var(--c-photo);width:10px;height:10px;border-radius:50%;display:inline-block"></i> תצלום</span><span><i style="background:var(--c-person);width:10px;height:10px;border-radius:50%;display:inline-block"></i> אדם</span><span><i style="background:var(--c-place);width:10px;height:10px;border-radius:50%;display:inline-block"></i> מקום</span><span>טבעת אדומה = נספה · אפור = ודאות נמוכה</span></div>
+  </div>
+</div>
+
+<script src="force-graph.min.js?v=1.47.0"></script>   <!-- vendored (MIT) — no CDN dependency, works air-gapped -->
+<script src="graph.inline1.js?v=20260915a"></script>
+</body>
+</html>

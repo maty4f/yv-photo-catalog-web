@@ -1,0 +1,274 @@
+/* graph.html — the entity graph inside the catalog (tiks · photos · people · places).
+   Data: GET /api/graph (built server-side by `yv doc graph` from the tik records + the
+   cross-item wiki). Rendering: force-graph (canvas). No Flowsint, no Neo4j.
+   House rules: an edge exists only where a record / wiki page states it; a low
+   reading-confidence is drawn grey, a perished person gets a red ring; nothing here
+   writes anywhere — the screen is a view. */
+const $ = id => document.getElementById(id);
+function esc(s){ return window.yvEsc ? yvEsc(s) : String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* server base — same convention/localStorage key as the other screens */
+function computeDefaultServerUrl(){
+  if (/^https?:$/.test(location.protocol) && !/\.(pages\.dev|github\.io)$/.test(location.hostname)) return location.origin;
+  return '';
+}
+const serverUrlInput = $('server-url');
+serverUrlInput.value = (window.yvServerBase ? yvServerBase()
+  : (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, '') || computeDefaultServerUrl());
+serverUrlInput.addEventListener('change', () => {
+  localStorage.setItem('yv_local_server_url', serverUrlInput.value.trim().replace(/\/$/, ''));
+  load();
+});
+function serverBase(){
+  return window.yvServerBase ? yvServerBase({ inputEl: serverUrlInput })
+       : (serverUrlInput.value || '').trim().replace(/\/$/, '');
+}
+const api = p => (serverBase() ? serverBase() + p : p);
+
+/* ---------- vocabulary ---------- */
+const TYPE_OF = id => id.startsWith('tik:') ? 'tik' : id.startsWith('photo:') ? 'photo' : id.startsWith('person:') ? 'person' : 'place';
+const TYPE_HE = { tik: 'תיק', photo: 'תצלום', person: 'אדם', place: 'מקום' };
+const COLOR = { tik: '#b083ff', photo: '#f2b13d', person: '#ff8fb1', place: '#35d189' };
+const CONF_HE = { high: '✓ גבוהה', mid: '~ בינונית', medium: '~ בינונית', low: '? נמוכה' };
+/* edge label → how it reads from the SOURCE side / from the TARGET side */
+const REL = {
+  MENTIONS:          ['מזכיר את', 'מוזכר ב'],
+  TESTIMONY_OF:      ['עדות של', 'העיד/ה ב'],
+  DEPICTS:           ['מתעד את', 'מופיע/ה בתצלום'],
+  MENTIONS_PLACE:    ['מקום מוזכר', 'מוזכר ב'],
+  TAKEN_AT:          ['צולם ב', 'תצלומים מהמקום'],
+  ASSOCIATED_WITH:   ['קשור/ה למקום', 'אנשים קשורים'],
+  PASSED_THROUGH:    ['עבר/ה דרך', 'עברו דרכו'],
+  PERISHED_AT:       ['נספה/תה ב', 'נספו במקום'],
+  REPORTED_DEATH_OF: ['דיווח/ה על מותו/ה של', 'מותו/ה דווח על-ידי'],
+};
+const PROP_HE = {
+  full_name: 'שם', aliases: 'כתיבים נוספים', category: 'סיווג', roles: 'תפקיד', birth_date: 'לידה', death_date: 'פטירה',
+  fate: 'גורל', cause_of_death: 'נסיבות', confidence: 'ודאות', title: 'כותר', description: 'כותר (אנגלית)',
+  archive_id: 'מס׳ ארכיון', source: 'קובץ מקור', created_date: 'תקופה', language: 'שפות', subject: 'נושאים',
+  page_count: 'עמודים', tik_kind: 'סוג תיק', name_he: 'שם עברי', country: 'מדינה', place_type: 'סוג מקום',
+  wikidata: 'Wikidata', doc_type: 'סוג פריט', origin: 'מקור הנתון',
+};
+const CATEGORY_HE = { jew: 'יהודי/ה', perpetrator: 'גרמני/משתף-פעולה', other: 'אחר' };
+const HIDE_PROPS = new Set(['catalog_id', 'address', 'city', 'output', 'wiki_page']);
+
+/* ---------- state ---------- */
+const state = { nodes: [], edges: [], byId: new Map(), adj: new Map(), focus: null, selected: null, fg: null, shown: new Set() };
+
+function degreeOf(id){ return (state.adj.get(id) || []).length; }
+function typeOn(t){ return $('t-' + t).checked; }
+
+/* Which nodes are drawn: type filters ∩ (focus neighbourhood | bridging filter). Capped
+   for the canvas — the whole archive is thousands of nodes; focus is the real tool. */
+const CAP = 2500;          // focus neighbourhood
+const OVERVIEW_CAP = 600;  // no focus: the most-connected entities only — the whole archive is a hairball
+function visibleIds(){
+  let ids;
+  if (state.focus && state.byId.has(state.focus)) {
+    const depth = Number($('depth').value) || 1;
+    ids = new Set([state.focus]);
+    let frontier = [state.focus];
+    for (let d = 0; d < depth; d++) {
+      const next = [];
+      for (const id of frontier) for (const e of state.adj.get(id) || []) {
+        const o = e.source === id ? e.target : e.source;
+        if (!ids.has(o)) { ids.add(o); next.push(o); }
+      }
+      frontier = next;
+      if (ids.size > CAP) break;
+    }
+  } else {
+    const bridging = $('bridging').checked;
+    ids = new Set(state.nodes.filter(n => !bridging || n.t === 'tik' || n.t === 'photo' || n.deg >= 2).map(n => n.id));
+  }
+  let out = [...ids].filter(id => typeOn(TYPE_OF(id)));
+  if (!state.focus) {
+    // without a focus, keep items only when they touch a shown entity — a bare tik ring says nothing
+    const ent = new Set(out.filter(id => TYPE_OF(id) === 'person' || TYPE_OF(id) === 'place'));
+    out = out.filter(id => ent.has(id) || (state.adj.get(id) || []).some(e => ent.has(e.source === id ? e.target : e.source)));
+  }
+  const cap = state.focus ? CAP : OVERVIEW_CAP;
+  if (out.length > cap) out = out.sort((a, b) => degreeOf(b) - degreeOf(a)).slice(0, cap);
+  return new Set(out);
+}
+
+function render(){
+  const ids = visibleIds();
+  state.shown = ids;
+  const nodes = state.nodes.filter(n => ids.has(n.id));
+  const links = state.edges.filter(e => ids.has(e.source) && ids.has(e.target)).map(e => ({ source: e.source, target: e.target, label: e.label }));
+  $('stats').textContent = `מוצגים ${nodes.length.toLocaleString('he')} מתוך ${state.nodes.length.toLocaleString('he')} צמתים · ${links.length.toLocaleString('he')} קשרים` + (state.focus ? ` · מיקוד: ${state.byId.get(state.focus).label}` : '');
+  $('hint').style.display = nodes.length ? 'none' : 'flex';
+  if (!nodes.length) $('hint').textContent = 'אין מה להציג עם המסננים הנוכחיים.';
+  if (!state.focus && ids.size >= OVERVIEW_CAP) $('stats').textContent += ' · סקירה: המקושרים ביותר — חפשו ישות כדי להתמקד';
+  state.fg.graphData({ nodes, links });
+  if (state.focus) setTimeout(() => state.fg.zoomToFit(400, 40), 500);
+}
+
+/* ---------- drawing ---------- */
+function initGraph(){
+  const box = $('graph'), el = $('canvas');   // the library owns #canvas; hint + legend stay siblings
+  const fg = ForceGraph()(el)
+    .width(box.clientWidth).height(box.clientHeight)
+    .backgroundColor('rgba(0,0,0,0)')
+    .nodeId('id')
+    .nodeLabel(n => `${esc(n.label)} · ${TYPE_HE[n.t]}${n.data.confidence ? ' · ' + CONF_HE[n.data.confidence] : ''}`)
+    .nodeVal(n => n.t === 'person' || n.t === 'place' ? 2 + Math.min(10, n.deg) : 3)
+    .nodeCanvasObject((n, ctx, scale) => {
+      const r = Math.sqrt(Math.max(1, n.t === 'person' || n.t === 'place' ? 2 + Math.min(10, n.deg) : 3)) * 2;
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
+      const low = n.data.confidence === 'low';
+      ctx.fillStyle = low ? '#6b7280' : COLOR[n.t];
+      ctx.fill();
+      if (n.data.is_deceased) { ctx.lineWidth = 1.5 / scale; ctx.strokeStyle = '#ff6b6b'; ctx.stroke(); }
+      if (n.id === state.selected || n.id === state.focus) { ctx.lineWidth = 2.5 / scale; ctx.strokeStyle = '#ffffff'; ctx.stroke(); }
+      if (scale > 1.6 || n.id === state.selected || n.id === state.focus) {
+        const fs = Math.max(3, 11 / scale);
+        ctx.font = `${fs}px Heebo, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillStyle = '#eef1f7';
+        ctx.fillText(n.label.length > 40 ? n.label.slice(0, 38) + '…' : n.label, n.x, n.y + r + 1);
+      }
+    })
+    .nodePointerAreaPaint((n, color, ctx) => { ctx.beginPath(); ctx.arc(n.x, n.y, 6, 0, 2 * Math.PI); ctx.fillStyle = color; ctx.fill(); })
+    .linkColor(() => 'rgba(137,147,168,.35)')
+    .linkWidth(l => (state.selected && (l.source.id === state.selected || l.target.id === state.selected)) ? 2 : 0.6)
+    .linkDirectionalArrowLength(3).linkDirectionalArrowRelPos(1)
+    .linkLabel(l => esc((REL[l.label] || [l.label])[0]))
+    .onNodeRightClick(n => focus(n.id))
+    .onBackgroundClick(() => { state.selected = null; $('panel').innerHTML = '<div class="empty">לחיצה על צומת מציגה פרטים, קשרים ודף-ויקי.<br>לחיצה כפולה ממקדת את הגרף סביבו.</div>'; });
+  let lastClick = { id: null, t: 0 };
+  fg.onNodeClick(n => {
+    const now = Date.now();
+    if (lastClick.id === n.id && now - lastClick.t < 400) focus(n.id); else select(n.id);
+    lastClick = { id: n.id, t: now };
+  });
+  fg.d3Force('charge').strength(-40);
+  window.addEventListener('resize', () => fg.width(box.clientWidth).height(box.clientHeight));
+  state.fg = fg;
+}
+
+/* ---------- side panel ---------- */
+function focus(id){ state.focus = id; state.selected = id; render(); showPanel(id); }
+function select(id){ state.selected = id; showPanel(id); }   /* the canvas re-reads state.selected every frame */
+
+function outputLink(n){
+  const out = n.data.output;
+  if (!out) return '';
+  return `<a class="ext" href="${esc(api('/api/output/' + encodeURIComponent(out)))}" target="_blank" rel="noopener">פתח את רשומת התיק ↗</a>`;
+}
+
+function showPanel(id){
+  const n = state.byId.get(id); if (!n) return;
+  const d = n.data || {};
+  let html = `<h2>${esc(n.label)}</h2><span class="badge" style="background:${COLOR[n.t]}">${TYPE_HE[n.t]}</span>`;
+  if (d.confidence) html += `<span class="conf-${esc(d.confidence)}">ודאות: ${CONF_HE[d.confidence] || esc(d.confidence)}</span>`;
+  if (d.is_deceased) html += ` <span style="color:#ff6b6b">✝ נספה/תה</span>`;
+  html += '<dl>';
+  for (const [k, v] of Object.entries(d)) {
+    if (HIDE_PROPS.has(k) || k === 'confidence' || k === 'is_deceased' || v == null || v === '') continue;
+    let val = Array.isArray(v) ? v.map(esc).join(' · ') : esc(v);
+    if (k === 'category') val = esc(CATEGORY_HE[v] || v);
+    if (k === 'wikidata') val = `<a class="ext" href="https://www.wikidata.org/wiki/${esc(v)}" target="_blank" rel="noopener">${esc(v)} ↗</a>`;
+    html += `<dt>${esc(PROP_HE[k] || k)}</dt><dd>${val}</dd>`;
+  }
+  html += '</dl>';
+  html += outputLink(n);
+  /* neighbours grouped by relation, read from this node's side */
+  const groups = new Map();
+  for (const e of state.adj.get(id) || []) {
+    const out = e.source === id;
+    const other = out ? e.target : e.source;
+    const key = (REL[e.label] || [e.label, e.label])[out ? 0 : 1];
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(other);
+  }
+  for (const [key, others] of groups) {
+    html += `<h3>${esc(key)} (${others.length})</h3>`;
+    others.sort((a, b) => degreeOf(b) - degreeOf(a));
+    for (const o of others.slice(0, 60)) {
+      const on = state.byId.get(o);
+      html += `<a class="nb" data-id="${esc(o)}"><span style="color:${COLOR[on.t]}">●</span> ${esc(on.label)}${on.data.confidence === 'low' ? ' <small>(?)</small>' : ''}${on.data.is_deceased ? ' <small style="color:#ff6b6b">✝</small>' : ''}</a>`;
+    }
+    if (others.length > 60) html += `<div class="empty" style="padding:4px">… ועוד ${others.length - 60}</div>`;
+  }
+  html += `<div style="margin-top:12px"><button type="button" class="act primary" id="focus-btn">מקד סביב הצומת</button></div>`;
+  if (d.wiki_page) html += `<h3>דף ויקי — ${esc(d.wiki_page)}</h3><div class="wiki" id="wiki">טוען…</div>`;
+  $('panel').innerHTML = html;
+  $('focus-btn').onclick = () => focus(id);
+  $('panel').querySelectorAll('.nb').forEach(a => a.onclick = () => { const t = a.dataset.id; if (state.shown.has(t)) select(t); else focus(t); });
+  if (d.wiki_page) loadWiki(d.wiki_page);
+}
+
+/* tiny, safe markdown for our own wiki pages: escape first, then headings / bullets /
+   bold / tik references → links. No HTML from the page is ever trusted. */
+function mdToHtml(md){
+  const lines = md.split('\n');
+  let out = '', inList = false;
+  const close = () => { if (inList) { out += '</ul>'; inList = false; } };
+  for (let raw of lines) {
+    let line = esc(raw);
+    if (/^&lt;!-- YV:TIK-INGEST START --&gt;/.test(line)) { close(); out += '<div class="managed">— בלוק מנוהל (wiki-ingest) —</div>'; continue; }
+    if (/^&lt;!-- YV:TIK-INGEST END --&gt;/.test(line)) { close(); out += '<div class="managed">— סוף הבלוק —</div>'; continue; }
+    line = line.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+               .replace(/\[(tik_[^\]\s]+\.html)\]/g, (_, f) => `<a class="ext" href="${esc(api('/api/output/' + encodeURIComponent(f)))}" target="_blank" rel="noopener">${f}</a>`);
+    const h = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (h) { close(); out += `<h4>${h[2]}</h4>`; continue; }
+    const li = /^\s*-\s+(.*)$/.exec(line);
+    if (li) { if (!inList) { out += '<ul>'; inList = true; } out += `<li>${li[1]}</li>`; continue; }
+    close();
+    if (line.trim()) out += `<div>${line}</div>`;
+  }
+  close();
+  return out;
+}
+async function loadWiki(page){
+  try {
+    const r = await fetch(api('/api/graph/wiki?page=' + encodeURIComponent(page)));
+    if (!r.ok) throw new Error(r.status);
+    const el = $('wiki'); if (el) el.innerHTML = mdToHtml(await r.text());
+  } catch (e) { const el = $('wiki'); if (el) el.textContent = 'דף הוויקי לא נטען (' + e.message + ')'; }
+}
+
+/* ---------- search ---------- */
+$('q').addEventListener('keydown', ev => {
+  if (ev.key !== 'Enter') return;
+  const q = $('q').value.trim().toLowerCase();
+  if (!q) return;
+  const hit = state.nodes.find(n => n.label.toLowerCase() === q)
+           || state.nodes.filter(n => n.label.toLowerCase().includes(q)).sort((a, b) => b.deg - a.deg)[0];
+  if (hit) focus(hit.id); else $('stats').textContent = 'לא נמצא: ' + q;
+});
+['t-tik', 't-photo', 't-person', 't-place', 'bridging', 'depth'].forEach(id => $(id).addEventListener('change', render));
+$('clear').onclick = () => { state.focus = null; $('q').value = ''; render(); };
+$('rebuild').onclick = async () => {
+  $('stats').textContent = 'בונה מחדש (רשומות + ויקי)…';
+  try { const r = await fetch(api('/api/graph/rebuild'), { method: 'POST' }); if (!r.ok) throw new Error(r.status); await load(); }
+  catch (e) { $('stats').textContent = 'הבנייה נכשלה (' + e.message + ')'; }
+};
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') { state.selected = null; } });
+
+/* ---------- load ---------- */
+async function load(){
+  $('hint').style.display = 'flex'; $('hint').textContent = 'טוען את הגרף…';
+  try {
+    const r = await fetch(api('/api/graph'));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const g = await r.json();
+    state.byId = new Map(); state.adj = new Map();
+    state.nodes = (g.nodes || []).map(n => ({ id: n.id, label: n.label, t: TYPE_OF(n.id), data: n.data || {}, deg: 0 }));
+    for (const n of state.nodes) { state.byId.set(n.id, n); state.adj.set(n.id, []); }
+    state.edges = (g.edges || []).filter(e => state.byId.has(e.source) && state.byId.has(e.target));
+    for (const e of state.edges) { state.adj.get(e.source).push(e); state.adj.get(e.target).push(e); }
+    for (const n of state.nodes) n.deg = state.adj.get(n.id).length;
+    if (!state.fg) initGraph();
+    const st = g.stats || {};
+    document.title = `גרף הישויות — ${(st.nodes || state.nodes.length).toLocaleString('he')} צמתים`;
+    render();
+    const fromHash = decodeURIComponent((location.hash || '').slice(1));
+    if (fromHash && state.byId.has(fromHash)) focus(fromHash);
+  } catch (e) {
+    $('hint').style.display = 'flex';
+    $('hint').innerHTML = `<div class="empty">הגרף לא נטען (${esc(e.message)}).<br>בנייה ידנית:<code>python3 cli/yv.py doc graph</code></div>`;
+  }
+}
+load();
