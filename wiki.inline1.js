@@ -16,6 +16,12 @@ const PARAMS = new URLSearchParams(location.search);
 const COLLECTION = (PARAMS.get('collection') || '').replace(/[^a-z0-9_-]/gi, '');
 const withCollection = p => COLLECTION ? p + (p.includes('?') ? '&' : '?') + 'collection=' + encodeURIComponent(COLLECTION) : p;
 if (COLLECTION) $('graph-link').href = 'graph.html?collection=' + encodeURIComponent(COLLECTION);
+// Researcher mode (?mode=researcher): a reading view — the build / synthesis / review tools are hidden.
+const RESEARCHER = PARAMS.get('mode') === 'researcher';
+if (RESEARCHER) {
+  ['hubs', 'proposals'].forEach(id => { const el = $(id); if (el) el.hidden = true; });
+  $('mode-link').textContent = '✎ מצב מקטלג'; $('mode-link').href = 'wiki.html' + (COLLECTION ? '?collection=' + encodeURIComponent(COLLECTION) : '');
+} else if (COLLECTION) { $('mode-link').href += '&collection=' + encodeURIComponent(COLLECTION); }
 
 const KIND_HE = { collection: 'אוספים', tik: 'תיקים', photo: 'תצלומים', film: 'סרטים', doc: 'מסמכים', item: 'פריטים', person: 'אנשים מגשרים', place: 'מקומות', subject: 'נושאים', year: 'שנים', org: 'ארגונים', region: 'אזורים' };
 const DIR_OF = { collection: 'collections', tik: 'tiks', photo: 'photos', film: 'films', doc: 'docs', item: 'items', person: 'people', place: 'places', subject: 'subjects', year: 'events', org: 'organizations' };
@@ -140,7 +146,8 @@ function actionsHtml(page){
   const node = state.pageNode;
   let html = '<div class="actions">';
   if (node) html += `<a class="act" href="graph.html${COLLECTION ? '?collection=' + encodeURIComponent(COLLECTION) : ''}#${encodeURIComponent(node)}">🕸️ פתח בגרף</a>`;
-  html += `<button type="button" class="act" id="synth">✍️ הצע סינתזה מצוטטת (מודל → סקירה)</button><span class="msg" id="msg"></span></div>`;
+  if (!RESEARCHER) html += `<button type="button" class="act" id="synth">✍️ הצע סינתזה מצוטטת (מודל → סקירה)</button>`;
+  html += `<span class="msg" id="msg"></span></div>`;
   return html;
 }
 function bindPage(){
@@ -193,6 +200,43 @@ async function decide(verb, file, box){
     box.innerHTML = `<div class="pm">${verb === 'approve' ? '✓ אושר ונכתב לדף ' + esc(j.page || '') : '✗ נדחה'}</div>`;
   } catch (e) { alert('נכשל: ' + e.message); }
 }
+
+/* ---------- ask the archive ---------- */
+function citeLinks(text){
+  // [key] / [key · עמ׳ N] → link to the item page in this browser
+  return esc(text).replace(/\[(?:תיק\s+)?([A-Za-z0-9_.\-]+)([^\]]*)\]/g, (m, key, rest) => {
+    const n = state.byId.get('tik:' + key) || state.nodes.find(nn => nn.id.endsWith(':' + key));
+    const page = n ? pageOf(n.id) : `tiks/${key}.md`;
+    return `<a class="wl" data-page="${esc(page)}" title="${esc(key)}">[${esc(key)}${esc(rest)}]</a>`;
+  });
+}
+async function askArchive(){
+  const question = $('ask').value.trim();
+  if (question.length < 3) return;
+  const el = $('page');
+  el.innerHTML = `<div class="crumbs"><a data-page="index.md">עץ הידע</a> › שאל את הארכיון</div><h2>${esc(question)}</h2><div class="empty">מתכנן שאילתה, שולף, מנסח תשובה מצוטטת… (עד כמה דקות)</div>`;
+  bindPage();
+  $('ask-go').disabled = true;
+  try {
+    const r = await fetch(api('/api/wiki/ask'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || r.status);
+    let html = `<div class="crumbs"><a data-page="index.md">עץ הידע</a> › שאל את הארכיון</div><h2>${esc(question)}</h2>`;
+    html += `<div class="prop"><div class="pb" style="font-size:14.5px">${citeLinks(j.answer_he || '')}</div>${j.answer_en ? `<div class="pb" dir="ltr" style="text-align:left;color:var(--muted)">${citeLinks(j.answer_en)}</div>` : ''}` +
+      `<div class="pm">${j.dropped_sentences ? 'הושמטו ' + j.dropped_sentences + ' משפטים ללא ציטוט · ' : ''}${(j.citations || []).length} פריטים מצוטטים${j.cannot ? ' · ' + esc(j.cannot) : ''}</div></div>`;
+    if ((j.plan || []).length) html += `<h3>השאילתה שהורצה (דטרמיניסטית)</h3><pre dir="ltr" style="text-align:left;font-size:11.5px;background:var(--tint);padding:8px;border-radius:6px;overflow:auto">${esc(JSON.stringify(j.plan, null, 1))}</pre>`;
+    if ((j.results || []).length) {
+      html += `<h3>הראיות (${j.results.length})</h3><ul>` + j.results.slice(0, 60).map(r => `<li><a class="wl" data-page="${esc(r.page || '')}">${esc(r.name)}</a> <small>${esc(KIND_HE[r.kind] || r.kind)} · ${r.items} פריטים</small>` +
+        (r.evidence || []).slice(0, 4).map(e => `<div style="font-size:12px;color:var(--muted)">· <a class="wl" data-page="${esc(pageForKey(e.item))}">[${esc(e.item)}]</a> ${esc([e.role, e.fate, e.pages ? 'עמ׳ ' + e.pages : '', (e.title || '').slice(0, 70)].filter(Boolean).join(' · '))}</div>`).join('') + '</li>').join('') + '</ul>';
+    }
+    el.innerHTML = html;
+    bindPage();
+  } catch (e) { el.innerHTML += `<div class="empty">נכשל: ${esc(e.message)}</div>`; }
+  $('ask-go').disabled = false;
+}
+function pageForKey(key){ const n = state.byId.get('tik:' + key) || state.nodes.find(nn => nn.id.endsWith(':' + key)); return n ? pageOf(n.id) : `tiks/${key}.md`; }
+$('ask-go').onclick = askArchive;
+$('ask').addEventListener('keydown', ev => { if (ev.key === 'Enter') askArchive(); });
 
 /* ---------- wiring ---------- */
 $('q').addEventListener('input', () => buildTree($('q').value));

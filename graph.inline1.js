@@ -62,7 +62,7 @@ const CATEGORY_HE = { jew: 'יהודי/ה', perpetrator: 'גרמני/משתף-פ
 const HIDE_PROPS = new Set(['catalog_id', 'address', 'city', 'output', 'wiki_page', 'viewer']);
 
 /* ---------- state ---------- */
-const state = { nodes: [], edges: [], byId: new Map(), adj: new Map(), focus: null, selected: null, fg: null, shown: new Set() };
+const state = { nodes: [], edges: [], byId: new Map(), adj: new Map(), focus: null, selected: null, fg: null, shown: new Set(), path: null };
 
 function degreeOf(id){ return (state.adj.get(id) || []).length; }
 function levelHubs(){ return $('level').value === 'hubs'; }
@@ -78,6 +78,7 @@ const CAP = 2500;          // focus neighbourhood
 const OVERVIEW_CAP = 600;  // no focus: the most-connected entities only — the whole archive is a hairball
 function visibleIds(){
   let ids;
+  if (state.path) return new Set(state.path.filter(id => typeOn(TYPE_OF(id)) || true));
   if (state.focus && state.byId.has(state.focus)) {
     const depth = Number($('depth').value) || 1;
     ids = new Set([state.focus]);
@@ -286,6 +287,37 @@ async function doImport(){
     location.href = 'graph.html?collection=' + encodeURIComponent(j.collection);
   } catch (e) { $('import-msg').textContent = 'נכשל: ' + e.message; }
 }
+
+/* ---------- how are X and Y connected: shortest path (BFS over the whole graph) ---------- */
+function findNode(q){
+  q = String(q || '').trim().toLowerCase(); if (!q) return null;
+  const rank = n => { const l = n.label.toLowerCase(); return l === q ? 3 : l.startsWith(q) ? 2 : l.includes(q) ? 1 : 0; };
+  return state.nodes.filter(n => rank(n) > 0).sort((a, b) => rank(b) - rank(a) || b.deg - a.deg)[0] || null;
+}
+function shortestPath(a, b){
+  const prev = new Map([[a, null]]); const queue = [a];
+  while (queue.length) {
+    const cur = queue.shift();
+    if (cur === b) break;
+    for (const e of state.adj.get(cur) || []) {
+      const o = e.source === cur ? e.target : e.source;
+      if (!prev.has(o)) { prev.set(o, cur); queue.push(o); }
+    }
+  }
+  if (!prev.has(b)) return null;
+  const path = []; for (let c = b; c; c = prev.get(c)) path.push(c); return path.reverse();
+}
+$('path-go').onclick = () => {
+  const a = findNode($('path-a').value), b = findNode($('path-b').value);
+  if (!a || !b) { $('stats').textContent = 'לא נמצאו שתי הישויות'; return; }
+  const path = shortestPath(a.id, b.id);
+  if (!path) { $('stats').textContent = `אין מסלול בין ${a.label} ל-${b.label} ברשומות`; return; }
+  state.path = path; state.focus = null; state.selected = b.id;
+  render();
+  $('stats').textContent = `מסלול (${path.length - 1} צעדים): ` + path.map(id => state.byId.get(id).label).join(' ← ');
+  showPanel(b.id);
+};
+$('clear').addEventListener('click', () => { state.path = null; });
 
 /* ---------- search ---------- */
 $('q').addEventListener('keydown', ev => {

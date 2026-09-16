@@ -86,6 +86,7 @@
   <label title="ישות שמופיעה ביותר מפריט אחד"><input type="checkbox" id="bridging" checked>רק מגשרים (≥2)</label>
   <label>עומק מיקוד <select id="depth"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label>
   <button type="button" class="act" id="clear">הצג הכול</button>
+  <label title="מסלול קצר ביותר בגרף בין שתי ישויות — לחוקר ולזיהוי">🔗 <input type="text" id="path-a" placeholder="מ…" style="width:120px;padding:5px 8px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--tint);color:var(--ink);font-family:inherit"> ← <input type="text" id="path-b" placeholder="אל…" style="width:120px;padding:5px 8px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--tint);color:var(--ink);font-family:inherit"> <button type="button" class="act" id="path-go">איך קשורים?</button></label>
   <button type="button" class="act" id="rebuild" title="הרצה מחדש של yv doc graph על הרשומות והוויקי">↻ בנה מחדש</button>
   <span class="stats" id="stats">טוען…</span>
 </div>
@@ -99,6 +100,6 @@
 
 <script src="force-graph.min.js?v=1.47.0"></script>
 <script src="yv-wikimd.js?v=20260915a"></script>   <!-- vendored (MIT) — no CDN dependency, works air-gapped -->
-<script src="graph.inline1.js?v=20260915e"></script>
+<script src="graph.inline1.js?v=20260916a"></script>
 </body>
 </html>

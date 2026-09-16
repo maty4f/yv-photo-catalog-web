@@ -51,10 +51,16 @@
   </div>
   <div class="srow" style="margin-inline-start:auto"><span>שרת:</span><input type="text" id="server-url" placeholder="ריק = אותו שרת" autocomplete="off"></div>
 </div>
+<div class="toolbar" id="askbar" style="background:var(--tint)">
+  <input type="text" id="ask" placeholder="🔎 שאל את הארכיון — למשל: מי העיד על טרבלינקה ב-1987? · אילו נספים מוזכרים בתיק על סוביבור?" autocomplete="off" style="min-width:320px;flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card);color:var(--ink);font-family:inherit;font-size:14px;direction:rtl;text-align:right">
+  <button type="button" class="act primary" id="ask-go">שאל</button>
+  <span class="msg" id="ask-msg">כל משפט בתשובה מצוטט לפריט; שאלה ללא ראיה מקבלת "אין בחומר".</span>
+</div>
 <div class="toolbar">
   <input type="text" id="q" placeholder="חיפוש בעץ — אדם / מקום / תיק / נושא / שנה" autocomplete="off">
   <button type="button" class="act" id="hubs" title="בנייה מחדש של דפי-המוקד מהרשומות והאוספים (ללא מודל)">🌳 בנה מוקדים</button>
   <button type="button" class="act" id="proposals" title="הצעות-סינתזה הממתינות לסקירה">📝 הצעות לסקירה</button>
+  <a class="act" id="mode-link" href="wiki.html?mode=researcher" title="תצוגת קריאה לחוקר: בלי כלי-בנייה ואישור">🎓 מצב חוקר</a>
   <a class="act" id="graph-link" href="graph.html">🕸️ הגרף</a>
   <span class="stats" id="stats">טוען…</span>
 </div>
@@ -63,6 +69,6 @@
   <div id="page"><div class="empty">בחרו צומת בעץ, או פתחו את <a class="wl" data-page="index.md" href="wiki.html?page=index.md">index.md</a>.</div></div>
 </div>
 <script src="yv-wikimd.js?v=20260915a"></script>
-<script src="wiki.inline1.js?v=20260915b"></script>
+<script src="wiki.inline1.js?v=20260916a"></script>
 </body>
 </html>
