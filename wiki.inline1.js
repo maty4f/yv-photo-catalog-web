@@ -182,6 +182,7 @@ async function showProposals(){
         <div class="pt">${esc(p.kind === 'synthesis' ? '✍️ סינתזה' : '🔗 ' + (p.type || ''))} — ${esc(p.name || p.page || p.slug || '')}</div>
         <div class="pm">${esc(p.page || '')}${p.model ? ' · ' + esc(p.model) : ''}${p.citations ? ' · ציטוטים: ' + esc((p.citations || []).join(', ')) : ''}${p.dropped_sentences ? ' · הושמטו ' + p.dropped_sentences + ' משפטים ללא ציטוט' : ''}</div>
         <div class="pb">${p.block ? yvWikiMd(p.block, { pageHref: rel => 'wiki.html?page=' + encodeURIComponent(rel + '.md') }) : esc(JSON.stringify(p.items || []).slice(0, 400))}</div>
+        ${p.kind === 'synthesis' ? yvSupportReview.render(p.support, {editable:false}) : ''}
         <button type="button" class="act primary ok">✓ אשר לדף</button> <button type="button" class="act no">✗ דחה</button>
       </div>`).join('');
     bindPage();
@@ -224,12 +225,14 @@ async function askArchive(){
     let html = `<div class="crumbs"><a data-page="index.md">עץ הידע</a> › שאל את הארכיון</div><h2>${esc(question)}</h2>`;
     html += `<div class="prop"><div class="pb" style="font-size:14.5px">${citeLinks(j.answer_he || '')}</div>${j.answer_en ? `<div class="pb" dir="ltr" style="text-align:left;color:var(--muted)">${citeLinks(j.answer_en)}</div>` : ''}` +
       `<div class="pm">${j.dropped_sentences ? 'הושמטו ' + j.dropped_sentences + ' משפטים ללא ציטוט · ' : ''}${(j.citations || []).length} פריטים מצוטטים${j.cannot ? ' · ' + esc(j.cannot) : ''}</div></div>`;
+    html += yvSupportReview.render(j.support, {editable:!RESEARCHER});
     if ((j.plan || []).length) html += `<h3>השאילתה שהורצה (דטרמיניסטית)</h3><pre dir="ltr" style="text-align:left;font-size:11.5px;background:var(--tint);padding:8px;border-radius:6px;overflow:auto">${esc(JSON.stringify(j.plan, null, 1))}</pre>`;
     if ((j.results || []).length) {
       html += `<h3>הראיות (${j.results.length})</h3><ul>` + j.results.slice(0, 60).map(r => `<li><a class="wl" data-page="${esc(r.page || '')}">${esc(r.name)}</a> <small>${esc(KIND_HE[r.kind] || r.kind)} · ${r.items} פריטים</small>` +
         (r.evidence || []).slice(0, 4).map(e => `<div style="font-size:12px;color:var(--muted)">· <a class="wl" data-page="${esc(pageForKey(e.item))}">[${esc(e.item)}]</a> ${esc([e.role, e.fate, e.pages ? 'עמ׳ ' + e.pages : '', (e.title || '').slice(0, 70)].filter(Boolean).join(' · '))}</div>`).join('') + '</li>').join('') + '</ul>';
     }
     el.innerHTML = html;
+    yvSupportReview.bind(el, j.support);
     bindPage();
   } catch (e) { el.innerHTML += `<div class="empty">נכשל: ${esc(e.message)}</div>`; }
   $('ask-go').disabled = false;
