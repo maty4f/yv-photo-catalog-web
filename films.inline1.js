@@ -788,7 +788,34 @@ function isTruncatedUploadError(text) {
 // {status:'error',errorText} — never throws on a job error (caller decides).
 // SSE doesn't stream reliably through the tunnel (idle connection dropped during
 // the long silent Gemini step), so we poll.
+// ⛔ Stop: POST /api/jobs/:id/cancel — the server kills the running engine
+// (JobManager#cancelJob, process group); the poll loop then sees the terminal
+// status and returns. Shown only while a server job is being polled.
+let activeUnifiedJob = null;
+const stopJobBtn = document.getElementById('stop-job-btn');
+if (stopJobBtn) stopJobBtn.addEventListener('click', async () => {
+  if (!activeUnifiedJob) return;
+  stopJobBtn.disabled = true; stopJobBtn.textContent = '⏳ עוצר…';
+  try {
+    const r = await fetch(activeUnifiedJob.base + '/api/jobs/' + activeUnifiedJob.jobId + '/cancel', { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) showStatus('העצירה נכשלה: ' + (j.error || j.message || ('HTTP ' + r.status)), 'err');
+  } catch (e) { showStatus('העצירה נכשלה: ' + e.message, 'err'); }
+});
+function showStopButton(base, jobId) {
+  activeUnifiedJob = { base, jobId };
+  if (!stopJobBtn) return;
+  stopJobBtn.style.display = ''; stopJobBtn.disabled = false; stopJobBtn.textContent = '⛔ עצור את הקטלוג';
+}
+function hideStopButton() { activeUnifiedJob = null; if (stopJobBtn) stopJobBtn.style.display = 'none'; }
+
 async function pollUnifiedJob(base, jobId, onStatus) {
+  showStopButton(base, jobId);
+  try { return await pollUnifiedJobInner(base, jobId, onStatus); }
+  finally { hideStopButton(); }
+}
+
+async function pollUnifiedJobInner(base, jobId, onStatus) {
   const jobUrl = base + '/api/jobs/' + jobId;
   const POLL_MS = 2500, MAX_MS = 120 * 60 * 1000; // full-density long film: ~600 frames, windowed Gemini + synthesis
   const t0 = Date.now();
@@ -807,6 +834,7 @@ async function pollUnifiedJob(base, jobId, onStatus) {
       if (line) onStatus('🛠 ' + line);
     }
     if (job.status === 'done' && job.outputName) return { status: 'done', outputName: job.outputName };
+    if (job.status === 'cancelled') return { status: 'error', errorText: 'העבודה נעצרה על-ידי המשתמש' };
     if (job.status === 'error') {
       const er = (job.events || []).filter(e => e.type === 'error').pop();
       return { status: 'error', errorText: (er && (er.message || er.text)) || 'הניתוח הסתיים בשגיאה בשרת' };
