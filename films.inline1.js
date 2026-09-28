@@ -790,7 +790,7 @@ function isTruncatedUploadError(text) {
 // the long silent Gemini step), so we poll.
 async function pollUnifiedJob(base, jobId, onStatus) {
   const jobUrl = base + '/api/jobs/' + jobId;
-  const POLL_MS = 2500, MAX_MS = 35 * 60 * 1000; // long: Gemini(80 frames) + a many-scene Claude render
+  const POLL_MS = 2500, MAX_MS = 120 * 60 * 1000; // full-density long film: ~600 frames, windowed Gemini + synthesis
   const t0 = Date.now();
   if (window.yvProgress) yvProgress.begin({ screen: 'films', kind: 'film' });
   while (true) {

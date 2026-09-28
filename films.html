@@ -244,8 +244,8 @@
       <input type="file" id="film-file-input" accept="video/*" class="visually-hidden-file">
       <div class="yv-flow-mount" style="text-align:center; margin-top:8px"></div>
       <label style="display:block; direction:rtl; text-align:center; margin-top:6px; font-size:12.5px; color:var(--muted); cursor:pointer;">
-        <input type="checkbox" id="film-direct-upload" style="vertical-align:middle; margin-inline-end:4px;">
-        ⬆️ העלאה מלאה לשרת — הווידאו כולו מועלה (בנתחים מעל 60MB, גם מעל 100MB) והשרת מחלץ פריימים צפופים ב-ffmpeg
+        <input type="checkbox" id="film-direct-upload" checked style="vertical-align:middle; margin-inline-end:4px;">
+        ⬆️ ניתוח מלא — הווידאו מועלה בחלקים והשרת מחלץ פריימים בכל חיתוך וכל 5 שניות (ביטול = דגימה דלילה בדפדפן, לחיבור חלש)
       </label>
       <div style="direction:rtl; text-align:center; margin-top:6px; font-size:12px; color:var(--warn);">
         🖥️ סרט ארוך (מעל ~10 דק׳) שנמצא על מחשב השרת? <a href="server-films.html" id="server-films-link" style="color:var(--warn); font-weight:700;">קטלוג על השרת — בלי העלאה, בכל אורך</a>
@@ -548,7 +548,7 @@
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
 <script src="yv-providers.js?v=20260819"></script>
-<script src="films.inline1.js?v=20260819a"></script>
+<script src="films.inline1.js?v=20260928a"></script>
 <script src="films.inline2.js?v=20260722e"></script>
 <script src="yv-client-log.js?v=20260823a"></script>
 <script src="yv-misid.js?v=20260823a"></script>
