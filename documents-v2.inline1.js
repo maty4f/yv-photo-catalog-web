@@ -49,6 +49,13 @@ const rowClaudeModel = $('row-claude-model');
 modeSel.value = state.mode;
 apiKeyInput.value = state.apiKey;
 modelSel.value = state.model;
+// A model saved by an older build may no longer be offered (2.5/2.0 were retired):
+// fall back to the default option instead of sending a dead model id.
+if (!modelSel.value) {
+  modelSel.value = Array.from(modelSel.options).find(o => o.defaultSelected)?.value || modelSel.options[0].value;
+  state.model = modelSel.value;
+  localStorage.setItem('yv_v2_model', state.model);
+}
 claudeModelSel.value = state.claudeModel;
 
 function syncModeUI() {
