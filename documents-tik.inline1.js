@@ -420,13 +420,18 @@ function geminiBase(){
   return base+'/api/gemini-proxy/v1beta/models/';
 }
 async function callGeminiOnParts(parts,promptText){
-  const url=geminiBase()+$('model-gemini').value+':generateContent';
+  const model=$('model-gemini').value;
+  const url=geminiBase()+model+':generateContent';
+  // Shaped per model (budget → level, sampling keys dropped where ignored) by the
+  // shared helper; guarded because this file is loaded before yv-providers.js.
+  const genCfg={temperature:0,maxOutputTokens:8192};
+  const generationConfig=window.yvProviders?yvProviders.geminiGenerationConfig(genCfg,model):genCfg;
   let res;
   try{
     res=await fetch(url,{method:'POST',
       headers:{'Content-Type':'application/json','x-goog-api-key':state.keyGemini},
       body:JSON.stringify({contents:[{role:'user',parts:[...parts,{text:promptText}]}],
-        generationConfig:{temperature:0,maxOutputTokens:8192}})});
+        generationConfig})});
   }catch(netErr){
     throw new Error('לא ניתן להגיע ל-Gemini ('+netErr.message+'). בדוק חיבור רשת/חסימה.');
   }

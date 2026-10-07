@@ -558,7 +558,7 @@ async function reconcileLLM(prompt, label) {
     const res = await fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
       body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 32768, responseMimeType: 'application/json' } }),
+        generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0.2, maxOutputTokens: 32768, responseMimeType: 'application/json' }, getActiveModel()) }),
     });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error?.message || 'Gemini HTTP ' + res.status); }
     const data = await res.json();
@@ -2037,13 +2037,13 @@ async function callGemini() {
     },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
-      generationConfig: {
+      generationConfig: yvProviders.geminiGenerationConfig({
         temperature: 0.2,
         // 2.5 spends part of the budget on thinking — a low cap truncates the
         // JSON mid-string. Give the model its real max (2.0 tops out at 8192).
         maxOutputTokens: model.includes('2.0') ? 8192 : 65536,
         responseMimeType: 'application/json',
-      },
+      }, model),
     }),
   });
 
@@ -3691,7 +3691,7 @@ async function callGeminiForCollection(sources) {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 16000, responseMimeType: 'application/json' },
+      generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0.2, maxOutputTokens: 16000, responseMimeType: 'application/json' }, getActiveModel()),
     }),
   });
   if (!res.ok) {
@@ -3942,7 +3942,7 @@ ${heText}`;
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
+        generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0.3, maxOutputTokens: 2000 }, getActiveModel()),
       })
     });
     if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
@@ -4020,7 +4020,7 @@ async function detectItemTypeFromDesc(descHe) {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 30 },
+          generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0, maxOutputTokens: 30 }, getActiveModel()),
         })
       });
       if (!res.ok) return 'unknown';

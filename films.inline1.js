@@ -1173,7 +1173,7 @@ async function callGemini() {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getActiveApiKey() },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [videoPart, { text: buildFilmPrompt() }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: maxOut, responseMimeType: 'application/json' }
+      generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0.2, maxOutputTokens: maxOut, responseMimeType: 'application/json' }, model)
     })
   });
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }

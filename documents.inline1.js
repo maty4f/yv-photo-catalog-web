@@ -241,7 +241,7 @@ if (testGeminiBtn && testGeminiStatus) {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: 'Reply with exactly: OK' }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 5 },
+          generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0, maxOutputTokens: 5 }, selectedModel),
         }),
       });
       const genBody = await genRes.text();
@@ -1435,7 +1435,7 @@ async function geminiOCROnly() {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [ docPart, { text: ocrPrompt } ]}],
-      generationConfig: { temperature: 0, maxOutputTokens: 8192 }
+      generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0, maxOutputTokens: 8192 }, modelSelGemini.value)
     })
   });
   if (!res.ok) {
@@ -1455,7 +1455,7 @@ async function geminiOCROnly() {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [ docPart, { text: ocrPrompt } ]}],
-          generationConfig: { temperature: 0, maxOutputTokens: 8192 }
+          generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0, maxOutputTokens: 8192 }, modelSelGemini.value)
         })
       });
       state._fileUriRetried = false;
@@ -2112,7 +2112,7 @@ async function callGemini() {
       contents: [{ role: 'user', parts: [part, { text: buildDocPrompt() + '\n\n⚠ החזר JSON תקין בלבד ללא code-fence ולא טקסט הקדמה.' }] }],
       // maxOutputTokens 8192 = Gemini 2.5 Flash hard limit; responseMimeType removed
       // (it triggers 400 on some model+file_data combinations)
-      generationConfig: { temperature: 0, maxOutputTokens: 8192 }
+      generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0, maxOutputTokens: 8192 }, getActiveModel())
     })
   });
   if (!res.ok) {
@@ -2743,7 +2743,7 @@ async function runAcademicValidation(useAnthropic) {
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKeys.gemini },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [docPart, { text: prompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' }
+        generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' }, modelSelGemini.value)
       })
     });
     if (!res.ok) {

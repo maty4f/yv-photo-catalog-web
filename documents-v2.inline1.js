@@ -728,7 +728,7 @@ analyzeBtn.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.apiKey },
       body: JSON.stringify({
         contents: [{ role: 'user', parts }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+        generationConfig: yvProviders.geminiGenerationConfig({ temperature: 0.1, maxOutputTokens: 8192 }, state.model),
       }),
     });
 

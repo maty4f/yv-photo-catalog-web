@@ -142,5 +142,54 @@
     return /^—.+—$/.test(t) ? '' : t;
   }
 
-  window.yvProviders = { anthropicBase, anthropicFetch, anthropicJson, geminiBase, parseJson, parseInertHtml, unifiedFieldText };
+  // ── Gemini generationConfig per model (Google's deprecation notice, 7.10.2026) ──
+  // From the next Gemini generation `thinkingBudget` returns 400 and
+  // temperature / topP / topK return an error; since 3.6-flash the sampling keys
+  // are ignored anyway, on 3.5 and older they still act. So: sampling keys are
+  // dropped from 3.6 on (and for any id without a known version), a thinking
+  // budget becomes a level on 3.x and newer (0 → "minimal" only on 3.5/3.6,
+  // whose level list has it; "low" elsewhere; -1 → the model's default).
+  // Same rules as local-server/lib/gemini-config.js — gemini-config.test.js pins
+  // the two to each other. Every dashboard Gemini call goes through here.
+  var GEMINI_SAMPLING_KEYS = ['temperature', 'top_p', 'top_k', 'topP', 'topK'];
+  function geminiVersion(model) {
+    var m = /gemini-(\d+)(?:\.(\d+))?/.exec(String(model || ''));
+    return m ? [Number(m[1]), Number(m[2] || 0)] : null;
+  }
+  function geminiThinkingLevel(budget, model) {
+    var b = Number(budget);
+    if (!isFinite(b) || b < 0) return null;
+    if (b === 0) {
+      var v = geminiVersion(model);
+      return v && (v[0] === 3 && (v[1] === 5 || v[1] === 6)) ? 'minimal' : 'low';
+    }
+    if (b <= 1024) return 'low';
+    if (b <= 8192) return 'medium';
+    return 'high';
+  }
+  function geminiGenerationConfig(cfg, model) {
+    var out = Object.assign({}, cfg || {});
+    var v = geminiVersion(model);
+    var atLeast = function (major, minor) { return v[0] > major || (v[0] === major && v[1] >= minor); };
+    if (!v || atLeast(3, 6)) GEMINI_SAMPLING_KEYS.forEach(function (k) { delete out[k]; });
+    if (!v || atLeast(3, 0)) {
+      [['thinkingConfig', 'thinkingBudget', 'thinkingLevel'],
+       ['thinking_config', 'thinking_budget', 'thinking_level']].forEach(function (t) {
+        var tkey = t[0], bkey = t[1], lkey = t[2];
+        var src = out[tkey];
+        if (!src || typeof src !== 'object' || !(bkey in src)) return;
+        var tc = Object.assign({}, src);
+        var budget = tc[bkey];
+        delete tc[bkey];
+        if (!(lkey in tc)) {
+          var level = geminiThinkingLevel(budget, model);
+          if (level) tc[lkey] = level;
+        }
+        if (Object.keys(tc).length) out[tkey] = tc; else delete out[tkey];
+      });
+    }
+    return out;
+  }
+
+  window.yvProviders = { anthropicBase, anthropicFetch, anthropicJson, geminiBase, geminiGenerationConfig, parseJson, parseInertHtml, unifiedFieldText };
 })();
