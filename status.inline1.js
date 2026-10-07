@@ -1,11 +1,11 @@
 function esc(x){ return window.yvEsc ? yvEsc(x) : String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }   // canonical delegate; upgraded from 4-char variant
-function pill(s){ const m={ok:['ok','תקין'],limited:['warn','מוגבל'],error:['bad','שגיאה'],'no-key':['bad','אין מפתח'],unknown:['unk','בבדיקה…']}; const [c,l]=m[s]||['unk',s||'—']; return `<span class="pill ${c}">${l}</span>`; }
+function pill(s){ const m={ok:['ok','תקין'],limited:['warn','מוגבל'],error:['bad','שגיאה'],'no-key':['bad','אין מפתח'],unknown:['unk','בבדיקה…'],'auth-failed':['bad','כשל התחברות']}; const [c,l]=m[s]||['unk',s||'—']; return `<span class="pill ${c}">${l}</span>`; }
 function dot(b){ return `<span class="dot ${b?'ok':'bad'}"></span>`; }
 function up(s){ s=s||0; const h=Math.floor(s/3600),m=Math.floor((s%3600)/60); return (h?h+' ש׳ ':'')+m+' דק׳'; }
 function t(ms){ return ms ? new Date(ms).toLocaleTimeString('he-IL') : '—'; }
 function fmtDur(s){ if(s==null||isNaN(s)) return '—'; if(s<60) return s+' שנ׳'; const m=Math.floor(s/60); if(m<60) return m+' דק׳'+(s%60?' '+(s%60)+' שנ׳':''); const h=Math.floor(m/60); return h+' שע׳ '+(m%60)+' דק׳'; }
 function kicon(k){ return ({film:'🎬',photo:'📷',doc:'📄'})[k]||'•'; }
-function sbadge(st){ const m={done:['ok','✓ הושלם'],error:['bad','✗ שגיאה'],running:['ok','⏳ רץ'],queued:['warn','בתור']}; const [c,l]=m[st]||['unk',st||'—']; return `<span class="pill ${c}" style="font-size:11px;padding:1px 8px">${l}</span>`; }
+function sbadge(st){ const m={done:['ok','✓ הושלם'],error:['bad','✗ שגיאה'],running:['ok','⏳ רץ'],queued:['warn','בתור'],cancelled:['warn','בוטל']}; const [c,l]=m[st]||['unk',st||'—']; return `<span class="pill ${c}" style="font-size:11px;padding:1px 8px">${l}</span>`; }
 function kindCard(d){
   if(!d) return '';
   let cls,label;
@@ -45,26 +45,26 @@ function historyTable(rows){
 }
 async function load(){
   let s;
-  try{ s=await (await fetch('/api/status',{cache:'no-store'})).json(); }
-  catch(e){ document.getElementById('grid').innerHTML='<div class="card"><div class="big">'+dot(false)+' השרת לא מגיב</div></div>'; return schedule(false); }
+  try{ const response=await fetch('/api/status',{cache:'no-store',signal:AbortSignal.timeout(15000)}); if(!response.ok)throw new Error('HTTP '+response.status); s=await response.json(); }
+  catch(e){ document.getElementById('bar').innerHTML=''; document.getElementById('upd').textContent='הנתונים אינם מעודכנים'; document.getElementById('grid').innerHTML='<div class="card"><div class="big">'+dot(false)+' השרת לא מגיב</div></div>'; return schedule(false); }
   document.getElementById('upd').textContent='עודכן '+t(s.ts);
-  const g=s.gemini||{}, j=s.jobs||{}, r=s.resources||{}, pk=s.perKind||{}, sm=s.summary||{}, sy=s.system||{};
+  const g=s.gemini||{}, c=s.claude||{}, j=s.jobs||{}, r=s.resources||{}, pk=s.perKind||{}, sm=s.summary||{}, sy=s.system||{};
   document.getElementById('bar').innerHTML = `
     <div class="tile"><div class="tn">${sm.jobsToday??0}</div><div class="tl">עבודות היום</div></div>
     <div class="tile"><div class="tn">${sm.successRatePct==null?'—':sm.successRatePct+'%'}</div><div class="tl">שיעור הצלחה</div></div>
     <div class="tile"><div class="tn">${fmtDur(sm.avgDurationSec)}</div><div class="tl">משך ממוצע</div></div>
     <div class="tile"><div class="tn">${sm.active??0} / ${sm.queued??0}</div><div class="tl">פעיל / בתור</div></div>
-    <div class="tile"><div class="tn">$${(s.spend?.todayUsd ?? s.estSpendUsd ?? 0)}</div><div class="tl">${s.spend ? 'עלות Gemini היום (אמיתית)' : 'עלות מוערכת'}</div></div>`;
+    <div class="tile"><div class="tn">$${(s.spend?.todayUsd ?? s.estSpendUsd ?? 0)}</div><div class="tl">${s.spend ? 'עלות API מחושבת היום' : 'עלות מוערכת'}</div></div>`;
   const errs=(j.recentErrors||[]).map(e=>`<div>✗ ${esc(e.id)} ${esc(e.name||'')} — ${esc(e.err||'')}</div>`).join('') || '<div class="muted">אין שגיאות אחרונות</div>';
   document.getElementById('grid').innerHTML = `
    <div class="card"><h3>שרת קטלוג</h3><div class="big">${dot(s.server?.up)} פעיל</div><div class="row"><span>זמן ריצה</span><b>${up(s.server?.uptimeSec)}</b></div></div>
    <div class="card"><h3>Tunnel · films.mf-sr.com</h3><div class="big">${dot(s.tunnel?.up)} ${s.tunnel?.up?'מחובר':'מנותק'}</div><div class="muted">הגישה מהמחשב בעבודה</div></div>
-   <div class="card"><h3>Gemini API · חיוב</h3><div class="big">${pill(g.status)}</div><div class="row"><span>סוג מפתח</span><b>${esc(g.keyType||'—')}</b></div><div class="row"><span>פרטים</span><b>${esc(g.detail||'')}</b></div><div class="muted">נבדק: ${t(g.checkedAt)}</div></div>
-   ${kindCard(pk.film)}
-   ${kindCard(pk.photo)}
-   ${kindCard(pk.doc)}
-   <div class="card"><h3>משאבי מחשב</h3><div class="row"><span>זיכרון פנוי</span><b>${r.memFreePct ?? '—'}%</b></div><div class="row"><span>סה״כ RAM</span><b>${r.memTotalGB ?? '—'} GB</b></div><div class="row"><span>עומס (1 דק׳)</span><b>${r.load1 ?? '—'}</b></div></div>
-   <div class="card"><h3>מערכת ואחסון</h3><div class="row"><span>דיסק פנוי</span><b>${sy.diskFreeGB ?? '—'} GB${sy.diskUsedPct!=null?' ('+sy.diskUsedPct+'%)':''}</b></div><div class="row"><span>קבצי פלט</span><b>${sy.outputCount ?? '—'}</b></div><div class="row"><span>העלאות זמניות</span><b>${sy.uploadsMB ?? 0} MB</b></div><div class="row"><span>PID · זיכרון שרת</span><b>${sy.pid ?? '—'} · ${sy.rssMB ?? '—'} MB</b></div></div>
+   <div class="card"><h3>Gemini API · חיוב</h3><div class="big">${pill(g.status)}</div><div class="row"><span>מפתח</span><b>${esc(g.keyType||'—')}</b></div><div class="row"><span>פרטים</span><b>${esc(g.detail||'')}</b></div><div class="muted">נבדק: ${t(g.checkedAt)}</div></div>
+   <div class="card"><h3>Claude · חיבור המנוי</h3><div class="big">${pill(c.status)}</div><div class="muted">נבדק: ${t(c.checkedAt)} · בדיקת חיבור בלבד</div></div>
+   <div class="muted" style="grid-column:1/-1">פעולות שהתחילו היום ועדיין שמורות בזיכרון השרת; הדוח השבועי כולל גם היסטוריה שנשמרה ביומן. סיום שלב Claude אינו בהכרח השלמת רשומת קטלוג.</div>
+   ${Object.values(pk).map(kindCard).join('')}
+   <div class="card"><h3>משאבי מחשב</h3><div class="row"><span>זיכרון זמין לעבודה</span><b>${r.memAvailablePct ?? '—'}%</b></div><div class="row"><span>סה״כ RAM</span><b>${r.memTotalGB ?? '—'} GB</b></div><div class="row"><span>עומס (1 דק׳)</span><b>${r.load1 ?? '—'}</b></div></div>
+   <div class="card"><h3>מערכת ואחסון</h3><div class="row"><span>דיסק פנוי</span><b>${sy.diskFreeGB ?? '—'} GB${sy.diskUsedPct!=null?' ('+sy.diskUsedPct+'% בשימוש)':''}</b></div><div class="row"><span>קבצי פלט</span><b>${sy.outputCount ?? '—'}</b></div><div class="row"><span>העלאות זמניות</span><b>${sy.uploadsMB ?? 0} MB</b></div><div class="row"><span>PID · זיכרון שרת</span><b>${sy.pid ?? '—'} · ${sy.rssMB ?? '—'} MB</b></div></div>
    ${logCard(s.active)}
    <div class="card" style="grid-column:1/-1"><h3>היסטוריית פעולות (30 אחרונות)</h3>${historyTable(s.jobHistory)}</div>
    <div class="card" style="grid-column:1/-1"><h3>שגיאות אחרונות</h3><div class="errlist">${errs}</div></div>`;

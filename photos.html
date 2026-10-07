@@ -350,7 +350,7 @@
           <span id="col-form-status" class="mini-status"></span>
         </div>
         <div class="form-mode-toggle" style="margin-top:8px;">
-          <label style="font-size:11.5px; color:var(--photos)"><input type="radio" name="col-form-mode" value="manual" checked> ✋ הזנה ידנית <small>(מומלץ לכתב יד — אפס הזיות)</small></label>
+          <label style="font-size:11.5px; color:var(--photos)"><input type="radio" name="col-form-mode" value="manual" checked> ✋ הזנה ידנית <small>(מומלץ לכתב יד — יש לבדוק מול המקור)</small></label>
           <label style="font-size:11.5px; color:var(--photos); margin-inline-start:14px"><input type="radio" name="col-form-mode" value="ai"> 🤖 OCR אוטומטי <small>(לטפסים מודפסים בלבד)</small></label>
         </div>
         <button type="button" class="ghost" id="col-form-view-btn" style="display:none; margin-top:8px; padding:5px 10px; font-size:12px;">👁 צפה בטופס המקור (במצב מסך מלא)</button>
@@ -388,7 +388,7 @@
       </div>
 
       <div style="margin-top:8px; font-size:11.5px; color:var(--muted); text-align:center">
-        💡 הזנה ידנית = אפס הזיות. AI יעזור אחרי שתמלא — תרגום עברית→אנגלית, זיהוי סוג פריט, וכו׳.
+        💡 גם הזנה ידנית דורשת בדיקה מול המקור. AI יעזור אחרי שתמלא — תרגום עברית→אנגלית, זיהוי סוג פריט, וכו׳.
       </div>
 
       <div class="actions">
@@ -572,7 +572,7 @@
     <div class="head"><span class="num">3</span><span class="title">זיהוי תצלום <small>Identify — אוטומטי או ידני</small></span></div>
     <div class="body">
       <p style="margin-top:0; font-size:13.5px; color:var(--muted)">
-        <b>אוטומטי</b>: לוחץ "🔍 זהה תצלום" — הדפדפן שולח לתצלום ל-Claude API ישירות, מקבל ניתוח מובנה (פלט JSON), וממלא את שדות הקטלוג למטה.<br>
+        <b>אוטומטי</b>: לוחץ "🔍 זהה תצלום" — התצלום נשלח לעיבוד דרך שרת הארכיון וספקי AI לפי ההגדרות, מקבל ניתוח מובנה (פלט JSON), וממלא את שדות הקטלוג למטה.<br>
         <b>ידני</b>: אם אין לך מפתח API — לוחץ "📋 העתק פרומפט" ופותח את Claude.ai בלשונית חדשה.
       </p>
       <div class="actions">
@@ -748,8 +748,8 @@
   </div>
 
   <footer class="bottom">
-    yv-photo-catalog · web edition · 100% client-side ·
-    <a href="https://github.com/maty4f/yv-photo-catalog" target="_blank">GitHub</a>
+    yv-photo-catalog · web edition · עיבוד באמצעות שרת הארכיון וספקי AI ·
+    <a href="https://github.com/maty4f/yv-photo-catalog-web" target="_blank">GitHub</a>
   </footer>
 
 </div>

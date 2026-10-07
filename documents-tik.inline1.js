@@ -432,7 +432,10 @@ async function callGeminiOnParts(parts,promptText){
   }
   if(!res.ok){
     const t=await res.text();
-    const err=new Error('Gemini HTTP '+res.status+': '+t.slice(0,300));
+    let detail=t;
+    try{const data=JSON.parse(t);detail=data.error?.message||data.error||t;}catch(e){}
+    const hint=res.status===404?'המודל שנבחר אינו זמין — בחר מודל Gemini אחר. ':'';
+    const err=new Error(hint+'Gemini HTTP '+res.status+': '+String(detail).slice(0,500));
     err.httpStatus=res.status;
     if(res.status===429){
       // Gemini's 429 body carries RetryInfo {retryDelay:"45s"} and a QuotaFailure
@@ -486,14 +489,15 @@ const NET_HINT='ודא ששרת הבית רץ (node server.js), ובגישה מ�
 // POST a job to /api/ask-async and poll until done. Async POST returns a jobId
 // immediately so a long Claude run survives the Cloudflare quick-tunnel ~100s
 // limit. `onTick(secs)` updates the status line. Returns the raw text.
-async function runClaudeJob({prompt,images,onTick,model}){
+async function runClaudeJob({prompt,images,onTick,model,expectJson=false}){
   const base=serverBase();
   model=model||($('model-claude').value.includes('opus')?'opus':'sonnet');
+  model=model.includes('opus')?'claude-opus-4-6':'claude-sonnet-4-6';
   let res;
   try{
     res=await fetch(base+'/api/ask-async',{method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt,model,images:images||[]})});
+      body:JSON.stringify({prompt,model,images:images||[],catalog:true,expectJson,backend:window.yvFlow?.backend('documents-tik')||''})});
   }catch(netErr){throw new Error('לא ניתן להגיע לשרת המקומי ('+netErr.message+'). '+NET_HINT);}
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error('שרת HTTP '+res.status+': '+(e.error||'').slice(0,400));}
   const {jobId}=await res.json();
@@ -503,12 +507,17 @@ async function runClaudeJob({prompt,images,onTick,model}){
   while(Date.now()-started<maxMs){
     await new Promise(r=>setTimeout(r,3000));
     let pr;
-    try{pr=await fetch(base+'/api/ask-async/'+jobId);}catch(e){continue;} // transient — keep polling
-    if(!pr.ok){ if(window.yvAuthExpired&&yvAuthExpired(pr))return; continue; }
+    try{pr=await fetch(base+'/api/ask-async/'+jobId,{signal:AbortSignal.timeout(30000)});}catch(e){continue;} // transient — keep polling
+    if(!pr.ok){
+      if(window.yvAuthExpired&&yvAuthExpired(pr))throw new Error('ההתחברות פגה — התחבר מחדש כדי להמשיך במעקב.');
+      if([401,403,404].includes(pr.status))throw new Error(pr.status===404?'העבודה אינה זמינה עוד בשרת — בדוק את היסטוריית ההפעלות לפני הרצה חדשה.':'אין הרשאה לקרוא את מצב העבודה.');
+      continue;
+    }
     const j=await pr.json();
     if(onTick)onTick(Math.round((Date.now()-started)/1000));
     if(j.status==='done')return (j.text||'').trim();
     if(j.status==='error')throw new Error('Claude נכשל: '+(j.error||'').slice(0,400));
+    if(j.status==='cancelled')throw new Error('העבודה בוטלה.');
   }
   throw new Error('הריצה נמשכה מעל 15 דקות ולא הסתיימה. צמצם את "דפים למנה" או את גודל התיק ונסה שוב.');
 }
@@ -522,8 +531,22 @@ async function claudeReadChunk(files,promptText,onTick){
 }
 // Stage 2 — Claude SYNTHESIZES the per-chunk notes into one JSON record (no images).
 async function claudeSynthesize(promptText,onTick){
-  const text=await runClaudeJob({prompt:promptText,images:[],onTick});
-  return parseJson(text,'Claude');
+  const text=await runClaudeJob({prompt:promptText,images:[],onTick,expectJson:true});
+  return parseCompleteClaudeRecord(text);
+}
+
+// Never repair a truncated archival record into a seemingly complete one.
+function parseCompleteClaudeRecord(text){
+  const clean=String(text||'').trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/,'$1');
+  try{
+    let record;
+    try{record=JSON.parse(clean);}catch(e){
+      // Escape only a quote inside a Hebrew word, preserving its actual value.
+      record=JSON.parse(clean.replace(/([\u0590-\u05ff])"(?=[\u0590-\u05ff])/g,'$1\\"'));
+    }
+    if(!record||typeof record!=='object'||Array.isArray(record)||typeof record.title!=='string'||!record.title.trim())throw new Error('record title required');
+    return record;
+  }catch(e){throw new Error('Claude החזיר רשומה לא שלמה או JSON לא תקין; הרשומה לא נשמרה.');}
 }
 
 // Pack consecutive items into batches each under maxChars (≥1 item/batch),
@@ -2024,7 +2047,7 @@ async function catalogTik(){
       const range=hasPdf?`מסמך PDF מלא (קובץ ${from}${c.length>1?`–${to}`:''})`:`${from}–${to}`;
       return {from,to,hasPdf,range};
     });
-    const notes=new Array(chunks.length); const failed=[];
+    const notes=new Array(chunks.length); const failed=[]; let firstFailure='';
     function chunkPrompt(i){
       const m=meta[i];
       const coverage = m.hasPdf
@@ -2041,6 +2064,7 @@ async function catalogTik(){
     // Don't abort a long run over one bad chunk — record it and keep going.
     function recordFailure(i,err){
       failed.push(meta[i].range);
+      if(!firstFailure)firstFailure=err.message||String(err);
       notes[i]={range:meta[i].range,text:`⚠ מנה זו נכשלה בקריאה (${err.message}). דרושה קריאה חוזרת ידנית של דפים ${meta[i].range}.`};
     }
 
@@ -2076,7 +2100,7 @@ async function catalogTik(){
       }
       await Promise.all(Array.from({length:Math.min(CONCURRENCY,chunks.length)},worker));
     }
-    if(failed.length===chunks.length)throw new Error(`כל המנות נכשלו בקריאת ${reader}. `+(engine==='dual'?'בדוק מפתח/מודל/מכסת Gemini.':NET_HINT));
+    if(failed.length===chunks.length)throw new Error(`כל המנות נכשלו בקריאת ${reader}. ${firstFailure}`);
 
     // Stage 2 — synthesize all chunk notes into ONE record. synthesizeTik condenses
     // the notes in batches first when the tik is large (recursive map-reduce), so a
@@ -2231,15 +2255,26 @@ async function fastDescribe(){
 // GET, so the Cloudflare ~100s limit never bites. Shared by fastDescribe AND
 // the resume-on-load path (tab-freeze recovery, 26.7.2026).
 async function pollTikJob(jobId,t){
-    let started=Date.now(),lastEvCount=0;const maxMs=90*60*1000;
+    let started=Date.now(),lastEventKey='';const maxMs=90*60*1000;
     if(window.yvProgress)yvProgress.begin({screen:'documents-tik',kind:'tik'});
     while(Date.now()-started<maxMs){
       await new Promise(r=>setTimeout(r,3000));
-      let pr;try{pr=await fetch(serverBase()+'/api/tik-describe/'+jobId);}catch(e){continue;}
-      if(!pr.ok){ if(window.yvAuthExpired&&yvAuthExpired(pr))return; continue; }
+      let pr;try{pr=await fetch(serverBase()+'/api/tik-describe/'+jobId,{signal:AbortSignal.timeout(30000)});}catch(e){continue;}
+      if(!pr.ok){
+        if(window.yvAuthExpired&&yvAuthExpired(pr))throw new Error('ההתחברות פגה — התחבר מחדש כדי להמשיך במעקב.');
+        if([401,403,404].includes(pr.status))throw new Error(pr.status===404?'העבודה אינה זמינה עוד בשרת — בדוק את היסטוריית ההפעלות לפני הרצה חדשה.':'אין הרשאה לקרוא את מצב העבודה.');
+        continue;
+      }
       const j=await pr.json();
       const evs=Array.isArray(j.events)?j.events:[];
-      if(evs.length>lastEvCount){lastEvCount=evs.length;started=Date.now();}   // progress → slide the deadline
+      const last=evs.at(-1);
+      const eventKey=last?JSON.stringify([last.seq,last.at,last.text,evs.length]):'';
+      if(eventKey&&eventKey!==lastEventKey){lastEventKey=eventKey;started=Date.now();} // survives the server's bounded event buffer
+      if(j.status==='cancelled'){
+        try{localStorage.removeItem('yv-tik-last-job');}catch(e){}
+        if(window.yvProgress)yvProgress.pump({status:'error',events:evs});
+        throw new Error('העבודה בוטלה.');
+      }
       if(window.yvProgress)yvProgress.pump({id:j.id||j.jobId||null,status:j.status==='done'?'done':(j.status==='error'?'error':'running'),events:evs,progressPct:j.progressPct});
       // Live line: what the engine checks RIGHT NOW + which model + real elapsed.
       const lastEv=evs.length?String(evs[evs.length-1].text||'').trim():'';
@@ -2327,7 +2362,16 @@ function loadSettings(){
   try{s=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
     // P0-1 one-time cleanup: strip a Gemini key an older build wrote into the blob.
     if(s['key-gemini']!=null){delete s['key-gemini'];try{localStorage.setItem(STORE_KEY,JSON.stringify(s));}catch(e2){}}
-    PERSIST.forEach(id=>{if(s[id]!=null&&$(id)&&$(id).value!==s[id])$(id).value=s[id];});}catch(e){}
+    PERSIST.forEach(id=>{if(s[id]!=null&&$(id)&&$(id).value!==s[id])$(id).value=s[id];});
+    // Saved settings from older builds must not restore a retired model or
+    // leave the select empty after its option is removed. Keep valid choices.
+    const model=$('model-gemini');
+    if(model&&!model.value){
+      model.value=Array.from(model.options).find(o=>o.defaultSelected)?.value||model.options[0].value;
+      s['model-gemini']=model.value;
+      localStorage.setItem(STORE_KEY,JSON.stringify(s));
+    }
+  }catch(e){}
   // Auto-config the server URL: the dashboard is always served BY the server it
   // must call (localhost during dev, films.mf-sr.com via the tunnel), so the page
   // origin IS the correct server URL — and same-origin keeps the Cloudflare Access
@@ -2620,9 +2664,16 @@ function saveQueue(){
         name:q.name,drivePath:q.drivePath||null,
         // 'running' never survives — a reload means that run is no longer ours.
         status:q.status==='running'?'pending':q.status,
-        fileNames:(q.files||[]).map(f=>f.name),
+        fileNames:q.files?.length?q.files.map(f=>f.name):(q.savedNames||[]),
+        // Detailed browser cataloging has no server output file. Preserve its
+        // finished record so "Show" still works after a reload.
+        rec:q.outputName?null:(q.rec||null),
         outputName:q.outputName||null,error:q.error||null}))}));
-  }catch(e){/* מכסת אחסון / מצב פרטי — התור פשוט לא נשמר */}
+  }catch(e){
+    if(state.queueRunning)state.queuePaused=true;
+    const summary=$('tik-queue-summary');
+    if(summary)summary.textContent+=' · ⚠ שמירת התור נכשלה — אל תסגור את הדף; ייצא את הרשומות. התור ייעצר אחרי התיק הנוכחי.';
+  }
 }
 function restoreQueue(){
   let saved=null;
@@ -2632,7 +2683,7 @@ function restoreQueue(){
   state.queue=saved.items.map(it=>({
     name:it.name,drivePath:it.drivePath||undefined,files:[],
     status:it.status,needsFiles:!it.drivePath&&it.status==='pending',
-    savedNames:it.fileNames||[],outputName:it.outputName||null,error:it.error||null}));
+    savedNames:it.fileNames||[],rec:it.rec||null,outputName:it.outputName||null,error:it.error||null}));
   renderQueue();
   const need=state.queue.filter(q=>q.needsFiles).length;
   showStatus(`שוחזר תור שמור מ-${new Date(saved.at).toLocaleString('he-IL')} — ${state.queue.length} תיקים`
