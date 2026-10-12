@@ -33,7 +33,10 @@ function resetDocumentsPage() {
   }
   window.location.reload();
 }
-document.getElementById('reset-documents-btn').addEventListener('click', resetDocumentsPage);
+// One action, three entry points: the header button, the «➕ מסמך חדש» button
+// beside the upload buttons and the one on the results panel (where the
+// previous document's result sits — the natural place to start the next one).
+document.querySelectorAll('#reset-documents-btn, [data-reset-documents]').forEach(btn => btn.addEventListener('click', resetDocumentsPage));
 
 // Some browsers restore form values on reload. Clear dossier-specific fields
 // after that restoration, while keeping provider and cataloging preferences.

@@ -245,6 +245,7 @@
         <input type="file" id="doc-batch-input" accept="application/pdf,image/*" multiple class="visually-hidden-file">
         <label id="doc-folder-add-btn" class="upload-btn" for="doc-folder-input" style="padding:5px 10px; font-size:12px;" title="כל קובצי ה-PDF והתמונות בתיקייה ובתת־התיקיות, ללא מגבלת 20 הקבצים">📁 העלה תיקייה שלמה</label>
         <input type="file" id="doc-folder-input" webkitdirectory directory multiple class="visually-hidden-file">
+        <button type="button" id="new-document-btn" class="ghost" data-reset-documents style="padding:5px 10px; font-size:12px; color:var(--error); border-color:var(--error);" title="מחיקת המסמך הקודם — הקבצים, פרטי המקור הפרטי והתוצאות — והתחלת מסמך חדש">➕ מסמך חדש · מחיקת הקודם</button>
       </div>
     </div>
     <div class="body">
@@ -348,7 +349,11 @@
   </section>
 
   <section class="step">
-    <div class="head"><span class="num">4</span><span class="title">תוצאות <small>Results — ניתן לערוך</small></span></div>
+    <div class="head"><span class="num">4</span><span class="title">תוצאות <small>Results — ניתן לערוך</small></span>
+      <div style="margin-inline-start:auto;">
+        <button type="button" id="new-document-btn-results" class="ghost" data-reset-documents style="padding:5px 10px; font-size:12px; color:var(--error); border-color:var(--error);" title="מחיקת המסמך הקודם — הקבצים, פרטי המקור הפרטי והתוצאות — והתחלת מסמך חדש">➕ מסמך חדש · מחיקת הקודם</button>
+      </div>
+    </div>
     <div class="body">
       <div id="results" class="results">
 
@@ -598,7 +603,7 @@
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
 <script src="yv-providers.js?v=20261007a"></script>
-<script src="documents.inline1.js?v=20261012b"></script>
+<script src="documents.inline1.js?v=20261012c"></script>
 <script src="documents.inline2.js?v=20260722e"></script>
 <script src="yv-client-log.js?v=20260823a"></script>
 <script src="yv-misid.js?v=20260823a"></script>
