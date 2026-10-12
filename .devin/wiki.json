@@ -1,0 +1,30 @@
+{
+  "repo_notes": [
+    {
+      "content": "Write developer documentation in clear Hebrew. Preserve exact code identifiers and repository-relative paths. Base every claim and source link on files that actually exist in the indexed revision; never infer a path by dropping or adding a directory. Cite the indexed revision. Distinguish implemented code, tests, older README claims, plans and live deployment. Do not assert deployment, fresh test results or historical accuracy from code alone. Describe missing components explicitly. Do not run commands, contact model providers or change runtime state."
+    },
+    {
+      "content": "Use code, schemas and synthetic examples only. Do not reproduce credentials, personal identifiers, production logs, source documents or private record payloads. These instructions govern documentation wording, not access control or index filtering. The snapshot scope is documented in README.md. Do not describe omitted modules as present."
+    },
+    {
+      "content": "This is the browser catalog frontend, distinct from the server and Python photo pipeline. Older README statements about all processing being offline must be checked against actual fetch calls and provider adapters. Explain in-browser storage and server boundaries without assuming a deployment."
+    }
+  ],
+  "pages": [
+    {
+      "title": "מפת ממשק הקטלוג",
+      "purpose": "Map the photo, film, document, entity and graph HTML pages and associated *.inline*.js scripts. Explain shared yv-* modules and navigation. Include diagram and exact links.",
+      "parent": null
+    },
+    {
+      "title": "קלט, שמירה וחיבור לספקים",
+      "purpose": "Trace file/context input, request creation, yv-providers.js, yv-autosave.js, yv-chunk.js, yv-flow.js, progress and result editing. Distinguish local browser work, calls to servers and direct model calls based on code; explain recovery and failure states.",
+      "parent": null
+    },
+    {
+      "title": "שינוי מסך ובדיקתו",
+      "purpose": "Map field and UI changes to exact scripts and styles. Explain existing build/check instructions and which tests are absent. Document Hebrew/RTL, data-handling and access boundaries without treating client-side hiding as authorization.",
+      "parent": null
+    }
+  ]
+}
