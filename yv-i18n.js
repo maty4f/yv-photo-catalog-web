@@ -50,8 +50,24 @@
     location.reload();
   };
 
+  /* ---- on-page selectors: any button[data-lang] inside .langrow (index.html)
+     is wired here, because the live server's CSP (script-src 'self') blocks
+     inline scripts — only external files may run. ---- */
+  function wireSelectors() {
+    var btns = document.querySelectorAll('.langrow button[data-lang]');
+    for (var i = 0; i < btns.length; i++) {
+      (function (b) {
+        var on = b.getAttribute('data-lang') === lang;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.addEventListener('click', function () { if (!on) window.mfSetLang(b.getAttribute('data-lang')); });
+      })(btns[i]);
+    }
+  }
+
   /* ---- switcher pill (every screen, no per-page markup) ---- */
   function injectSwitcher() {
+    wireSelectors();
     if (document.getElementById('mf-lang-switch')) return;
     var box = document.createElement('div');
     box.id = 'mf-lang-switch';
