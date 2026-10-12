@@ -12,6 +12,13 @@
   .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px; }
   header.doc { padding: 30px 0 26px; margin-bottom: 8px; text-align: center; }
   .statusrow { text-align: center; margin: 0 0 28px; }
+  .langrow { display:inline-flex; align-items:center; gap:6px; margin-top:14px; padding:4px 6px 4px 12px;
+             border:1px solid var(--line); border-radius:999px; background:var(--card); font-size:13px; }
+  .langlabel { color:var(--muted); margin-inline-end:4px; }
+  .langbtn { border:1px solid transparent; background:transparent; color:var(--ink); font:inherit; font-weight:600;
+             padding:4px 12px; border-radius:999px; cursor:pointer; }
+  .langbtn:hover { background:var(--tint); }
+  .langbtn.on { background:var(--brand); color:var(--on-brand, #fff); border-color:var(--brand); cursor:default; }
 
   /* Server-only screens (knowledge / server-films / catalog) live on the local
      server, not in the public Pages mirror — revealed once /api/config answers,
@@ -50,6 +57,13 @@
     <h1><span class="brandword">📚 קטלוג ארכיוני</span></h1>
     <div class="sub">מערכת זיהוי וקטלוג עבור מדור התיעוד הוויזואלי · ממשק web · עיבוד באמצעות שרת הארכיון וספקי AI</div>
     <div class="metaline">Engine: Gemini + Claude</div>
+    <!-- Interface language — the choice is stored in the browser (mf_lang) and
+         applies to every screen through yv-i18n.js. Hebrew is the default. -->
+    <div class="langrow" id="lang-row" role="group" aria-label="שפת הממשק" data-i18n-skip>
+      <span class="langlabel">שפת הממשק · Language:</span>
+      <button type="button" class="langbtn" data-lang="he" lang="he">עברית</button>
+      <button type="button" class="langbtn" data-lang="en" lang="en">English</button>
+    </div>
   </header>
 
   <div class="statusrow">
@@ -182,6 +196,19 @@
   </footer>
 
 </div>
+<script>
+  (function () {
+    var cur = window.MF_LANG === 'en' ? 'en' : 'he';
+    document.querySelectorAll('#lang-row .langbtn').forEach(function (b) {
+      var on = b.getAttribute('data-lang') === cur;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        if (!on && window.mfSetLang) window.mfSetLang(b.getAttribute('data-lang'));
+      });
+    });
+  })();
+</script>
 <script src="index.inline1.js?v=20260914a"></script>
 <script src="yv-client-log.js?v=20260823a"></script>
 </body>

@@ -3363,6 +3363,8 @@
 "שפה/שפות צפויות": "Expected language(s)",
 "שפות": "Languages",
 "שפות נתמכות": "Supported languages",
+"שפת הממשק": "Interface language",
+"שפת הממשק · Language:": "Interface language:",
 "שרת": "Server",
 "שרת /api/ask החזיר HTTP": "The /api/ask server returned HTTP",
 "שרת CLI מקומי (URL)": "Local CLI server (URL)",
