@@ -203,42 +203,35 @@ async function decide(verb, file, box){
 }
 
 /* ---------- ask the archive ---------- */
-function citeLinks(text){
-  // [key] / [key · עמ׳ N] → link to the item page in this browser
-  return esc(text).replace(/\[(?:תיק\s+)?([A-Za-z0-9_.\-]+)([^\]]*)\]/g, (m, key, rest) => {
-    const n = state.byId.get('tik:' + key) || state.nodes.find(nn => nn.id.endsWith(':' + key));
-    const page = n ? pageOf(n.id) : `tiks/${key}.md`;
-    return `<a class="wl" data-page="${esc(page)}" title="${esc(key)}">[${esc(key)}${esc(rest)}]</a>`;
-  });
-}
-async function askArchive(){
+const researchView = yvResearch.create({
+  page: $('page'), panel: $('research-source'),
+  api: p => api(withCollection(p)), openPage,
+});
+async function askArchive(searchOnly = false){
   const question = $('ask').value.trim();
-  if (question.length < 3) return;
-  const el = $('page');
-  el.innerHTML = `<div class="crumbs"><a data-page="index.md">עץ הידע</a> › שאל את הארכיון</div><h2>${esc(question)}</h2><div class="empty">מתכנן שאילתה, שולף, מנסח תשובה מצוטטת… (עד כמה דקות)</div>`;
-  bindPage();
+  if (question.length < 3) { $('ask-msg').textContent = 'הקלידו לפחות שלושה תווים.'; return; }
   $('ask-go').disabled = true;
+  $('research-search').disabled = true;
+  researchView.close();
+  const el = $('page');
+  el.innerHTML = `<h2>${esc(question)}</h2><div class="empty" role="status">${searchOnly ? 'מחפש במטא־נתונים…' : 'מאתר רשומות ומנסח תשובה עם הפניות… הפעולה עשויה להימשך כמה דקות.'}</div>`;
   try {
-    const r = await fetch(api('/api/wiki/ask'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question }) });
+    const r = await fetch(api(withCollection(searchOnly ? '/api/wiki/search?q=' + encodeURIComponent(question) : '/api/wiki/ask')),
+      searchOnly ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || r.status);
-    let html = `<div class="crumbs"><a data-page="index.md">עץ הידע</a> › שאל את הארכיון</div><h2>${esc(question)}</h2>`;
-    html += `<div class="prop"><div class="pb" style="font-size:14.5px">${citeLinks(j.answer_he || '')}</div>${j.answer_en ? `<div class="pb" dir="ltr" style="text-align:left;color:var(--muted)">${citeLinks(j.answer_en)}</div>` : ''}` +
-      `<div class="pm">${j.dropped_sentences ? 'הושמטו ' + j.dropped_sentences + ' משפטים ללא ציטוט · ' : ''}${(j.citations || []).length} פריטים מצוטטים${j.cannot ? ' · ' + esc(j.cannot) : ''}</div></div>`;
-    html += yvSupportReview.render(j.support, {editable:!RESEARCHER});
-    if ((j.plan || []).length) html += `<h3>השאילתה שהורצה (דטרמיניסטית)</h3><pre dir="ltr" style="text-align:left;font-size:11.5px;background:var(--tint);padding:8px;border-radius:6px;overflow:auto">${esc(JSON.stringify(j.plan, null, 1))}</pre>`;
-    if ((j.results || []).length) {
-      html += `<h3>הראיות (${j.results.length})</h3><ul>` + j.results.slice(0, 60).map(r => `<li><a class="wl" data-page="${esc(r.page || '')}">${esc(r.name)}</a> <small>${esc(KIND_HE[r.kind] || r.kind)} · ${r.items} פריטים</small>` +
-        (r.evidence || []).slice(0, 4).map(e => `<div style="font-size:12px;color:var(--muted)">· <a class="wl" data-page="${esc(pageForKey(e.item))}">[${esc(e.item)}]</a> ${esc([e.role, e.fate, e.pages ? 'עמ׳ ' + e.pages : '', (e.title || '').slice(0, 70)].filter(Boolean).join(' · '))}</div>`).join('') + '</li>').join('') + '</ul>';
+    researchView.render(j, question, COLLECTION);
+    if (j.support) {
+      el.insertAdjacentHTML('beforeend', yvSupportReview.render(j.support, {editable:!RESEARCHER}));
+      yvSupportReview.bind(el, j.support);
     }
-    el.innerHTML = html;
-    yvSupportReview.bind(el, j.support);
-    bindPage();
-  } catch (e) { el.innerHTML += `<div class="empty">נכשל: ${esc(e.message)}</div>`; }
+  } catch (e) { el.innerHTML = `<h2>${esc(question)}</h2><div class="empty" role="alert">נכשל: ${esc(e.message)}</div>`; }
   $('ask-go').disabled = false;
+  $('research-search').disabled = false;
 }
 function pageForKey(key){ const n = state.byId.get('tik:' + key) || state.nodes.find(nn => nn.id.endsWith(':' + key)); return n ? pageOf(n.id) : `tiks/${key}.md`; }
-$('ask-go').onclick = askArchive;
+$('ask-go').onclick = () => askArchive();
+$('research-search').onclick = () => askArchive(true);
 $('ask').addEventListener('keydown', ev => { if (ev.key === 'Enter') askArchive(); });
 
 /* ---------- wiring ---------- */

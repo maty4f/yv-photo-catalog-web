@@ -18,6 +18,37 @@ const state = {
   doc_queue_processor_running: false,
 };
 
+// Reset by starting a fresh document lifetime: old readers, queue workers,
+// polling loops and promise callbacks cannot populate the new dossier.
+// This does not claim to cancel a job already submitted to the server.
+function resetDocumentsPage() {
+  if (!confirm('לאפס ולהתחיל תיק חדש?\nהקבצים שנבחרו, התור, המידע המוקדם והתוצאות שבדפדפן ינוקו. מומלץ להוריד תוצאות שרוצים לשמור לפני האיפוס.\nקובצי המקור והרשומות שבשרת לא יימחקו. עיבוד שכבר נשלח לשרת עשוי להמשיך שם.')) return;
+  try {
+    sessionStorage.setItem('yv_documents_reset', '1');
+    localStorage.removeItem('yv_doc_queue_results');
+    localStorage.removeItem('yv_tik_record');
+  } catch (err) {
+    alert('לא ניתן להשלים את האיפוס משום שאחסון הדפדפן אינו זמין. הדף לא נטען מחדש.');
+    return;
+  }
+  window.location.reload();
+}
+document.getElementById('reset-documents-btn').addEventListener('click', resetDocumentsPage);
+
+// Some browsers restore form values on reload. Clear dossier-specific fields
+// after that restoration, while keeping provider and cataloging preferences.
+window.addEventListener('pageshow', () => {
+  try {
+    if (sessionStorage.getItem('yv_documents_reset') !== '1') return;
+    sessionStorage.removeItem('yv_documents_reset');
+  } catch (err) { return; }
+  document.querySelectorAll('#results input, #results textarea, #lang-hints, #context-input, input[type="file"]').forEach(el => {
+    el.value = el.type === 'file' ? '' : el.defaultValue;
+  });
+  document.getElementById('writing-type').selectedIndex = 0;
+  document.getElementById('doc-folder-status').textContent = 'המסך אופס. אפשר לבחור תיקייה חדשה.';
+});
+
 // Doc-mode toggle behavior — show/hide the private-only section
 function applyDocMode() {
   document.querySelectorAll('.private-only-section').forEach(el => {
@@ -376,7 +407,7 @@ function clearDoc() {
 }
 
 // =====================================================================
-//  DOC BATCH QUEUE — up to 20 documents with pre-fetch identification
+//  DOC QUEUE — manual batches up to 20; whole folders are never truncated
 // =====================================================================
 const DOC_BATCH_MAX = 20;
 const DOC_QUEUE_STATUSES = {
@@ -396,18 +427,38 @@ document.getElementById('doc-batch-input').addEventListener('change', e => {
 });
 // doc-folder-add-btn is a native <label for="doc-folder-input"> — no JS click().
 document.getElementById('doc-folder-input').addEventListener('change', e => {
-  const files = [...e.target.files]
-    .filter(f => f.type === 'application/pdf' || f.type.startsWith('image/'))
+  const selected = [...e.target.files];
+  e.target.value = '';
+  // Cancelling the picker leaves the current queue untouched.
+  if (!selected.length) return;
+  const files = selected
+    .filter(f => !(f.webkitRelativePath || f.name).split('/').some(part => part.startsWith('.') || part === '__MACOSX'))
+    .map(normalizeFolderDocument).filter(Boolean)
     .sort((a, b) => (a.webkitRelativePath || a.name)
       .localeCompare(b.webkitRelativePath || b.name, undefined, { numeric: true }));
-  e.target.value = '';
   if (!files.length) { alert('לא נמצאו קבצי PDF/תמונה בתיקייה.'); return; }
-  addDocsToQueue(files);
+  addDocsToQueue(files, { wholeFolder: true });
+  document.getElementById('doc-folder-status').textContent =
+    `נוספו ${files.length} קבצים מהתיקייה לתור` +
+    (selected.length > files.length ? ` · ${selected.length - files.length} קבצים נסתרים או שאינם PDF/תמונה דולגו` : '') + '.';
 });
 
-async function addDocsToQueue(files) {
+function normalizeFolderDocument(file) {
+  if (file.type === 'application/pdf' || file.type.startsWith('image/')) return file;
+  // Some browsers supply an empty/generic MIME type for local scans.
+  const types = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    png: 'image/png', tif: 'image/tiff', tiff: 'image/tiff', webp: 'image/webp',
+    gif: 'image/gif', bmp: 'image/bmp' };
+  const type = types[file.name.split('.').pop().toLowerCase()];
+  if (!type) return null;
+  const normalized = new File([file], file.name, { type, lastModified: file.lastModified });
+  Object.defineProperty(normalized, 'webkitRelativePath', { value: file.webkitRelativePath || '' });
+  return normalized;
+}
+
+async function addDocsToQueue(files, { wholeFolder = false } = {}) {
   if (!files.length) return;
-  if (state.doc_queue.length + files.length > DOC_BATCH_MAX) {
+  if (!wholeFolder && state.doc_queue.length + files.length > DOC_BATCH_MAX) {
     const can = DOC_BATCH_MAX - state.doc_queue.length;
     if (can <= 0) { alert(`התור מלא (${DOC_BATCH_MAX}).`); return; }
     if (!confirm(`התור יקבל רק ${can} מתוך ${files.length} (מקס ${DOC_BATCH_MAX}). להמשיך?`)) return;
@@ -418,7 +469,9 @@ async function addDocsToQueue(files) {
     const item = { id, file, status: 'pending', identification: null, error: null, thumb: null };
     state.doc_queue.push(item);
     // Generate thumbnail (first page for PDFs would require pdfjs — skip; image: dataurl)
-    if (file.type.startsWith('image/')) {
+    // A whole folder can contain hundreds of scans. Keep the File references,
+    // not an additional full-size base64 copy of every image in memory.
+    if (!wholeFolder && file.type.startsWith('image/')) {
       item.thumb = await new Promise(r => {
         const reader = new FileReader();
         reader.onload = e => r(e.target.result);
@@ -465,7 +518,8 @@ function renderDocQueuePanel() {
     const s = DOC_QUEUE_STATUSES[it.status] || DOC_QUEUE_STATUSES.pending;
     const isActive = idx === state.current_doc_queue_index;
     const isPdf = it.file.type === 'application/pdf';
-    const errTip = it.error ? ` title="${esc(it.error)}"` : '';
+    const relativePath = it.file.webkitRelativePath || it.file.name;
+    const errTip = ` title="${esc(relativePath + (it.error ? ' · ' + it.error : ''))}"`;
     return `<div class="doc-queue-item" role="button" tabindex="0" data-idx="${idx}"${errTip}
       style="flex:0 0 auto; width:100px; cursor:pointer; padding:5px; border:2px solid ${isActive ? 'var(--accent)' : 'transparent'}; border-radius:6px; background:${isActive ? 'var(--card-hover)' : 'transparent'};">
       <div style="position:relative; width:90px; height:90px; border-radius:4px; overflow:hidden; background:var(--tint); margin:0 auto; display:flex; align-items:center; justify-content:center;">
@@ -704,6 +758,7 @@ function persistDocQueue() {
     const items = state.doc_queue
       .filter(it => it.identification || it.error)
       .map(it => ({ name: it.file.name, type: it.file.type || '', size: it.file.size || 0,
+                    relativePath: it.file.webkitRelativePath || '',
                     status: it.status === 'reviewing' ? 'ready' : it.status,
                     startedAt: it.startedAt || null, finishedAt: it.finishedAt || null,
                     identification: it.identification, error: it.error }));
@@ -730,7 +785,7 @@ function persistDocQueue() {
   const rb = mkBtn('שחזר תוצאות', true), xb = mkBtn('מחק', false);
   rb.addEventListener('click', () => {
     state.doc_queue = items.map((x, i) => ({ id: 'dqr' + Date.now() + '_' + i, restored: true,
-      file: { name: x.name, type: x.type, size: x.size }, status: x.status,
+      file: { name: x.name, type: x.type, size: x.size, webkitRelativePath: x.relativePath || '' }, status: x.status,
       startedAt: x.startedAt || null, finishedAt: x.finishedAt || null,
       identification: x.identification, error: x.error, thumb: null }));
     state.current_doc_queue_index = -1;

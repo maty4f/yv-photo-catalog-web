@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Cross-origin isolation for ffmpeg.wasm (required by SharedArrayBuffer). Must load before any other script. -->
 <script src="coi-serviceworker.min.js?v=20260721"></script>
+<script src="yv-i18n.js?v=20261012a"></script>
 <title>קטלוג מסמכים</title>
 
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
@@ -103,6 +104,7 @@
     <div class="actions-top">
       <a href="index.html" style="text-decoration:none"><button class="gear" type="button">← דף הבית</button></a>
       <button class="gear" id="settings-toggle" type="button">⚙ הגדרות API</button>
+      <button class="gear" id="reset-documents-btn" type="button" title="ניקוי הקבצים, התור והתוצאות מהמסך והתחלת תיק חדש">↺ איפוס והתחלת תיק חדש</button>
     </div>
   </header>
 
@@ -235,17 +237,20 @@
   <section class="step">
     <div class="head">
       <span class="num">1</span>
-      <span class="title">מסמך <small>Document — PDF / תמונה · בודד או batch (עד 20)</small></span>
+      <span class="title">מסמך <small>Document — PDF / תמונה · בודד, אצווה או תיקייה שלמה</small></span>
       <div style="margin-inline-start:auto; display:flex; gap:6px; flex-wrap:wrap;">
         <label id="merge-jpgs-btn" class="upload-btn" for="merge-jpgs-input" style="padding:5px 10px; font-size:12px;" title="איחוד מספר JPGs לקובץ PDF אחד">🔗 איחוד JPGs → PDF</label>
         <input type="file" id="merge-jpgs-input" accept="image/jpeg,image/jpg,image/png,image/webp" multiple class="visually-hidden-file">
         <label id="doc-batch-add-btn" class="upload-btn" for="doc-batch-input" style="padding:5px 10px; font-size:12px;">📤 העלה batch (עד 20)</label>
         <input type="file" id="doc-batch-input" accept="application/pdf,image/*" multiple class="visually-hidden-file">
-        <label id="doc-folder-add-btn" class="upload-btn" for="doc-folder-input" style="padding:5px 10px; font-size:12px;" title="העלאת תיקייה שלמה של סריקות">📁 העלה תיקייה</label>
+        <label id="doc-folder-add-btn" class="upload-btn" for="doc-folder-input" style="padding:5px 10px; font-size:12px;" title="כל קובצי ה-PDF והתמונות בתיקייה ובתת־התיקיות, ללא מגבלת 20 הקבצים">📁 העלה תיקייה שלמה</label>
         <input type="file" id="doc-folder-input" webkitdirectory directory multiple class="visually-hidden-file">
       </div>
     </div>
     <div class="body">
+
+      <p style="font-size:12px; color:var(--muted); margin:0 0 12px;">העלאת תיקייה כוללת את קובצי ה-PDF והתמונות שבתת־התיקיות, גם מעל 20 קבצים. כל קובץ מפוענח בנפרד, לפי סדר שמות הקבצים. יש להשאיר את הדף פתוח עד סיום העיבוד.</p>
+      <div id="doc-folder-status" role="status" aria-live="polite" style="font-size:13px; color:var(--accent); margin-bottom:10px;"></div>
 
       <!-- Queue panel for documents -->
       <div id="doc-queue-panel" style="display:none; margin-bottom:14px; padding:10px 12px; background:color-mix(in srgb, var(--accent) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius:8px;">
@@ -593,7 +598,7 @@
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
 <script src="yv-providers.js?v=20261007a"></script>
-<script src="documents.inline1.js?v=20261007a"></script>
+<script src="documents.inline1.js?v=20261012b"></script>
 <script src="documents.inline2.js?v=20260722e"></script>
 <script src="yv-client-log.js?v=20260823a"></script>
 <script src="yv-misid.js?v=20260823a"></script>

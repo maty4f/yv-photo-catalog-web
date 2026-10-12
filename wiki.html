@@ -2,8 +2,10 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
+<script src="yv-i18n.js?v=20261012a"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>עץ הידע — ויקי הארכיון</title>
+<title>סביבת מחקר — ויקי הארכיון</title>
+<link rel="stylesheet" href="yv-research.css?v=20261007a">
 <link rel="stylesheet" href="yv-theme.css?v=20260823a">
 <style>
   :root { --accent:var(--tik); }
@@ -53,15 +55,16 @@
 <div class="top">
   <a href="index.html" style="text-decoration:none"><button type="button" class="gear" style="border-radius:7px;padding:8px 16px;font-size:14px;">← דף הבית</button></a>
   <div>
-    <h1>📚 עץ הידע — ויקי הארכיון</h1>
-    <div class="sub">אוסף ← תיק ← ישויות · נושאים · אזורים ומקומות · שנים · ארגונים — דפי-מוקד שנבנים מהרשומות (בלוק מנוהל) + מבוא סינתטי מצוטט שעובר סקירה. תצוגה ותחזוקה; מקור-האמת נשאר ברשומות.</div>
+    <h1>📚 סביבת מחקר — ויקי הארכיון</h1>
+    <div class="sub">שאלו שאלה, עיינו ברשומות ופתחו את המקור לבדיקה. עץ הידע מחבר בין אוספים, פריטים, אנשים, מקומות ונושאים.</div>
   </div>
   <div class="srow" style="margin-inline-start:auto"><span>שרת:</span><input type="text" id="server-url" placeholder="ריק = אותו שרת" autocomplete="off"></div>
 </div>
 <div class="toolbar" id="askbar" style="background:var(--tint)">
   <input type="text" id="ask" placeholder="🔎 שאל את הארכיון — למשל: מי העיד על טרבלינקה ב-1987? · אילו נספים מוזכרים בתיק על סוביבור?" autocomplete="off" style="min-width:320px;flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card);color:var(--ink);font-family:inherit;font-size:14px;direction:rtl;text-align:right">
   <button type="button" class="act primary" id="ask-go">שאל</button>
-  <span class="msg" id="ask-msg">כל משפט בתשובה מצוטט לפריט; שאלה ללא ראיה מקבלת "אין בחומר".</span>
+  <button type="button" class="act" id="research-search">חפש במטא־נתונים</button>
+  <span class="msg" id="ask-msg">תשובה אוטומטית לפי הרשומות. פתחו כרטיס מקור כדי לבדוק עמוד ותמלול; הפניה אינה אימות של הטענה.</span>
 </div>
 <div class="toolbar">
   <input type="text" id="q" placeholder="חיפוש בעץ — אדם / מקום / תיק / נושא / שנה" autocomplete="off">
@@ -74,9 +77,11 @@
 <div class="main">
   <div id="tree"><div class="empty">טוען את העץ…</div></div>
   <div id="page"><div class="empty">בחרו צומת בעץ, או פתחו את <a class="wl" data-page="index.md" href="wiki.html?page=index.md">index.md</a>.</div></div>
+  <aside id="research-source" hidden aria-label="מקור ותמלול" tabindex="-1"></aside>
 </div>
+<script src="yv-research.js?v=20261007a"></script>
 <script src="yv-wikimd.js?v=20260915a"></script>
 <script src="yv-support-review.js?v=20260919a"></script>
-<script src="wiki.inline1.js?v=20260919b"></script>
+<script src="wiki.inline1.js?v=20261007a"></script>
 </body>
 </html>
