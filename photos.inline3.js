@@ -1895,7 +1895,14 @@ function renderVersoBox(fields, base) {
   box.style.cssText = 'direction:rtl;text-align:right;background:color-mix(in srgb, var(--warn) 10%, var(--card));border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);border-radius:10px;padding:14px 16px;margin:14px 0;';
   // שער וורסו: כתב-יד עברי/יידי בלי אימות דו-מודלי → באנר אדום "דורש קריאה אנושית".
   const gated = !!((fields && (fields.VERSO_GATE || fields.verso_gate)) || /🛑 שער וורסו/.test(original));
+  // שער-זמינות (15.10.2026): הגב נקרא ע"י קורא יחיד כי הקורא השני לא היה זמין —
+  // הרשומה תקפה (כתב לא-עברי), אבל התעתיק לא עבר אימות דו-מודלי. באנר ענבר.
+  const degraded = !!((fields && fields.READERS_DEGRADED) || /אימות Claude לא זמין/.test(original));
   box.innerHTML =
+    (degraded && !gated
+      ? '<div style="direction:rtl;text-align:right;background:color-mix(in srgb, var(--warn) 16%, var(--card));border:1px solid var(--warn);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px">' +
+        '<b>⏸ קורא יחיד.</b> הגב נקרא ע"י מודל אחד בלבד — הקורא השני (Claude) לא היה זמין בזמן הקטלוג; שמות ותאריכים מהגב אינם מאומתים דו-מודלית.</div>'
+      : '') +
     (gated
       ? '<div style="direction:rtl;text-align:right;background:color-mix(in srgb, var(--error) 14%, var(--card));border:1px solid var(--error);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px">' +
         '<b style="color:var(--error)">🛑 שער וורסו — דורש קריאה אנושית.</b> ' +

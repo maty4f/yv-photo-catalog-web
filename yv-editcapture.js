@@ -1,4 +1,5 @@
 /* yv-editcapture.js — capture the archivist's hand-edits to the model's output.
+ * v20261015a: POSTs to the configured server base (not a bare relative URL).
  *
  * Replaces the autosave-diff capture that was removed on 2026-07-26. Instead of
  * snapshotting whole forms on a timer and diffing them later, this records the
@@ -64,7 +65,13 @@
     pending[el.id] = after;               // a further edit is measured from here
     if (!before.trim() && !after.trim()) return;
     try {
-      fetch('/api/field-edit', {
+      // Same resolver as yv-misid.js: the screen may be served from a static
+      // mirror (Pages) with the server elsewhere — a bare '/api/…' would then
+      // hit the mirror and the edit was silently lost (0 edits captured in
+      // the 7 weeks before 15.10.2026). '' on the server's own origin falls
+      // back to location.origin, as before.
+      var base = (window.yvServerBase ? yvServerBase() : '') || location.origin;
+      fetch(base + '/api/field-edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
