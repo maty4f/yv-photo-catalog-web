@@ -9,7 +9,7 @@ const state = {
   apiKey: '',
   // review #2: no Anthropic key in the browser — the server proxy injects its own
   model: localStorage.getItem('yv_v2_model') || 'gemini-3.5-flash',
-  claudeModel: localStorage.getItem('yv_v2_claude_model') || 'claude-sonnet-4-6',
+  claudeModel: localStorage.getItem('yv_v2_claude_model') || 'claude-sonnet-5-5',
   localServerUrl: (localStorage.getItem('yv_local_server_url') || '').replace(/\/$/, ''),
   pdf: null,
   result: null,
@@ -57,6 +57,13 @@ if (!modelSel.value) {
   localStorage.setItem('yv_v2_model', state.model);
 }
 claudeModelSel.value = state.claudeModel;
+// Same for Claude: a 4.6 id saved before 20.10.2026 no longer matches an option
+// (the family moved to claude-*-5-5) — fall back to the default, never send it.
+if (!claudeModelSel.value) {
+  claudeModelSel.value = Array.from(claudeModelSel.options).find(o => o.defaultSelected)?.value || claudeModelSel.options[0].value;
+  state.claudeModel = claudeModelSel.value;
+  localStorage.setItem('yv_v2_claude_model', state.claudeModel);
+}
 
 function syncModeUI() {
   // The Claude model row was only for the removed hybrid mode — always hidden.

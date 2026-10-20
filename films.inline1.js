@@ -527,7 +527,8 @@ async function postFramesCatalog(base, frames, durationSec, name, context, onSta
   try {
     res = await fetch(base + '/api/items-frames', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ frames: frames.map(f => ({ t: f.t, b64: f.b64 })), durationSec, name: name || 'film.mp4', context: context || '' }),
+      body: JSON.stringify({ frames: frames.map(f => ({ t: f.t, b64: f.b64 })), durationSec, name: name || 'film.mp4', context: context || '',
+                             level: window.yvFilmLevel ? yvFilmLevel() : '' }),
     });
   } catch (e) { throw new Error('שליחת ה-keyframes לשרת נכשלה: ' + e.message); }
   const j = await res.json().catch(() => ({}));
@@ -861,6 +862,7 @@ async function catalogViaUnified(base, file, context, onStatus) {
     fd.append('kind', 'film');
     fd.append('context', context || '');
     if (window.yvFlow) fd.append('flow', yvFlow.current('films'));   // עם/בלי גיבוי Qwen
+    if (window.yvFilmLevel) fd.append('level', yvFilmLevel());         // רמת-קטלוג: שוט/סצנה/רצף/כותרות/סליל
     if (window.yvFlow && yvFlow.backend) fd.append('backend', yvFlow.backend('films'));   // Claude: מנוי / API
 
     let res = null;

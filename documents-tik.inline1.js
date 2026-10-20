@@ -497,7 +497,9 @@ const NET_HINT='ודא ששרת הבית רץ (node server.js), ובגישה מ�
 async function runClaudeJob({prompt,images,onTick,model,expectJson=false}){
   const base=serverBase();
   model=model||($('model-claude').value.includes('opus')?'opus':'sonnet');
-  model=model.includes('opus')?'claude-opus-4-6':'claude-sonnet-4-6';
+  // Claude 5 family (20.10.2026) — same pins as the engine (reference/model-pins.json);
+  // the server re-pins by /opus/ anyway, so the id here is a hint, not the request.
+  model=model.includes('opus')?'claude-opus-5-5':'claude-sonnet-5-5';
   let res;
   try{
     res=await fetch(base+'/api/ask-async',{method:'POST',
@@ -2369,12 +2371,15 @@ function loadSettings(){
     if(s['key-gemini']!=null){delete s['key-gemini'];try{localStorage.setItem(STORE_KEY,JSON.stringify(s));}catch(e2){}}
     PERSIST.forEach(id=>{if(s[id]!=null&&$(id)&&$(id).value!==s[id])$(id).value=s[id];});
     // Saved settings from older builds must not restore a retired model or
-    // leave the select empty after its option is removed. Keep valid choices.
-    const model=$('model-gemini');
-    if(model&&!model.value){
-      model.value=Array.from(model.options).find(o=>o.defaultSelected)?.value||model.options[0].value;
-      s['model-gemini']=model.value;
-      localStorage.setItem(STORE_KEY,JSON.stringify(s));
+    // leave the select empty after its option is removed. Keep valid choices
+    // (Gemini 2.5 → 3.x, and Claude 4.6 → 5.5 on 20.10.2026).
+    for(const id of ['model-gemini','model-claude']){
+      const model=$(id);
+      if(model&&!model.value){
+        model.value=Array.from(model.options).find(o=>o.defaultSelected)?.value||model.options[0].value;
+        s[id]=model.value;
+        localStorage.setItem(STORE_KEY,JSON.stringify(s));
+      }
     }
   }catch(e){}
   // Auto-config the server URL: the dashboard is always served BY the server it

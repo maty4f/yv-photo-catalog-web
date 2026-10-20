@@ -179,8 +179,8 @@
     <div class="row provider-row" data-provider="anthropic">
       <label>מודל Claude</label>
       <select id="api-model-anthropic">
-        <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (מומלץ — איזון איכות/עלות)</option>
-        <option value="claude-opus-4-6">Claude Opus 4.6 (הכי מדויק)</option>
+        <option value="claude-sonnet-5-5" selected>Claude Sonnet 5.5 (מומלץ — איזון איכות/עלות)</option>
+        <option value="claude-opus-5-5">Claude Opus 5.5 (הכי מדויק)</option>
       </select>
     </div>
     <div class="row provider-row" data-provider="gemini">
@@ -243,6 +243,7 @@
       </label>
       <input type="file" id="film-file-input" accept="video/*" class="visually-hidden-file">
       <div class="yv-flow-mount" style="text-align:center; margin-top:8px"></div>
+      <div class="yv-level-mount" style="text-align:center; margin-top:6px"></div>
       <label style="display:block; direction:rtl; text-align:center; margin-top:6px; font-size:12.5px; color:var(--muted); cursor:pointer;">
         <input type="checkbox" id="film-direct-upload" checked style="vertical-align:middle; margin-inline-end:4px;">
         ⬆️ ניתוח מלא — הווידאו מועלה בחלקים והשרת מחלץ פריימים בכל חיתוך וכל 5 שניות (ביטול = דגימה דלילה בדפדפן, לחיבור חלש)
@@ -549,14 +550,15 @@
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
 <script src="yv-providers.js?v=20261007a"></script>
-<script src="films.inline1.js?v=20261007a"></script>
+<script src="films.inline1.js?v=20261020a"></script>
+<script src="film-research.js?v=20261015d"></script>
 <script src="films.inline2.js?v=20260722e"></script>
 <script src="yv-client-log.js?v=20260823a"></script>
 <script src="yv-misid.js?v=20260823a"></script>
 <script src="yv-editcapture.js?v=20261015a"></script>
 <script src="films.inline3.js?v=20260722e"></script>
 <script src="yv-flow.js?v=20260823a"></script>
-<script src="films.inline4.js?v=20260722e"></script>
+<script src="films.inline4.js?v=20261020a"></script>
 <script src="yv-progress.js?v=20260914a"></script>
 <script src="yv-chunk.js?v=20260928b"></script>
 </body>
