@@ -23,6 +23,7 @@ window.yvResearchFields = (() => {
     return add.length ? (before.trim() ? before.replace(/\s+$/, '') + '\n' : '') + add.join('\n') : before;
   }
   const LIST_SPLIT = /[,،\n]/;
+  const RELIABLE = new Set(['primary', 'reference', 'aggregator', 'commercial']);
   // One reviewable finding per row: list proposals become one row per new item
   // (an item the field already holds is not offered again).
   function findings(data, fieldMap) {
@@ -86,9 +87,22 @@ window.yvResearchFields = (() => {
       check.type = 'checkbox'; check.checked = false; check.setAttribute('aria-label', `שלב בשדה ${spec.label}`);
       pick.append(check); choices.set(check, u);
       const sources = cell('td', '', 'he');
-      for (const id of u.source_ids) {
-        const source = (data.sources || []).find(s => s.id === id);
-        if (source) { const a = link(source); a.textContent = `[${id}]`; sources.append(a, document.createTextNode(' ')); }
+      const cited = u.source_ids.map(id => (data.sources || []).find(s => s.id === id)).filter(Boolean);
+      for (const source of cited) {
+        const line = document.createElement('div');
+        const a = link(source); a.textContent = `[${source.id}]`; line.append(a);
+        // Reliability tier from the vetted-source knowledge base (server label).
+        if (source.kb?.tier_he) line.append(document.createTextNode(` · ${source.kb.tier_he}`));
+        sources.append(line);
+      }
+      // A finding no vetted source supports (only sites outside the knowledge base,
+      // community sites or dead domains) is flagged before anyone marks it.
+      if (data.knowledge_base && cited.length && !cited.some(s => RELIABLE.has(s.kb?.tier))) {
+        const warn = document.createElement('div');
+        warn.className = 'research-unvetted';
+        warn.textContent = '⚠ אין לממצא מקור אמין מהמאגר — לבדוק לפני סימון';
+        warn.style.cssText = 'color:var(--warn, #b4531a);font-weight:600;margin-top:4px';
+        sources.append(warn);
       }
       const adds = u.mode === 'append' || u.mode === 'list';
       row.append(pick, cell('td', adds ? `${spec.label} — הוספה` : spec.label, 'he'),

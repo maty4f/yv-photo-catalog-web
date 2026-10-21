@@ -3900,6 +3900,7 @@
 "⚠ {} מנות נכשלו (דפים {}) — דרושה קריאה חוזרת ידנית.": "⚠ {} batches failed (pages {}) — a manual re-read is required.",
 "⚠ {} תצלום(ים) עם וורסו לא-מאומת — שמותיהם לא ישמשו כמקור הפצה. מעלה…": "⚠ {} photograph(s) with an unverified verso — their names will not serve as a propagation source. Uploading…",
 "⚠ איחוד ה-PDF נכשל:": "⚠ PDF merge failed:",
+"⚠ אין לממצא מקור אמין מהמאגר — לבדוק לפני סימון": "⚠ No reliable source from the knowledge base — check before marking",
 "⚠ אין מפתח בשרת": "⚠ No key on the server",
 "⚠ אף חלק לא זוהה. בדוק את ה-API ונסה שוב.": "⚠ No part was identified. Check the API and try again.",
 "⚠ אריחים מועילים לכתב יד צפוף, אך דורשים מודל קורא חזק — מומלץ לבחור Gemini Pro או Claude Opus כשמפעילים אריחים.": "⚠ Tiles help with dense handwriting but require a strong reading model — choose Gemini Pro or Claude Opus when enabling tiles.",
