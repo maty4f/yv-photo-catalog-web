@@ -348,6 +348,23 @@
     </div>
   </section>
 
+  <section class="step" id="doc-research-panel">
+    <div class="head"><span class="num">⌕</span><span class="title">חיפוש מידע ומקורות על המסמך</span></div>
+    <div class="body">
+      <p style="margin-top:0;color:var(--muted)">המערכת תחלץ רמזים מהמסמך — כותרת, גוף מנפיק, מספרי תיק וחותמות, תאריכים, אישים ומקומות — תחפש בקטלוגים ארכיוניים ותציע מידע על הקשר המסמך, הגוף המנפיק, האישים הנזכרים ועותקים או אוספים קשורים במוסדות אחרים.</p>
+      <p style="font-size:12px;color:var(--muted)">בלחיצה יישלחו סריקת המסמך (PDF עד 10MB או תמונת עמוד), המידע המוקדם ושדות הקטלוג לספק הניתוח המוגדר; רמזי זיהוי — כולל שמות היסטוריים שבמסמך — ישמשו לחיפוש ברשת. הממצאים יוצגו לבדיקה לפני שילוב בקטלוג.</p>
+      <div class="actions">
+        <button type="button" id="doc-research-start" class="big primary" disabled>חפש מידע על המסמך אוטומטית</button>
+        <button type="button" id="doc-research-stop" class="ghost" hidden>עצור חיפוש</button>
+        <button type="button" id="doc-research-export" class="ghost" hidden>הורד דוח חיפוש ומקורות</button>
+        <button type="button" id="doc-research-apply" hidden>שלב את המידע בקטלוג</button>
+        <button type="button" id="doc-research-undo" class="ghost" hidden>בטל שילוב אחרון</button>
+      </div>
+      <p id="doc-research-status" role="status" aria-live="polite"></p>
+      <div id="doc-research-results"></div>
+    </div>
+  </section>
+
   <section class="step">
     <div class="head"><span class="num">4</span><span class="title">תוצאות <small>Results — ניתן לערוך</small></span>
       <div style="margin-inline-start:auto;">
@@ -445,6 +462,12 @@
           <h4>נושאים / Subjects <small>(עד 10, מתזאורוס הארכיון)</small></h4>
           <div class="subject-chips" id="r-subjects-chips"></div>
           <input type="text" id="r-subjects-add" placeholder="הקלד נושא ולחץ Enter" style="margin-top:6px;">
+        </div>
+
+        <div class="field-group" id="external-research-field">
+          <h4><label for="r-external-research">מידע משלים ממקורות חיצוניים</label></h4>
+          <p style="font-size:12px;color:var(--muted)">מידע ששולב מתוצאות החיפוש, כולל הפניות ומגבלות. ניתן לערוך ולהעתיק; נכלל בדוח הקטלוג להורדה.</p>
+          <textarea id="r-external-research" rows="12"></textarea>
         </div>
 
         <!-- ====================================================== -->
@@ -603,7 +626,9 @@
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
 <script src="yv-providers.js?v=20261007a"></script>
-<script src="documents.inline1.js?v=20261012c"></script>
+<script src="documents.inline1.js?v=20261021b"></script>
+<script src="item-research.js?v=20261021e"></script>
+<script src="doc-research.js?v=20261021b"></script>
 <script src="documents.inline2.js?v=20260722e"></script>
 <script src="yv-client-log.js?v=20260823a"></script>
 <script src="yv-misid.js?v=20260823a"></script>

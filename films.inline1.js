@@ -120,7 +120,21 @@ filmDrop.addEventListener('drop', e => { const f = e.dataTransfer.files?.[0]; if
 fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; if (f) { state.currentPartIdx = -1; loadFilm(f); } fileInput.value = ''; });
 delFilmBtn.addEventListener('click', e => { e.stopPropagation(); clearFilm(); });
 
+// Production credits (director, year, country…) — filled only from evidence:
+// visible credits, provided context, or a cited external-research result.
+const PRODUCTION_FIELDS = ['director_he', 'director_en', 'producer_he', 'producer_en',
+  'production_company_he', 'production_company_en', 'cinematographer_he', 'cinematographer_en',
+  'production_country_he', 'production_country_en', 'production_year'];
+const productionFieldId = key => 'r-' + key.replace(/_/g, '-');
+// Cleared with the research panel, so one film's credits never carry into another.
+function clearProductionFields() {
+  PRODUCTION_FIELDS.forEach(k => { const el = document.getElementById(productionFieldId(k)); if (el) el.value = ''; });
+}
+
 function loadFilm(file) {
+  window.yvFilmResearchChanged?.();
+  clearProductionFields();
+  state.researchCatalogFilm = null;
   state.film = file;
   filmFilename.textContent = `${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
   filmFilename.style.display = 'block';
@@ -186,6 +200,9 @@ function formatDuration(seconds) {
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 function clearFilm() {
+  window.yvFilmResearchChanged?.();
+  clearProductionFields();
+  state.researchCatalogFilm = null;
   state.film = null; state.filmMeta = null;
   // removeAttribute+load, not src='' — empty src resolves to the page URL and logs a resource error
   filmPreview.removeAttribute('src');
@@ -472,6 +489,7 @@ const identifyBtn = document.getElementById('identify-btn');
 const identifyStatus = document.getElementById('identify-status');
 
 function refreshButtons() {
+  window.yvFilmResearchRefresh?.();
   const hasFilm = !!state.film;
   const hasKey = hasAllRequiredKeys();
   identifyBtn.disabled = !(hasFilm && hasKey);
@@ -991,11 +1009,21 @@ function parseUnifiedScenes(html) {
   });
 }
 
+// Engine-only optional keys (schemas/film.json): the original title and the
+// production credits. Mapped only when the record states them, so an engine
+// record without credits never blanks values applied from external research.
+const UNIFIED_OPTIONAL_KEYS = ['ORIGINAL_TITLE', 'DIRECTOR_HE', 'DIRECTOR_EN', 'PRODUCER_HE', 'PRODUCER_EN',
+  'PRODUCTION_COMPANY_HE', 'PRODUCTION_COMPANY_EN', 'CINEMATOGRAPHER_HE', 'CINEMATOGRAPHER_EN',
+  'PRODUCTION_COUNTRY_HE', 'PRODUCTION_COUNTRY_EN', 'PRODUCTION_YEAR'];
+
 // Sidecar template keys → the results-model shape fillResults expects.
 function mapUnifiedFilmFields(f) {
   const txt = k => unifiedFieldText(f[k]);
   const splitList = s => (!s || s === '—') ? [] : s.split(/[;,،]/).map(x => x.trim()).filter(Boolean);
+  const optional = Object.fromEntries(UNIFIED_OPTIONAL_KEYS
+    .map(k => [k.toLowerCase(), txt(k)]).filter(([, v]) => v && v !== '—'));
   return {
+    ...optional,
     title_he: txt('TITLE_HE'), title_en: txt('TITLE_EN'),
     summary_he: txt('SUMMARY_HE'), summary_en: txt('SUMMARY_EN'),
     duration: txt('DURATION'),
@@ -1054,6 +1082,10 @@ function buildFilmPrompt() {
 - \`Brussels, Belgium, חיילים בלגים בפעילויות אזרחיות וצבאיות, 1935\`
 - שמות מקומות באנגלית בלבד (Brussels לא Brussel), גבולות 01/09/1939
 - ארץ ישראל לפני 14/05/1948 → \`Mandatory Palestine\`; אחרי → \`Israel\`
+- **סרט מופק** (תיעודי, תעמולה, יומן חדשות, עלילתי) ששמו כתוב בכותרת הפתיחה או במידע המוקדם → הכותר הוא **שם הסרט**: \`title_he\` = השם בעברית, \`title_en\` = השם באנגלית, \`original_title\` = השם בשפת המקור verbatim. צילומים גולמיים / חובבניים / ביתיים, או שם שאינו ידוע → כותר תיאורי בפורמט שלמעלה, מניתוח הטיימליין.
+
+## פרטי הפקה
+\`director_*\`, \`producer_*\`, \`production_company_*\`, \`cinematographer_*\`, \`production_country_*\`, \`production_year\` — **רק** מכתוביות/כותרות שנראות בסרט או מהמידע המוקדם; אחרת \`""\`. אסור להסיק יוצר מסגנון או מנושא. שדות \`_he\` בעברית בלבד, \`_en\` בלטינית בלבד.
 
 ## תאריכים — חוק קריטי 🛑
 
@@ -1102,6 +1134,12 @@ ${thesaurusBrief}
   "title_he": "כותר עברית",
   "title_en": "Title English",
   "original_title": "",
+  "director_he": "", "director_en": "",
+  "producer_he": "", "producer_en": "",
+  "production_company_he": "", "production_company_en": "",
+  "cinematographer_he": "", "cinematographer_en": "",
+  "production_country_he": "", "production_country_en": "",
+  "production_year": "",
   "media_code": "S | V | D",
   "archive_id": "",
   "intake_num": "",
@@ -1379,6 +1417,7 @@ async function extractKeyframes(file, count) {
 function parseJson(text, label) { return yvProviders.parseJson(text, label, { detail: true }); }
 
 function fillResults(d) {
+  state.researchCatalogFilm = state.film;
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = stripConfidenceMarkup(v); };
   setVal('r-title-he', d.title_he); setVal('r-title-en', d.title_en); setVal('r-original-title', d.original_title);
   setVal('r-archive-id', d.archive_id); setVal('r-intake-num', d.intake_num); setVal('r-original-id', d.original_id);
@@ -1397,6 +1436,8 @@ function fillResults(d) {
   setVal('r-dates-he', d.dates_he); setVal('r-dates-en', d.dates_en);
   setVal('r-inscriptions-he', d.inscriptions_he); setVal('r-inscriptions-en', d.inscriptions_en);
   setVal('r-admin-notes', d.admin_notes);
+  // An analysis that does not return credits leaves research-applied ones intact.
+  PRODUCTION_FIELDS.forEach(k => { if (d[k] != null) setVal(productionFieldId(k), d[k]); });
   document.getElementById('r-media-code').value = d.media_code || 'D';
   document.getElementById('r-color').value = d.color || 'שחור-לבן';
 
@@ -1408,6 +1449,7 @@ function fillResults(d) {
   }
   const subjects = (d.subjects_he || []).map((he, i) => ({ he, en: (d.subjects_en || [])[i] || '' }));
   renderSubjects(subjects);
+  window.yvFilmResearchRefresh?.();   // research unlocks once this film is cataloged
 }
 
 // Strip dual-axis confidence markup the model sometimes injects into prose
@@ -1604,7 +1646,28 @@ function buildFilmHTML() {
     .replace(/\{\{INTRANET\}\}/g, esc(get('r-intranet')))
     .replace(/\{\{SUBJECTS\}\}/g, chipsHTML)
     .replace(/\{\{ANALYSIS_DATE\}\}/g, new Date().toLocaleDateString('he-IL'))
-    .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.film?.name || ''));
+    .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.film?.name || ''))
+    .replace(/\{\{PRODUCTION\}\}/g, () => productionHTML(get))
+    .replace(/\{\{EXTERNAL_RESEARCH\}\}/g, () => get('r-external-research').trim()
+      ? '<div class="section-bar">מידע משלים ממקורות חיצוניים</div><div class="field"><div class="head"><span class="label">מידע ומקורות ששולבו מהחיפוש</span><button class="copy-btn" data-copy="external-research">העתק</button></div><div id="external-research" class="single he" style="overflow-wrap:anywhere">' + esc(get('r-external-research')).replace(/\n/g, '<br>') + '</div></div>' : '');
+}
+
+// Export block for the production credits: only rows that have a value; no
+// section at all when nothing is known (never an empty "unknown" credit).
+function productionHTML(get) {
+  const rows = [['במאי', 'director', 'Director'], ['מפיק', 'producer', 'Producer'],
+    ['חברת הפקה / גוף מזמין', 'production_company', 'Production company'],
+    ['צלם', 'cinematographer', 'Cinematographer'], ['ארץ הפקה', 'production_country', 'Production country']]
+    .map(([label, key, en]) => {
+      const he = get('r-' + key.replace(/_/g, '-') + '-he').trim(), lat = get('r-' + key.replace(/_/g, '-') + '-en').trim();
+      if (!he && !lat) return '';
+      const id = 'prod-' + key.replace(/_/g, '-');
+      return `<div class="field"><div class="head"><span class="label">${label} <small>${en}</small></span><button class="copy-btn" data-copy="${id}-he">HE</button><button class="copy-btn alt" data-copy="${id}-en">EN</button></div><div class="bilingual"><div id="${id}-he" class="lang he">${esc(he)}</div><div id="${id}-en" class="lang en">${esc(lat)}</div></div></div>`;
+    });
+  const year = get('r-production-year').trim();
+  if (year) rows.push(`<div class="field"><div class="head"><span class="label">שנת הפקה <small>Production year</small></span><button class="copy-btn" data-copy="prod-year">העתק</button></div><div id="prod-year" class="compact">${esc(year)}</div></div>`);
+  const body = rows.join('');
+  return body ? '<div class="section-bar">פרטי הפקה <small>Production</small></div>\n' + body + '\n' : '';
 }
 
 document.getElementById('download-final-btn').addEventListener('click', () => {
@@ -1715,6 +1778,7 @@ const FILM_TEMPLATE = `<!DOCTYPE html>
 <div class="field"><div class="head"><span class="label">Title EN</span><button class="copy-btn" data-copy="title-en">Copy</button></div><div id="title-en" class="single en">{{TITLE_EN}}</div></div>
 <div class="field"><div class="head"><span class="label">כותר מקורי</span><button class="copy-btn" data-copy="orig-title">העתק</button></div><div id="orig-title" class="compact">{{ORIGINAL_TITLE}}</div></div>
 
+{{PRODUCTION}}
 <div class="section-bar">שדות טכניים</div>
 <div class="field"><div class="head"><span class="label">קוד רישום 1</span><button class="copy-btn" data-copy="media">העתק</button></div><div id="media" class="compact">{{MEDIA_CODE}}</div></div>
 <div class="field"><div class="head"><span class="label">קוד רישום 2</span><button class="copy-btn" data-copy="aid">העתק</button></div><div id="aid" class="compact">{{ARCHIVE_ID}}</div></div>
@@ -1759,6 +1823,7 @@ const FILM_TEMPLATE = `<!DOCTYPE html>
 <div class="section-bar">נושאים</div>
 <div class="field"><div class="head"><span class="label">נושאים מתזאורוס</span></div><div style="padding:10px 14px; background:#fbf9f3; direction:rtl; text-align:right; unicode-bidi:isolate;">{{SUBJECTS}}</div></div>
 
+{{EXTERNAL_RESEARCH}}
 <div class="section-bar">הערות אדמיניסטרציה</div>
 <div class="field"><div class="head"><span class="label">הערות פנים-ארכיוניות</span></div><div class="single he">{{ADMIN_NOTES}}</div></div>
 

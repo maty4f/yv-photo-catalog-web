@@ -71,6 +71,7 @@ document.querySelectorAll('.delete-btn').forEach(btn =>
   }));
 
 function loadPhoto(side, file) {
+  if (side === 'front') { window.yvPhotoResearchChanged?.(); state.researchCatalogFor = null; }
   state.photos[side] = file;
   const slot = document.getElementById('slot-' + side);
   const drop = slot.querySelector('.drop');
@@ -90,6 +91,7 @@ function loadPhoto(side, file) {
 }
 
 function clearPhoto(side) {
+  if (side === 'front') { window.yvPhotoResearchChanged?.(); state.researchCatalogFor = null; }
   state.photos[side] = null;
   state.thumbnails[side] = null;
   const slot = document.getElementById('slot-' + side);
@@ -1588,6 +1590,7 @@ const copyPromptBtn = document.getElementById('copy-prompt-btn');
 const identifyStatus = document.getElementById('identify-status');
 
 function refreshButtons() {
+  window.yvPhotoResearchRefresh?.();
   const hasFront = !!state.photos.front;
   const hasKey = state.provider === 'unified-server' ? true /* server-side engine — no browser key needed */
     : !!getActiveApiKey();
@@ -2398,6 +2401,7 @@ const UNKNOWN_FIELD_RE = /^\s*(—|-+|לא ידוע|מיקום לא ידוע|ת�
 function blankUnknown(v) { return (typeof v === 'string' && UNKNOWN_FIELD_RE.test(v)) ? '' : v; }
 
 function fillResultsForm(d) {
+  state.researchCatalogFor = state.photos.front;
   d.places_en = blankUnknown(d.places_en);
   d.creation_date = blankUnknown(d.creation_date);
   d.recon_date = blankUnknown(d.recon_date);
@@ -2456,6 +2460,7 @@ function fillResultsForm(d) {
 
   // חיווי ודאות פר-שדה — הגהה ממוקדת (השדות החלשים מסומנים, לא רק במקרא).
   applyFieldConfidence(d);
+  window.yvPhotoResearchRefresh?.();   // research unlocks once this photo is cataloged
 }
 
 // =====================================================================
@@ -2731,7 +2736,9 @@ function buildFinalHTML() {
     .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.photos.front?.name || ''))
     .replace(/\{\{INTAKE_NUMBER\}\}/g, '—')
     .replace(/\{\{PHOTO_ID\}\}/g, '—')
-    .replace(/\{\{ADMIN_NOTES\}\}/g, '—');
+    .replace(/\{\{ADMIN_NOTES\}\}/g, '—')
+    .replace(/\{\{EXTERNAL_RESEARCH\}\}/g, () => get('r-external-research').trim()
+      ? '<div class="section-bar">מידע משלים ממקורות חיצוניים</div><div class="field"><div class="head"><span class="label">מידע ומקורות ששולבו מהחיפוש</span><button class="copy-btn" data-copy="external-research">העתק</button></div><div id="external-research" class="single he" style="overflow-wrap:anywhere">' + esc(get('r-external-research')).replace(/\n/g, '<br>') + '</div></div>' : '');
 }
 
 function composeInfoBody(visual, context, persons, objects, inscriptions, studio, bio, notes, lang) {
@@ -2837,6 +2844,7 @@ saveNextBtn.addEventListener('click', () => {
     },
     id_table: idRows,
     subjects: activeSubjects,
+    external_research: get('r-external-research'),
   };
 
   // Feedback loop: the approved record feeds the training corpus (fire-and-forget).
@@ -3155,6 +3163,7 @@ const MF_TEMPLATE = `<!DOCTYPE html>
 <div class="section-bar">נושאים <small>Subjects</small></div>
 <div class="field"><div class="head"><span class="label">נושאים מתזאורוס</span></div><div style="padding:10px 14px; background:#fbf9f3; direction:rtl; text-align:right; unicode-bidi:isolate;">{{SUBJECTS_HE_CHIPS}}</div></div>
 
+{{EXTERNAL_RESEARCH}}
 <div class="section-bar">הערות אדמיניסטרציה <small>Admin notes</small></div>
 <div class="field"><div class="head"><span class="label">הערות</span></div><div class="single he">{{ADMIN_NOTES}}</div></div>
 

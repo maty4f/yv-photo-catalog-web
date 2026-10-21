@@ -584,6 +584,23 @@
     </div>
   </section>
 
+  <section class="step" id="photo-research-panel">
+    <div class="head"><span class="num">⌕</span><span class="title">חיפוש מידע ומקורות על התצלום</span></div>
+    <div class="body">
+      <p style="margin-top:0;color:var(--muted)">המערכת תחלץ רמזים מהחזית ומהגב — כיתובים, חותמות צלם וסטודיו, מספרי ארכיון ומקומות — תחפש במקורות ארכיוניים ותציע מידע על הצלם, נסיבות הצילום, המקום והאירוע ועל עותקים במוסדות אחרים.</p>
+      <p style="font-size:12px;color:var(--muted)">בלחיצה יישלחו החזית, הגב (אם נטען), המידע המוקדם ושדות הקטלוג לספק הניתוח המוגדר; רמזי זיהוי ישמשו לחיפוש ברשת. אין חיפוש לפי דמיון חזותי. הממצאים יוצגו לבדיקה לפני שילוב בקטלוג.</p>
+      <div class="actions">
+        <button type="button" id="photo-research-start" class="big primary" disabled>חפש מידע על התצלום אוטומטית</button>
+        <button type="button" id="photo-research-stop" class="ghost" hidden>עצור חיפוש</button>
+        <button type="button" id="photo-research-export" class="ghost" hidden>הורד דוח חיפוש ומקורות</button>
+        <button type="button" id="photo-research-apply" hidden>שלב את המידע בקטלוג</button>
+        <button type="button" id="photo-research-undo" class="ghost" hidden>בטל שילוב אחרון</button>
+      </div>
+      <p id="photo-research-status" role="status" aria-live="polite"></p>
+      <div id="photo-research-results"></div>
+    </div>
+  </section>
+
   <!-- ====================================================== -->
   <!--  STEP 4: Results (filled by API or manual paste)         -->
   <!-- ====================================================== -->
@@ -717,6 +734,12 @@
           <datalist id="thesaurus-datalist"></datalist>
         </div>
 
+        <div class="field-group" id="external-research-field">
+          <h4><label for="r-external-research">מידע משלים ממקורות חיצוניים</label></h4>
+          <p style="font-size:12px;color:var(--muted)">מידע ששולב מתוצאות החיפוש, כולל הפניות ומגבלות. ניתן לערוך ולהעתיק; נכלל בדוח הקטלוג להורדה.</p>
+          <textarea id="r-external-research" rows="12"></textarea>
+        </div>
+
         <!-- Studio identification result -->
         <div id="r-studio-result"></div>
 
@@ -795,7 +818,9 @@
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
 <script src="yv-providers.js?v=20261007a"></script>
-<script src="photos.inline3.js?v=20261015a"></script>
+<script src="photos.inline3.js?v=20261021b"></script>
+<script src="item-research.js?v=20261021e"></script>
+<script src="photo-research.js?v=20261021b"></script>
 <script src="photos.inline4.js?v=20260722e"></script>
 <script src="yv-client-log.js?v=20260823a"></script>
 <script src="yv-chunk.js?v=20260928b"></script>

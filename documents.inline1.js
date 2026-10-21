@@ -373,6 +373,7 @@ fileInput.addEventListener('change', () => { const f = fileInput.files?.[0]; fil
 delDocBtn.addEventListener('click', e => { e.stopPropagation(); clearDoc(); });
 
 function loadDoc(file) {
+  window.yvDocResearchChanged?.(); state.researchCatalogFor = null;
   state.document = file;
   state.docMeta = { mime: file.type || 'application/pdf', size_bytes: file.size, name: file.name };
   docFilename.textContent = `${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`;
@@ -399,6 +400,7 @@ function renderDocMeta() {
 }
 
 function clearDoc() {
+  window.yvDocResearchChanged?.(); state.researchCatalogFor = null;
   state.document = null; state.docMeta = null;
   // removeAttribute, not src='' — empty src resolves to the page URL and logs a resource error
   docPreview.removeAttribute('src');
@@ -1696,6 +1698,7 @@ const identifyBtn = document.getElementById('identify-btn');
 const identifyStatus = document.getElementById('identify-status');
 
 function refreshButtons() {
+  window.yvDocResearchRefresh?.();
   const hasDoc = !!state.document;
   let hasKey, missingMsg = '';
   if (state.provider === 'claude-cli') {
@@ -2356,6 +2359,7 @@ CONTENT_DIR_FIELDS.forEach(id => {
 });
 
 function fillResults(d) {
+  state.researchCatalogFor = state.document;
   const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = stripConfidenceMarkup(v); };
   setVal('r-title-he', d.title_he); setVal('r-title-en', d.title_en);
   setVal('r-doc-type', d.doc_type); setVal('r-archive-id', d.archive_id); setVal('r-intake-num', d.intake_num);
@@ -2426,6 +2430,7 @@ function fillResults(d) {
   // שער הוולידטור הקנוני — כל רשומת-עמוד שמוצגת נבדקת מול /api/validate-record
   // (ראו renderValidateBox/validateDocRecord/validateBlockReason למטה).
   validateDocRecord();
+  window.yvDocResearchRefresh?.();   // research unlocks once this document is cataloged
 }
 
 let activeSubjects = [];
@@ -2544,7 +2549,9 @@ function buildDocHTML() {
     .replace(/\{\{NOTES\}\}/g, esc(get('r-notes')).replace(/\n/g, '<br>'))
     .replace(/\{\{SUBJECTS\}\}/g, chipsHTML)
     .replace(/\{\{ANALYSIS_DATE\}\}/g, new Date().toLocaleDateString('he-IL'))
-    .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.document?.name || ''));
+    .replace(/\{\{SOURCE_FILENAME\}\}/g, esc(state.document?.name || ''))
+    .replace(/\{\{EXTERNAL_RESEARCH\}\}/g, () => get('r-external-research').trim()
+      ? '<div class="section-bar">מידע משלים ממקורות חיצוניים</div><div class="field"><div class="head"><span class="label">מידע ומקורות ששולבו מהחיפוש</span><button class="copy-btn" data-copy="external-research">העתק</button></div><div id="external-research" class="single he" style="overflow-wrap:anywhere">' + esc(get('r-external-research')).replace(/\n/g, '<br>') + '</div></div>' : '');
 }
 
 /* ---------- שער הוולידטור הקנוני ----------
@@ -3137,6 +3144,7 @@ const DOC_TEMPLATE = `<!DOCTYPE html>
 <div class="section-bar">נושאים</div>
 <div class="field"><div class="head"><span class="label">נושאים מתזאורוס</span></div><div style="padding:10px 14px; background:#fbf9f3; direction:rtl; text-align:right; unicode-bidi:isolate;">{{SUBJECTS}}</div></div>
 
+{{EXTERNAL_RESEARCH}}
 <!--PRIVATE_ONLY_START-->
 <div class="section-bar">מקור פרטי — חטיבה ארכיונית</div>
 <div class="field"><div class="head"><span class="label">שם / סימול חטיבה</span><button class="copy-btn" data-copy="pv-div">העתק</button></div><div id="pv-div" class="compact">{{DIVISION_NAME}}</div></div>

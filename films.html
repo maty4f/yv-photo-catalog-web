@@ -339,6 +339,23 @@
     </div>
   </section>
 
+  <section class="step" id="film-research-panel">
+    <div class="head"><span class="num">⌕</span><span class="title">חיפוש מידע ומקורות על הסרט</span></div>
+    <div class="body">
+      <p style="margin-top:0;color:var(--muted)">המערכת תחלץ רמזים מהכותרות ומהפריימים, תחפש במקורות רלוונטיים ותציע מידע על יוצרים, הפקה ועותקים בארכיונים — גם כששם הסרט אינו ידוע.</p>
+      <p style="font-size:12px;color:var(--muted)">בלחיצה יישלחו עד 8 פריימים והמידע המוקדם לספק הניתוח המוגדר; רמזי זיהוי ישמשו לחיפוש ברשת. הממצאים יוצגו לבדיקה לפני שילוב בקטלוג.</p>
+      <div class="actions">
+        <button type="button" id="film-research-start" class="big primary" disabled>חפש מידע על הסרט אוטומטית</button>
+        <button type="button" id="film-research-stop" class="ghost" hidden>עצור חיפוש</button>
+        <button type="button" id="film-research-export" class="ghost" hidden>הורד דוח חיפוש ומקורות</button>
+        <button type="button" id="film-research-apply" hidden>שלב את המידע בקטלוג</button>
+        <button type="button" id="film-research-undo" class="ghost" hidden>בטל שילוב אחרון</button>
+      </div>
+      <p id="film-research-status" role="status" aria-live="polite"></p>
+      <div id="film-research-results"></div>
+    </div>
+  </section>
+
   <section class="step">
     <div class="head"><span class="num">4</span><span class="title">תוצאות <small>Results — ניתן לערוך</small></span></div>
     <div class="body">
@@ -353,6 +370,31 @@
           </div>
           <div style="margin-top:8px"><span class="lang-tag">כותר מקורי <small>Original title</small></span></div>
           <input type="text" id="r-original-title">
+        </div>
+
+        <div class="field-group" id="production-fields">
+          <h4>פרטי הפקה / Production <small>(רק כשיש מידע מבוסס — כתוביות, מידע מוקדם או חיפוש מקורות)</small></h4>
+          <div class="field-row">
+            <div><span class="lang-tag">במאי (HE)</span><input type="text" id="r-director-he"></div>
+            <div><span class="lang-tag">Director (EN)</span><input type="text" id="r-director-en" style="direction:ltr; text-align:left"></div>
+          </div>
+          <div class="field-row">
+            <div><span class="lang-tag">מפיק (HE)</span><input type="text" id="r-producer-he"></div>
+            <div><span class="lang-tag">Producer (EN)</span><input type="text" id="r-producer-en" style="direction:ltr; text-align:left"></div>
+          </div>
+          <div class="field-row">
+            <div><span class="lang-tag">חברת הפקה / גוף מזמין (HE)</span><input type="text" id="r-production-company-he"></div>
+            <div><span class="lang-tag">Production company (EN)</span><input type="text" id="r-production-company-en" style="direction:ltr; text-align:left"></div>
+          </div>
+          <div class="field-row">
+            <div><span class="lang-tag">צלם (HE)</span><input type="text" id="r-cinematographer-he"></div>
+            <div><span class="lang-tag">Cinematographer (EN)</span><input type="text" id="r-cinematographer-en" style="direction:ltr; text-align:left"></div>
+          </div>
+          <div class="field-row">
+            <div><span class="lang-tag">ארץ הפקה (HE)</span><input type="text" id="r-production-country-he"></div>
+            <div><span class="lang-tag">Production country (EN)</span><input type="text" id="r-production-country-en" style="direction:ltr; text-align:left"></div>
+          </div>
+          <div class="compact-row"><label>שנת הפקה</label><input type="text" id="r-production-year"></div>
         </div>
 
         <div class="field-group">
@@ -492,6 +534,12 @@
           </div>
         </div>
 
+        <div class="field-group" id="external-research-field">
+          <h4><label for="r-external-research">מידע משלים ממקורות חיצוניים</label></h4>
+          <p style="font-size:12px;color:var(--muted)">מידע ששולב מתוצאות החיפוש, כולל הפניות ומגבלות. ניתן לערוך ולהעתיק; נכלל בדוח הקטלוג להורדה.</p>
+          <textarea id="r-external-research" rows="12"></textarea>
+        </div>
+
         <div class="field-group">
           <h4>הערות אדמיניסטרציה / Admin notes</h4>
           <textarea id="r-admin-notes" rows="2"></textarea>
@@ -550,8 +598,10 @@
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
 <script src="yv-providers.js?v=20261007a"></script>
-<script src="films.inline1.js?v=20261020a"></script>
-<script src="film-research.js?v=20261015d"></script>
+<script src="films.inline1.js?v=20261021c"></script>
+<script src="research-fields.js?v=20261021c"></script>
+<script src="item-research.js?v=20261021e"></script>
+<script src="film-research.js?v=20261021e"></script>
 <script src="films.inline2.js?v=20260722e"></script>
 <script src="yv-client-log.js?v=20260823a"></script>
 <script src="yv-misid.js?v=20260823a"></script>
