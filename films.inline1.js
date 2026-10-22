@@ -1904,8 +1904,16 @@ splitGoBtn.addEventListener('click', async () => {
     showSplitResult();
   } catch (err) {
     console.error(err);
-    splitStatusText.textContent = '❌ שגיאה: ' + err.message;
+    // ffmpeg.wasm's worker relays failures as a STRING (e.toString()), not an
+    // Error — `err.message` printed "undefined" and hid the real cause (22.10.2026).
+    const why = String((err && err.message) || err || 'שגיאה לא ידועה');
+    const oom = /allocation failed|out of memory|Aborted\(|RuntimeError|memory/i.test(why);
+    splitStatusText.textContent = '❌ שגיאה: ' + why
+      + (oom ? ' — הדפדפן לא הצליח להחזיק את הסרט בזיכרון. חיתוך בדפדפן מתאים לקבצים עד ~1GB; '
+             + 'לסרט גדול יותר: ניתוח מלא (העלאה בחלקים — השרת מחלץ בעצמו) או חיתוך בשרת: '
+             + 'python3 tools/split_film.py <video> --mode time --chunk 300' : '');
     splitStatusText.style.color = 'var(--soft)';
+    try { window.yvLogError && yvLogError(err, 'film-split'); } catch {}
     splitGoBtn.style.display = 'inline-block';
     splitGoBtn.textContent = 'נסה שוב';
     splitGoBtn.disabled = false;
@@ -2335,7 +2343,17 @@ async function ensureFFmpegLoaded(onStatus) {
   return ffmpegLib;
 }
 
+// ffmpeg.wasm holds the whole input in the page's memory (the file bytes plus a
+// copy in its virtual FS); past ~1.2 GB a 32-bit wasm heap cannot allocate it.
+const SPLIT_MAX_MB = 1200;
+
 async function splitFilm(file, segmentSeconds, onStatus, onProgress) {
+  const mb = file.size / 1024 / 1024;
+  if (mb > SPLIT_MAX_MB) {
+    throw new Error(`הסרט (${mb.toFixed(0)}MB) גדול מדי לחיתוך בדפדפן (עד ~${SPLIT_MAX_MB}MB). `
+      + 'השתמש ב"ניתוח מלא" (העלאה בחלקים — השרת מחלץ פריימים מכל גודל) או חתוך בשרת: '
+      + 'python3 tools/split_film.py <video> --mode time --chunk 300');
+  }
   const { ffmpeg, fetchFile } = await ensureFFmpegLoaded(onStatus);
 
   const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
