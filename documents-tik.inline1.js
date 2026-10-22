@@ -283,6 +283,38 @@ const ELIACH_SOURCE_RULES=`── תוספת מחייבת — קטלוג תיק�
 4. כל השאר — לפי הנוסח הרגיל; דף-ההזנה בשדות ספיר (צורה, אופי חומר, שפה, מקומות קשורים) נוצר אוטומטית בסוף הריצה.`;
 const eliachRulesBlock=()=>tikSource()==='eliach'?'\n\n'+ELIACH_SOURCE_RULES:'';
 
+/* ---------- כרך-משפט TR.15 — יחידות-עדות וזהויות (כללי 2026-10-22) ---------- */
+// ליבת-הכללים זהה מילה-במילה ל-prompts/engine/tr15_catalog_rules.md — מקור יחיד;
+// local-server/test/tr15-rules.dom.test.js נכשל אם השתיים נפרדות. כשהתיק רץ במנוע
+// בשרת (תיאור מהיר / תיק מהדרייב, MF_TIK_KIND=tr15) המנוע מזריק את הכללים בעצמו
+// לקריאה ולסינתזה; כאן הם למסלול-הדפדפן (קריאה במנות → עיבוי → סינתזה).
+// הם *אינם* נשלחים בשדה המידע-המוקדם: המידע-המוקדם הוא עובדות מהמוסר ומודפס ברשומה.
+const TR15_CATALOG_RULES=`── הוראות קטלוג TR.15 — גרסה 2026-10-22 ──
+הוראות קטלוג, לא עובדות מתוך המקור. הן גוברות על הוראה כללית סותרת על יחידות עדות:
+1. רשומת התיק היא רשומת-אב; בתוכה כל יחידת עדות תתואר בנפרד. זהות האדם ויחידת העדות הן שתי ישויות שונות.
+2. אותו אדם בשפות תיעוד שונות = עדויות נפרדות, גם כאשר אחת היא תרגום. קשר אותן לאותו אדם וציין קשר מקור–תרגום רק אם אומת. אל תמזג אותן בשל זהות העד ואל תספור אנשים כאילו היו מספר העדויות.
+3. לצורך שפה קרא את שפת המסמך הכתוב; שפה שהוזכרה בדברים או שפת הדיבור של העד אינה בהכרח שפת המסמך.
+4. גבולות מנת עיבוד (chunk), קלטת, חקירה ראשית/נגדית או קובץ סריקה אינם כשלעצמם גבולות עדות. חבר מקטעים רק כאשר המקור מאמת שהם המשך אותה יחידת עדות באותה שפה. אל תאחד הצהרות עצמאיות רק בגלל אדם, שפה או תאריך משותפים.
+5. בכל מנה שמור שם/מזהה קובץ או מולטימדיה, טווח סריקות מקומי, מספרי עמודי הפרוטוקול המודפסים אם קריאים, תאריך, שפה, זהות העד וסימני התחלה/המשך/סיום. שמור אותם גם בצמצום ביניים. אל תמציא סוף עדות בסוף המנה או הקובץ.
+6. בסינתזה בדוק את שני צדי כל חיבור בין מנות: רצף עמודים, כותרת, העד והשפה. חוסר בראיה, פער, חפיפה או מעבר לא ברור → review_flags; אין לאשר איחוד אוטומטי.
+7. אל תצרף מספרי סריקות מקומיים ממולטימדיות שונות לטווח שטוח אחד. שמור טווחים נפרדים ומזהה מקור לכל טווח, גם בעדות הנמשכת בכמה קבצים. הבחֵן בין מיקום הסריקה לבין העמוד המודפס.
+8. הבחֵן בין שער, כריכה, דף ריק, דיון פרוצדורלי ותוכן העדות. שמור כיסוי של החומר במפת המסמכים; טווח העדות לא יכלול כריכה כאילו הייתה עדות. בדוק דף ראשון ואחרון ותעד אי-ודאות.
+9. איחוד זהויות ייעשה רק על סמך ראיה מזוהה או מיפוי זהויות מאושר של האוסף. שמור כתיבים חלופיים ומקורותיהם. שם משפחה דומה לבדו אינו אישור לאיחוד; זהות לא ודאית נשארת לבדיקה. אין להחיל מיפוי שמות של אוסף אחד על אוסף אחר.
+10. תאריך יצירת העדות הוא תאריך המסירה/הדיון שבמקור; תקופת האירועים המתוארים היא שדה נפרד. אל תחליף שנים באופן גורף בגלל הנחיה ישנה הסותרת מקור.
+11. מפת המסמכים תכלול שורה נפרדת לכל יחידת עדות ושפה, עם כל מקטעי המקור שלה; names_index יאחד אדם מזוהה בלבד וישמור aliases ומראי מקום. אם מופקת שכבת testimonies, היא תשתמש באותן יחידות ושפות ובאותם מקורות. מניין עדויות נגזר מהיחידות האלה, ומניין אנשים נפרד ממנו.
+12. החזר review_flags לכל גבול/זהות/שפה/טווח שטרם אומתו. אל תציג בדיקת רציפות או תיקון כמאומתים בלי ראיות מהמקור; בקשת תיקון או עצם הפקת הרשומה אינן הוכחת ביצוע.`;
+const TR15_RECORD_FIELDS=`── שדות יחידות-העדות ברשומה (כרך-משפט) ──
+בנוסף לשדות הסכימה החזר:
+ "testimonies": [ {"unit_id": "T01", "source": "<קובץ/מולטימדיה>", "pages": "<טווח-סריקות במקור הזה בלבד>", "content_start": "", "printed_pages": "", "date": "", "language_he": "<שפת המסמך הכתוב>", "witness": {"name": ""}, "person_id": "P01", "translation_of": "", "review_flags": [""]} ],
+ "persons": [ {"person_id": "P01", "name": "", "aliases": [ {"name": "", "sources": [""]} ], "identity_basis": "", "review_flags": [""]} ]
+document_inventory: שורה לכל יחידת-עדות ושפה, עם "source" (קובץ/מולטימדיה) — לעולם לא טווח אחד ממקורות שונים; שער, כריכה, דף ריק ודיון פרוצדורלי — שורות נפרדות. מניין העדויות = מספר היחידות; מספר העדים — בנפרד.`;
+const TR15_CHUNK_EXTRA=`
+- **מקטעי-עדות (כרך-משפט)** — שורה לכל מקטע: קובץ/מולטימדיה · סריקות מקומיות (מ–עד) · עמודי-פרוטוקול מודפסים אם קריאים · תאריך הישיבה · שפת המסמך הכתוב (לא שפת הדיבור) · שם העד כפי שכתוב · סימנים — פתיחה / המשך-ממנה-קודמת / נמשך-הלאה / סיום — רק מה שנראה בדפים. שער, כריכה, דף ריק ודיון פרוצדורלי — בשורת "מסמכים" נפרדת. אל תסיק סוף-עדות מסוף המנה.`;
+const TR15_REDUCE_EXTRA=`
+- **מקטעי-עדות** — העתק כל שורת מקטע כפי-שהיא: קובץ/מולטימדיה, סריקות, עמודים מודפסים, תאריך, שפה, עד וסימני פתיחה/המשך/סיום. **אל תאחד מקטעים בעיבוי** — החיבור נעשה רק בסינתזה, על ראיה.`;
+function isTr15(){return tikSource()==='institutional'&&tikKind()==='tr15';}
+const tr15RulesBlock=()=>isTr15()?'\n\n'+TR15_CATALOG_RULES:'';
+
 // "פריטים מושחרים" — צנזורת ארכיון המדינה שזוהתה בסריקה (שלב-1). רשומה מלפני
 // הוספת הזיהוי (אין מפתח redactions) מוצגת עם הערה, לא עם "לא זוהו".
 function isaRedactionsField(rec){
@@ -361,7 +393,8 @@ const TESTIMONY_SCHEMA_RULES=`אתה מקטלג תיעוד מוסדי בארכי
  "subjects_he": [ "" ],
  "subjects_en": [ "" ]
 }`;
-const schemaRules=()=>isInstTestimony()?TESTIMONY_SCHEMA_RULES:TIK_SCHEMA_RULES;
+const schemaRules=()=>isInstTestimony()?TESTIMONY_SCHEMA_RULES:
+  (isTr15()?`${TIK_SCHEMA_RULES}\n\n${TR15_CATALOG_RULES}\n\n${TR15_RECORD_FIELDS}`:TIK_SCHEMA_RULES);
 const testimonyChunkExtra=()=>isInstTestimony()
   ?'\n- **פרטי העד/ה** — בדפי פתיחת/סיום העדות: שם מלא, מין, תאריך ומקום לידה, שמות ההורים ושם נעורים, מגורים לפני/אחרי המלחמה, שנת עליה, מקום ומועד מסירת העדות, בית המשפט, שם המראיין, מספר עמודים.'
   :'';
@@ -648,7 +681,7 @@ async function synthesizeTik(notes,onStage){
     for(let b=0;b<batches.length;b++){
       const tag=`שלב 2א · עיבוי מנות התיק (סבב ${round}, חלק ${b+1}/${batches.length})`;
       onStage&&onStage(`<span class="spinner"></span>${tag}…`);
-      const prompt=`${REDUCE_RULES}\n\n## סיכומי קריאה — חלק מהתיק (לפי טווחי דפים)\n${batches[b].join('\n\n')}\n\nהחזר סיכום מעובה אחד (טקסט חופשי, לא JSON).`;
+      const prompt=`${REDUCE_RULES}${isTr15()?TR15_REDUCE_EXTRA+tr15RulesBlock():''}\n\n## סיכומי קריאה — חלק מהתיק (לפי טווחי דפים)\n${batches[b].join('\n\n')}\n\nהחזר סיכום מעובה אחד (טקסט חופשי, לא JSON).`;
       const txt=await runClaudeJob({prompt,images:[],model:'sonnet',onTick:s=>onStage&&onStage(`<span class="spinner"></span>${tag}… (${s} שׄ)`)});
       condensed.push(txt||'(אין)');
     }
@@ -705,8 +738,12 @@ async function validateTikRecord(rec){
   // renderRecord רץ שוב על כל עריכת פריט-משנה / אישור — הוולידטור מריץ תהליך
   // פייתון, ולכן נבדק רק כשהתוכן הרלוונטי באמת השתנה.
   let sig='';
+  // החתימה כוללת גם את השדות המבניים (יחידות-עדות, זהויות, מפת-מסמכים, מפתח-שמות):
+  // שינוי בהם בלבד — למשל תיקון טווח-עדות — חייב להפעיל ולידציה מחדש.
   try{sig=JSON.stringify([rec&&rec.title,rec&&rec.related_places,rec&&rec.subjects_he,
-                          rec&&rec.additional_info_paragraphs,rec&&rec.summary,rec&&rec.field_confidence]);}catch(e){sig=String(Math.random());}
+                          rec&&rec.additional_info_paragraphs,rec&&rec.summary,rec&&rec.field_confidence,
+                          rec&&rec.testimonies,rec&&rec.persons,rec&&rec.document_inventory,
+                          rec&&rec.names_index]);}catch(e){sig=String(Math.random());}
   if(state.validate&&state.validate.sig===sig&&!state.validate.pending){renderValidateBox();return;}
   state.validate={pending:true,sig};
   renderValidateBox();
@@ -1191,7 +1228,7 @@ function renderRecord(rec,restored){
   const invHtml=inv.length
     ? `<div class="inv-actions"><button class="deep-btn type-items-btn" title="צור פריט-משנה אחד לכל סוג-מסמך בתיק — איחוד הדפים, השפות והתאריכים של כל סוג">➕ פריט לכל סוג חומר</button></div>`+
       `<table class="tbl"><thead><tr><th class="rp"></th>${hasTikPages?'<th>עמוד בתיק</th>':''}<th>דפי מקור</th><th>סוג</th><th>תאריך</th><th>שפות</th><th>תיאור</th><th class="act"></th></tr></thead><tbody>`+
-        inv.map((d,i)=>`<tr><td class="rp"><input type="checkbox" class="row-pick" checked title="כלול שורה זו בהעתקה ובדף-ההעתקה"></td>${hasTikPages?`<td>${pgs(d.tik_pages||'—')}</td>`:''}<td>${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
+        inv.map((d,i)=>`<tr><td class="rp"><input type="checkbox" class="row-pick" checked title="כלול שורה זו בהעתקה ובדף-ההעתקה"></td>${hasTikPages?`<td>${pgs(d.tik_pages||'—')}</td>`:''}<td>${d.source?`<b>${esc(d.source)}</b>: `:''}${pgs(d.pages)}</td><td>${esc(d.doc_type||'—')}</td><td>${esc(d.date||'—')}</td><td>${esc(d.languages||'—')}</td><td>${esc(d.description||'')}</td>`+
           `<td class="act">${isTestimony(d)?`<button class="deep-btn" data-pages="${esc(String(d.pages||''))}" data-desc="${esc(String(d.description||d.doc_type||''))}">🔎 תיאור מפורט</button>`:''}`+
           `<button class="deep-btn item-btn" data-idx="${i}" title="פתח פריט-משנה מהמקטע הזה — כותר משלו, כפוף לפריט הכרך (TR.15)">➕ פריט</button></td></tr>`).join('')+
       `</tbody></table>`
@@ -2134,7 +2171,11 @@ async function catalogTik(){
       const tilingNote = (g&&!m.hasPdf)
         ? `\n\n🔍 **התמונות המצורפות הן אריחים חופפים של עמוד יחיד** (לא עמודים נפרדים): קודם תמונת **סקירה** של העמוד המלא, ואחריה ${g*g} אריחים ברזולוציה גבוהה בסדר קריאה — משורה עליונה לתחתונה, ומימין לשמאל בכל שורה. כל אריח מתויג במיקומו הפיזי.\n- **השתמש בתמונת הסקירה כדי להבין את מבנה העמוד** (טופס? טבלה? טקסט חופשי?), ובאריחים כדי לקרוא את הפרטים הדקים.\n- **אם זה טופס/טבלה — שמר את שיוך תווית-השדה לערך שלצדה** (אל תהפוך אותו לרשימה שטוחה שמנתקת ערכים מהתוויות).\n- האריחים חופפים בקצוות, לכן טקסט שמופיע בשני אריחים = אותו טקסט (אל תכפיל).\n- כשאות/מילה אינה ודאית — הצע את הקריאה הסבירה ביותר וסמן ב-"?", ואל תמציא.\n⚠ אריחים מועילים לכתב יד צפוף, אך דורשים מודל קורא חזק — מומלץ לבחור Gemini Pro או Claude Opus כשמפעילים אריחים.`
         : '';
-      return `${CHUNK_EXTRACT_RULES}${testimonyChunkExtra()}${coverage}${tilingNote}${contextBlock()}`;
+      // כרך-משפט: שמות הקבצים/התיקיות שבמנה — מזהה-המקור של כל טווח (כלל 5, 7).
+      const srcNote=isTr15()
+        ?`\n\n(קבצים במנה: ${[...new Set(chunks[i].map(f=>String(f.webkitRelativePath||f.name).split('/').slice(0,-1).join('/')||'—'))].join(', ')} · ${chunks[i][0]&&chunks[i][0].name}…${chunks[i][chunks[i].length-1]&&chunks[i][chunks[i].length-1].name})`
+        :'';
+      return `${CHUNK_EXTRACT_RULES}${testimonyChunkExtra()}${isTr15()?TR15_CHUNK_EXTRA+tr15RulesBlock():''}${coverage}${srcNote}${tilingNote}${contextBlock()}`;
     }
     // Don't abort a long run over one bad chunk — record it and keep going.
     // EXCEPT when the browser can't read the scan bytes (cloud placeholder /
@@ -2920,14 +2961,18 @@ function engineSidecarToDashboard(f){
     additional_info_paragraphs:paragraphs,also_in_file:[],
     donor_notes:_clean(f.CONTEXT_HE).includes('ללא מידע מוקדם')?'':_clean(f.CONTEXT_HE),
     diamonds:[],
+    // מזהה-המקור (מולטימדיה) של כל טווח נשמר — מספרי-סריקה ממקורות שונים לעולם לא
+    // נשטחים לטווח אחד (כללי TR.15, 2026-10-22).
     document_inventory:docMap.map(d=>({pages:String(d.pages||''),tik_pages:String(d.tik_pages||''),
+      source:String(d.multimedia||d.source||''),unit_id:String(d.unit_id||''),
       doc_type:String(d.type_he||''),type_key:String(d.type_key||''),date:String(d.date||''),
       languages:String(d.language_he||''),description:String(d.summary_he||d.summary||'')})),
     names_index:names.map(p=>({name:String(p.name||''),name_original:String(p.name_original||''),
       category:String(p.category||'').trim().toLowerCase(),crimes:String(p.crimes||''),
       role:String(p.role||p.context||''),birth:String(p.birth||''),death:String(p.death||''),
       place:String(p.place||''),fate:String(p.fate||''),source_pages:String(p.pages||p.page||''),
-      confidence:String(p.confidence||'').trim().toLowerCase()})),
+      confidence:String(p.confidence||'').trim().toLowerCase(),
+      aliases:Array.isArray(p.aliases)?p.aliases:[]})),
     timeline:events.map(t=>({date:String(t.date||''),event:String(t.event||''),
       place:String(t.place||''),source_pages:String(t.pages||t.page||'')})),
     subjects_he:_split(f.SUBJECTS_HE),subjects_en:_split(f.SUBJECTS_EN),
@@ -2944,6 +2989,11 @@ function engineSidecarToDashboard(f){
     unreadable_pages:Array.isArray(f.unreadable_pages)?f.unreadable_pages:[],
     // שכבת-העדות — מוזנת לטופס-העד ולדפיות-הסיכום (חסרה בממפה של השרת)
     testimonies:Array.isArray(f.testimonies)?f.testimonies:[],
+    // זהויות (אדם ≠ עדות) ומניינים נפרדים — כללי TR.15 2026-10-22
+    persons:Array.isArray(f.persons)?f.persons:[],
+    testimony_count:f.testimony_count==null?'':f.testimony_count,
+    person_count:f.person_count==null?'':f.person_count,
+    _multimedia:Array.isArray(f.multimedia)?f.multimedia:[],
     deceased_index:Array.isArray(f.deceased_index)?f.deceased_index:[],
     _engine:{html:'',json:''},
   };
