@@ -91,6 +91,12 @@
   .vbox.warn { background: color-mix(in srgb, var(--warn) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); color: var(--warn); }
   .vbox.fail { background: color-mix(in srgb, var(--error) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--error) 45%, transparent); color: var(--error); }
 
+  #reset-documents-dialog { width:min(480px, calc(100vw - 40px)); box-sizing:border-box; padding:24px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); direction:rtl; text-align:right; box-shadow:0 18px 60px #0008; }
+  #reset-documents-dialog::backdrop { background:#0009; }
+  #reset-documents-dialog h2 { margin:0 0 12px; font-size:20px; }
+  #reset-documents-dialog p { font-size:14px; line-height:1.7; }
+  #reset-documents-dialog .reset-actions { display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; margin-top:20px; }
+  #reset-documents-error { color:var(--error); }
 </style>
 </head>
 <body>
@@ -622,6 +628,19 @@
   </footer>
 
 </div>
+
+<dialog id="reset-documents-dialog" aria-labelledby="reset-documents-title" aria-describedby="reset-documents-description">
+  <h2 id="reset-documents-title">לאפס ולהתחיל תיק חדש?</h2>
+  <div id="reset-documents-description">
+    <p>הקבצים שנבחרו, התור, המידע המוקדם והתוצאות שבדפדפן ינוקו. מומלץ להוריד תוצאות שרוצים לשמור לפני האיפוס.</p>
+    <p>קובצי המקור והרשומות שבשרת לא יימחקו. עיבוד שכבר נשלח לשרת עשוי להמשיך שם.</p>
+  </div>
+  <p id="reset-documents-error" role="alert"></p>
+  <div class="reset-actions">
+    <button id="reset-documents-cancel" class="ghost" type="button" autofocus>ביטול</button>
+    <button id="reset-documents-confirm" type="button">איפוס והתחלת תיק חדש</button>
+  </div>
+</dialog>
 
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->

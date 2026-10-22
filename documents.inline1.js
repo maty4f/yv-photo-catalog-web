@@ -22,13 +22,21 @@ const state = {
 // polling loops and promise callbacks cannot populate the new dossier.
 // This does not claim to cancel a job already submitted to the server.
 function resetDocumentsPage() {
-  if (!confirm('לאפס ולהתחיל תיק חדש?\nהקבצים שנבחרו, התור, המידע המוקדם והתוצאות שבדפדפן ינוקו. מומלץ להוריד תוצאות שרוצים לשמור לפני האיפוס.\nקובצי המקור והרשומות שבשרת לא יימחקו. עיבוד שכבר נשלח לשרת עשוי להמשיך שם.')) return;
+  const dialog = document.getElementById('reset-documents-dialog');
+  document.getElementById('reset-documents-error').textContent = '';
+  if (!dialog.open) dialog.showModal();
+}
+
+function confirmResetDocuments() {
+  if (!document.getElementById('reset-documents-dialog').open) return;
   try {
     sessionStorage.setItem('yv_documents_reset', '1');
     localStorage.removeItem('yv_doc_queue_results');
     localStorage.removeItem('yv_tik_record');
   } catch (err) {
-    alert('לא ניתן להשלים את האיפוס משום שאחסון הדפדפן אינו זמין. הדף לא נטען מחדש.');
+    try { sessionStorage.removeItem('yv_documents_reset'); } catch (_) {}
+    document.getElementById('reset-documents-error').textContent =
+      'לא ניתן להשלים את האיפוס משום שאחסון הדפדפן אינו זמין. הדף לא נטען מחדש.';
     return;
   }
   window.location.reload();
@@ -37,6 +45,10 @@ function resetDocumentsPage() {
 // beside the upload buttons and the one on the results panel (where the
 // previous document's result sits — the natural place to start the next one).
 document.querySelectorAll('#reset-documents-btn, [data-reset-documents]').forEach(btn => btn.addEventListener('click', resetDocumentsPage));
+document.getElementById('reset-documents-confirm').addEventListener('click', confirmResetDocuments);
+document.getElementById('reset-documents-cancel').addEventListener('click', () => {
+  document.getElementById('reset-documents-dialog').close();
+});
 
 // Some browsers restore form values on reload. Clear dossier-specific fields
 // after that restoration, while keeping provider and cataloging preferences.

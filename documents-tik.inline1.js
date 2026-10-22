@@ -13,25 +13,90 @@ function tilingGrid(){const v=parseInt($('tiling')?.value,10);return (v===2||v==
 // died or why (3.8.2026: a folder picked straight off the Google Drive mount —
 // the files were online-only, so every read threw and the whole run aborted).
 // Probe the bytes to separate the real causes and always name the file.
+//
+// 20.10.2026: the probe RETRIES. Chrome's first read of a cloud placeholder
+// (Drive "stream" mode / iCloud "optimize storage") is what triggers the
+// download, and that first read fails with NotReadableError even though the
+// bytes arrive a few seconds later — so one shot said "cloud" for a file that
+// was about to become readable. The same error also fires when the file CHANGED
+// on disk after it was picked (Chrome checks the size/mtime snapshot; a sync
+// client touching the folder is enough), where only re-selecting helps.
+// Each attempt is capped so a stalled download can't hang the run.
+const READ_PROBE={tries:4,delaysMs:[2000,4000,6000],timeoutMs:15000};
+async function probeReadable(file,onWait){
+  const nm=(file&&file.name)||'קובץ';
+  if(!file||!file.size)return {ok:false,empty:true,name:nm};
+  let last=null;
+  for(let a=0;a<READ_PROBE.tries;a++){
+    try{
+      await Promise.race([
+        file.slice(0,8).arrayBuffer(),
+        new Promise((_,rej)=>setTimeout(()=>rej(Object.assign(new Error('timeout'),{name:'TimeoutError'})),READ_PROBE.timeoutMs))]);
+      return {ok:true,name:nm,retried:a>0};
+    }catch(e){
+      last=e;
+      if(a<READ_PROBE.tries-1){
+        const wait=READ_PROBE.delaysMs[Math.min(a,READ_PROBE.delaysMs.length-1)];
+        if(onWait)onWait(nm,wait,a+1);
+        await new Promise(r=>setTimeout(r,wait));
+      }
+    }
+  }
+  return {ok:false,name:nm,error:last};
+}
+function unreadableError(file,probe){
+  const nm=probe.name||(file&&file.name)||'קובץ';
+  const mb=file&&file.size?` (${(file.size/1024/1024).toFixed(1)}MB)`:'';
+  const why=probe.error?(probe.error.name||probe.error.message||'read'):'read';
+  const err=new Error(`לא ניתן לקרוא את «${nm}»${mb} מהדיסק (${why}). שתי סיבות אפשריות: `+
+    `(1) הקובץ יושב בענן (Google Drive / iCloud) ולא הורד למחשב — סמן את התיקייה «זמינה גם במצב לא מקוון» או העתק אותה לדיסק המקומי; `+
+    `(2) הקובץ השתנה בדיסק אחרי שנבחר (למשל סנכרון שנגע בתיקייה) — בחר שוב את התיקייה («📁 העלה תיקייה שלמה»). `+
+    `לתיק שנמצא בגוגל דרייב הדרך המהירה היא «☁ תיק מהדרייב» — השרת מוריד ומקטלג בלי לקרוא דרך המאונט.`);
+  err.unreadable=true;err.fileName=nm;
+  return err;
+}
 async function decodeFailure(file){
   const nm=(file&&file.name)||'קובץ';
   const mb=file?` (${(file.size/1024/1024).toFixed(1)}MB)`:'';
-  if(!file||!file.size)
-    return new Error(`הקובץ «${nm}» ריק (0 בתים) — כנראה לא ירד מהענן למחשב.`);
-  try{await file.slice(0,8).arrayBuffer();}
-  catch(e){
-    return new Error(`לא ניתן לקרוא את «${nm}»${mb} — הקובץ יושב בענן (Google Drive / iCloud) ולא הורד למחשב. `+
-      `סמן את התיקייה «זמינה גם במצב לא מקוון», או העתק אותה לדיסק המקומי, ונסה שוב. (${e.name||e.message})`);
+  const probe=await probeReadable(file);
+  if(probe.empty){
+    const err=new Error(`הקובץ «${nm}» ריק (0 בתים) — כנראה לא ירד מהענן למחשב.`);
+    err.unreadable=true;err.fileName=nm;return err;
   }
+  if(!probe.ok)return unreadableError(file,probe);
   if(/\.tiff?$/i.test(nm))
     return new Error(`«${nm}» הוא TIFF — כרום לא מפענח TIFF. המר את הסריקות ל-JPG/PNG, או הרץ מה-CLI (yv doc describe).`);
-  return new Error(`«${nm}»${mb} — לא ניתן לפענח את התמונה (קובץ פגום או פורמט לא נתמך).`);
+  const err=new Error(`«${nm}»${mb} — לא ניתן לפענח את התמונה (קובץ פגום או פורמט לא נתמך).`);
+  // The bytes are readable now (possibly only after the probe waited for a cloud
+  // download) — the decode may have failed on a half-materialized file. The
+  // caller retries the decode ONCE when this flag is set.
+  err.decodeRetry=probe.retried===true;
+  return err;
+}
+function decodeImage(url){
+  return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('decode'));i.src=url;});
 }
 async function loadImg(file){
   const url=URL.createObjectURL(file);
-  try{return await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('decode'));i.src=url;});}
-  catch(e){throw await decodeFailure(file);}
+  try{
+    try{return await decodeImage(url);}
+    catch(e){
+      const err=await decodeFailure(file);
+      if(!err.decodeRetry)throw err;
+      try{return await decodeImage(url);}catch(e2){delete err.decodeRetry;throw err;}
+    }
+  }
   finally{URL.revokeObjectURL(url);}
+}
+// Preflight for a run that reads scans in the browser: probe the FIRST image
+// file (one probe, not one per page — on a cloud mount every probe is a full
+// download). Throws the named, actionable error when it can't be read.
+async function preflightReadable(files){
+  const first=(files||[]).find(f=>mimeOf(f)!=='application/pdf')||(files||[])[0];
+  if(!first)return;
+  const probe=await probeReadable(first,(nm,wait,n)=>showStatus(`<span class="spinner"></span>בודק שהסריקות נגישות לדפדפן — «${esc(nm)}» עדיין לא נקרא (ניסיון ${n}), ממתין ${wait/1000} שׄ (ייתכן שהקובץ יורד מהענן)…`,'info'));
+  if(probe.empty)throw Object.assign(new Error(`הקובץ «${probe.name}» ריק (0 בתים) — כנראה לא ירד מהענן למחשב.`),{unreadable:true,fileName:probe.name});
+  if(!probe.ok)throw unreadableError(first,probe);
 }
 async function downscaledB64(file){
   const img=await loadImg(file);
@@ -1881,20 +1946,17 @@ async function pdfPageFor(file,edge=2000,quality=0.85){
   // decode path; the speedup for big tiks comes from the caller running
   // pdfPageFor in a small concurrency pool (overlapping file reads, which
   // dominate on cloud-mounted scans).
-  const url=URL.createObjectURL(file);
-  try{
-    let img;
-    try{img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('decode'));im.src=url;});}
-    catch(e){throw await decodeFailure(file);}
-    const scale=Math.min(1,edge/Math.max(img.naturalWidth,img.naturalHeight));
-    const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
-    const cv=document.createElement('canvas');cv.width=w;cv.height=h;
-    cv.getContext('2d').drawImage(img,0,0,w,h);
-    const b64=cv.toDataURL('image/jpeg',quality).split(',')[1];
-    const bin=atob(b64);const bytes=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
-    return {bytes,width:w,height:h};
-  }finally{URL.revokeObjectURL(url);}
+  // Same decode + read-probe/retry path as the catalog run (loadImg), so a
+  // cloud-backed or changed-on-disk scan fails with the same named error here.
+  const img=await loadImg(file);
+  const scale=Math.min(1,edge/Math.max(img.naturalWidth,img.naturalHeight));
+  const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
+  const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+  cv.getContext('2d').drawImage(img,0,0,w,h);
+  const b64=cv.toDataURL('image/jpeg',quality).split(',')[1];
+  const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  return {bytes,width:w,height:h};
 }
 // Assemble a minimal valid PDF: one page per image, each JPEG embedded as a
 // DCTDecode XObject so no re-compression happens on the PDF side. Objects:
@@ -2032,9 +2094,15 @@ async function catalogTik(){
   const chunkSize=tilingGrid()?1:Math.max(1,parseInt($('chunk-size').value,10)||8);
   const chunks=chunkArr(state.files,chunkSize);
   $('run').disabled=true;
-  // In parallel with cataloging: if the תיק is image scans, merge them into one PDF.
-  maybeBuildCombinedPdf();
   try{
+    // Preflight (20.10.2026) — can the browser read the scans at all? Before
+    // this check, a folder of cloud-only / changed-on-disk files failed chunk
+    // after chunk (4s Gemini pacing between each) and a failed PDF build, and
+    // only then said "all chunks failed". One probe of the first file (with the
+    // cloud-download retry) settles it up front, before a single model call.
+    await preflightReadable(state.files);
+    // In parallel with cataloging: if the תיק is image scans, merge them into one PDF.
+    maybeBuildCombinedPdf();
     // Stage 0 — if a טופס איסוף was uploaded, read it FIRST so its donor/archival
     // info feeds into every stage as מידע מוקדם (not as evidence from the תיק).
     state.intakeText='';
@@ -2069,10 +2137,14 @@ async function catalogTik(){
       return `${CHUNK_EXTRACT_RULES}${testimonyChunkExtra()}${coverage}${tilingNote}${contextBlock()}`;
     }
     // Don't abort a long run over one bad chunk — record it and keep going.
+    // EXCEPT when the browser can't read the scan bytes (cloud placeholder /
+    // file changed on disk) and nothing has succeeded yet: every later chunk
+    // would fail the same way, so stop now instead of grinding through them.
     function recordFailure(i,err){
       failed.push(meta[i].range);
       if(!firstFailure)firstFailure=err.message||String(err);
       notes[i]={range:meta[i].range,text:`⚠ מנה זו נכשלה בקריאה (${err.message}). דרושה קריאה חוזרת ידנית של דפים ${meta[i].range}.`};
+      if(err.unreadable&&failed.length===notes.filter(Boolean).length)throw err;
     }
 
     if(engine==='dual'){
@@ -2092,16 +2164,20 @@ async function catalogTik(){
       // per job with no lock — so read several at once. Bounded to stay within the
       // Claude subscription's limits and the machine's resources.
       const CONCURRENCY=3;
-      let started=0, completed=0;
+      let started=0, completed=0, aborted=false;
       const tick=()=>showStatus(`<span class="spinner"></span>שלב 1 · Claude קורא ${chunks.length} מנות במקביל (${completed}/${chunks.length} הושלמו, עד ${CONCURRENCY} בו-זמנית)…`,'info');
       tick();
       async function worker(){
-        while(started<chunks.length){
+        while(!aborted&&started<chunks.length){
           const i=started++;
           try{
             const txt=await claudeReadChunk(chunks[i],chunkPrompt(i));
             notes[i]={range:meta[i].range,text:txt||'(אין טקסט)'};
-          }catch(err){recordFailure(i,err);}
+          }catch(err){
+            // recordFailure rethrows an unreadable-scan failure when nothing has
+            // succeeded yet — stop the sibling workers too, then surface it.
+            try{recordFailure(i,err);}catch(fatal){aborted=true;throw fatal;}
+          }
           completed++; tick();
         }
       }
@@ -2147,6 +2223,7 @@ async function fastDescribe(){
     // under the limit and readable enough for a tik-level description.
     let blob=null,name='tik.pdf';
     const imgs=state.files.filter(f=>mimeOf(f)!=='application/pdf');
+    if(imgs.length)await preflightReadable(imgs);   // cloud-only / changed-on-disk scans fail HERE, by name, not mid-pool
     if(state.files.length===1&&mimeOf(state.files[0])==='application/pdf'){
       blob=state.files[0];name=state.files[0].name||'tik.pdf';   // single uploaded PDF — as-is
     }else if(imgs.length){
