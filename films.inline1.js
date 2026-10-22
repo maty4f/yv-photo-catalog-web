@@ -2335,7 +2335,13 @@ async function ensureFFmpegLoaded(onStatus) {
   const ffmpeg = new ffmpegModule.FFmpeg();
   ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
   const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+  // Versioned worker URL (22.10.2026): the browser revalidated worker.js with a
+  // 304 and kept the CACHED response headers — a CSP from before the 21.10 fix,
+  // without blob:/'wasm-unsafe-eval' — so the split failed with "Failed to fetch
+  // dynamically imported module: blob:" on every origin the archivist had used
+  // before. A new URL = a fresh response with the current policy.
   await ffmpeg.load({
+    classWorkerURL: new URL('./vendor/ffmpeg/worker.js?v=20261022a', location.href).href,
     coreURL: await utilModule.toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
     wasmURL: await utilModule.toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
   });
