@@ -136,6 +136,7 @@ function loadFilm(file) {
   clearProductionFields();
   state.researchCatalogFilm = null;
   state.film = file;
+  state.filmLoadError = false;
   filmFilename.textContent = `${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
   filmFilename.style.display = 'block';
   const url = URL.createObjectURL(file);
@@ -143,6 +144,23 @@ function loadFilm(file) {
   filmPreview.onloadedmetadata = () => {
     state.filmMeta = { duration: filmPreview.duration, width: filmPreview.videoWidth, height: filmPreview.videoHeight, mime: file.type || 'video/mp4', size_bytes: file.size };
     renderFilmMeta();
+    refreshButtons();
+  };
+  // A codec the browser can't decode (AVI, ProRes, MPEG-2…) never fires loadedmetadata —
+  // without this the identify button stayed disabled with no explanation.
+  filmPreview.onerror = () => {
+    if (state.film !== file) return;
+    state.filmLoadError = true;
+    const hint = document.getElementById('film-server-hint');
+    if (hint) {
+      const linkEl = document.getElementById('server-films-link');
+      const href = (linkEl && linkEl.getAttribute('href')) || 'server-films.html';
+      hint.innerHTML = `⚠ הדפדפן לא מצליח לפתוח את הקובץ <code style="unicode-bidi:isolate">${esc(file.name)}</code> `
+        + `(פורמט/קודק שאינו נתמך בדפדפן, או קובץ פגום) — ולכן אי-אפשר לקטלג אותו במסך הזה. `
+        + `קטלג אותו ב<a href="${href}" style="color:var(--warn); font-weight:700;">קטלוג על השרת</a>, `
+        + `שם ffmpeg קורא כל פורמט (הנח את הקובץ בתיקיית <code style="unicode-bidi:isolate">media/films/</code> על המחשב של השרת), או המר אותו ל-MP4 (H.264).`;
+      hint.style.display = 'block';
+    }
     refreshButtons();
   };
   filmDrop.classList.add('has-file');
@@ -203,7 +221,7 @@ function clearFilm() {
   window.yvFilmResearchChanged?.();
   clearProductionFields();
   state.researchCatalogFilm = null;
-  state.film = null; state.filmMeta = null;
+  state.film = null; state.filmMeta = null; state.filmLoadError = false;
   // removeAttribute+load, not src='' — empty src resolves to the page URL and logs a resource error
   filmPreview.removeAttribute('src');
   filmPreview.load();
@@ -492,9 +510,11 @@ function refreshButtons() {
   window.yvFilmResearchRefresh?.();
   const hasFilm = !!state.film;
   const hasKey = hasAllRequiredKeys();
-  identifyBtn.disabled = !(hasFilm && hasKey);
+  const loadErr = hasFilm && !!state.filmLoadError;
+  identifyBtn.disabled = !(hasFilm && hasKey) || loadErr;
   const missingMsg = 'יש להגדיר API key';
-  identifyBtn.title = !hasFilm ? 'יש להעלות סרט' : (!hasKey ? missingMsg : '');
+  identifyBtn.title = !hasFilm ? 'יש להעלות סרט'
+    : (loadErr ? 'הדפדפן לא מצליח לפתוח את הקובץ — קטלג במסלול השרת' : (!hasKey ? missingMsg : ''));
 }
 
 function providerLabel() {
