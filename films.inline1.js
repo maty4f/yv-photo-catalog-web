@@ -151,14 +151,20 @@ function loadFilm(file) {
   filmPreview.onerror = () => {
     if (state.film !== file) return;
     state.filmLoadError = true;
+    const me = filmPreview.error;
+    const why = me ? `MediaError ${me.code}${me.message ? ' · ' + me.message : ''}` : 'unknown';
+    window.yvLogError?.(new Error(`film-load-failed: ${why} · ${file.name} · ${file.type || 'no-type'} · ${(file.size/1048576).toFixed(1)}MB`), 'films.loadFilm');
     const hint = document.getElementById('film-server-hint');
     if (hint) {
       const linkEl = document.getElementById('server-films-link');
       const href = (linkEl && linkEl.getAttribute('href')) || 'server-films.html';
+      const driveHref = (document.getElementById('drive-films-link')?.getAttribute('href')) || 'server-films.html#drive';
       hint.innerHTML = `⚠ הדפדפן לא מצליח לפתוח את הקובץ <code style="unicode-bidi:isolate">${esc(file.name)}</code> `
         + `(פורמט/קודק שאינו נתמך בדפדפן, או קובץ פגום) — ולכן אי-אפשר לקטלג אותו במסך הזה. `
+        + `אם הקובץ בגוגל דרייב — <a href="${driveHref}" style="color:var(--warn); font-weight:700;">☁ קטלג אותו ישירות מהדרייב</a>. `
         + `קטלג אותו ב<a href="${href}" style="color:var(--warn); font-weight:700;">קטלוג על השרת</a>, `
-        + `שם ffmpeg קורא כל פורמט (הנח את הקובץ בתיקיית <code style="unicode-bidi:isolate">media/films/</code> על המחשב של השרת), או המר אותו ל-MP4 (H.264).`;
+        + `שם ffmpeg קורא כל פורמט (הנח את הקובץ בתיקיית <code style="unicode-bidi:isolate">media/films/</code> על המחשב של השרת), או המר אותו ל-MP4 (H.264).`
+        + `<div style="direction:ltr; text-align:left; unicode-bidi:isolate; opacity:.8; font-size:11px; margin-top:4px;">${esc(why)}</div>`;
       hint.style.display = 'block';
     }
     refreshButtons();
@@ -725,6 +731,8 @@ resolveUnifiedBase().then(base => {
   if (!base) return;                       // same origin ('') or unknown (null) → keep relative
   const a = document.getElementById('server-films-link');
   if (a) a.href = base.replace(/\/+$/, '') + '/server-films.html';
+  const d = document.getElementById('drive-films-link');
+  if (d) d.href = base.replace(/\/+$/, '') + '/server-films.html#drive';
 }).catch(() => {});
 
 // Cloudflare (Free/Pro) rejects any request body over 100MB with a 413 at the
