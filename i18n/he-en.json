@@ -2248,6 +2248,7 @@
 "לא ניתן לבדוק (אין חיבור לשרת)": "Cannot check (no connection to the server)",
 "לא ניתן להגיע ל-Gemini (": "Cannot reach Gemini (",
 "לא ניתן להגיע לשרת": "Cannot reach the server",
+"לא ניתן להגיע לשרת ({}). רענן את הדף (Cmd+Shift+R) ונסה שוב — ייתכן שההתחברות פגה.": "Cannot reach the server ({}). Reload the page (Cmd+Shift+R) and try again — the sign-in may have expired.",
 "לא ניתן להגיע לשרת המקומי (": "Cannot reach the local server (",
 "לא ניתן להגיע לשרת המקומי ({}). ודא ששרת הבית רץ (node server.js), ובגישה מרחוק שגם ה-tunnel פעיל וה-URL מעודכן.": "Cannot reach the local server ({}). Make sure the home server is running (node server.js), and for remote access that the tunnel is also active and the URL is up to date.",
 "לא ניתן להגיע לשרת — בדוק כתובת שרת/tunnel": "Cannot reach the server — check the server/tunnel address",

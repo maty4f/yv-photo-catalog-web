@@ -33,7 +33,16 @@ window.yvItemResearch = (() => {
     contextEl()?.addEventListener('input', refresh);
 
     async function json(url, options = {}) {
-      const response = await fetch(url, { credentials: 'same-origin', ...options });
+      let response;
+      try { response = await fetch(url, { credentials: 'same-origin', ...options }); }
+      catch (e) {
+        if (e.name === 'AbortError' || e.name === 'TimeoutError') throw e;
+        // A bare "Failed to fetch" told the archivist nothing (23.10.2026): the request
+        // never left the browser — expired sign-in, a page opened before a server
+        // restart, or a static copy that cannot reach the server.
+        window.yvLogError?.(e, `${cfg.kind || 'film'}-research ${new URL(url, location.href).host}`);
+        throw new Error(`לא ניתן להגיע לשרת (${new URL(url, location.href).host}). רענן את הדף (Cmd+Shift+R) ונסה שוב — ייתכן שההתחברות פגה.`);
+      }
       let data;
       try { data = await response.json(); } catch { throw new Error('לא התקבלה תשובה מהשרת. ייתכן שצריך לרענן את ההתחברות.'); }
       if (!response.ok) throw new Error(data.error || `שגיאת שרת (${response.status})`);
