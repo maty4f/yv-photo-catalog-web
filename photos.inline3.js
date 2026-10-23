@@ -315,6 +315,97 @@ document.getElementById('batch-folder-input').addEventListener('change', e => {
   addFilesToQueue(files);
 });
 
+// ─── ☁ Photos from Google Drive ───
+// The server lists the folder and streams each picked photo (rclone, Drive API);
+// they become File objects and enter the SAME queue as a disk upload — front/back
+// pairing by name (9755_2 ↔ 9755_2XX) included. Needed because a photo picked
+// through the Mac's Drive folder arrives unreadable whenever Drive sync is paused
+// or stuck, and the catalog then dies as "✗ Failed to fetch" (23.10.2026).
+const drivePhotos = { path: '', files: [], base: '' };
+const dpEl = id => document.getElementById(id);
+function dpStatus(msg) { dpEl('dp-status').textContent = msg || ''; }
+function dpChecked() { return [...dpEl('dp-list').querySelectorAll('input[type=checkbox]:checked')].map(c => drivePhotos.files[Number(c.value)]); }
+function dpRefreshLoadBtn() {
+  const n = dpChecked().length;
+  dpEl('dp-load').disabled = !n;
+  dpEl('dp-load').textContent = n ? `☁ טען לתור (${n})` : '☁ טען לתור';
+}
+async function dpOpen(sub) {
+  const panel = dpEl('drive-photos-panel');
+  panel.style.display = 'block';
+  const base = await resolveUnifiedBase();
+  if (base === null) { dpStatus('הזן URL של השרת המקומי (films.mf-sr.com) בשדה כתובת השרת.'); return; }
+  drivePhotos.base = base;
+  dpStatus('טוען תיקייה מהדרייב…');
+  let data;
+  try {
+    const r = await fetch(base + '/api/drive-photos?path=' + encodeURIComponent(sub), { cache: 'no-store' });
+    data = await r.json();
+    if (!r.ok || data.error) throw new Error(data.error || ('שגיאה ' + r.status));
+  } catch (e) { dpStatus('פתיחת הדרייב נכשלה: ' + e.message); return; }
+  drivePhotos.path = sub;
+  drivePhotos.files = data.files;
+  dpEl('dp-path').textContent = `${[data.root || 'הדרייב שלי', sub].filter(Boolean).join(' / ')} — ${data.folders.length} תיקיות, ${data.files.length} תצלומים`;
+  const list = dpEl('dp-list');
+  list.innerHTML = '';
+  const row = (text, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'ghost'; b.textContent = text;
+    b.style.cssText = 'display:block; width:100%; text-align:right; margin:2px 0; padding:4px 8px;';
+    b.addEventListener('click', onClick);
+    list.appendChild(b);
+  };
+  if (sub) row('⬆ תיקייה למעלה', () => dpOpen(sub.split('/').slice(0, -1).join('/')));
+  data.folders.forEach(f => row('📁 ' + f.name, () => dpOpen((sub ? sub + '/' : '') + f.name)));
+  data.files.forEach((f, i) => {
+    const lab = document.createElement('label');
+    lab.style.cssText = 'display:flex; gap:8px; align-items:center; padding:3px 8px; cursor:pointer;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = String(i);
+    cb.addEventListener('change', dpRefreshLoadBtn);
+    const t = document.createElement('span');
+    t.textContent = `🖼 ${f.name}  ·  ${f.sizeMB ? f.sizeMB + ' MB' : f.sizeKB + ' KB'}`;
+    t.style.unicodeBidi = 'isolate';
+    lab.append(cb, t);
+    list.appendChild(lab);
+  });
+  dpRefreshLoadBtn();
+  dpStatus(data.files.length ? 'סמן תצלומים (חזית וגב יוצמדו לפי השם) ולחץ «טען לתור».' : '');
+}
+async function dpLoad() {
+  const picked = dpChecked();
+  if (!picked.length) return;
+  const btn = dpEl('dp-load');
+  btn.disabled = true;
+  const files = [], total = picked.length;
+  let done = 0, failed = [];
+  const next = async () => {
+    for (let f; (f = picked.shift());) {
+      try {
+        const r = await fetch(drivePhotos.base + '/api/drive-photos/file?path='
+          + encodeURIComponent((drivePhotos.path ? drivePhotos.path + '/' : '') + f.name), { cache: 'no-store' });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || ('שגיאה ' + r.status));
+        const blob = await r.blob();
+        files.push(new File([blob], f.name, { type: blob.type || 'image/jpeg' }));
+      } catch (e) { failed.push(`${f.name}: ${e.message}`); }
+      dpStatus(`☁ מוריד מהדרייב… ${++done} מתוך ${total}`);
+    }
+  };
+  await Promise.all([next(), next(), next()]);
+  if (files.length) addFilesToQueue(files);
+  dpStatus((files.length ? `✓ ${files.length} תצלומים נטענו לתור.` : '') + (failed.length ? ` ✗ נכשלו: ${failed.join(' · ')}` : ''));
+  dpRefreshLoadBtn();
+}
+dpEl('drive-photos-btn').addEventListener('click', () => dpOpen(drivePhotos.path));
+dpEl('dp-close').addEventListener('click', () => { dpEl('drive-photos-panel').style.display = 'none'; });
+dpEl('dp-all').addEventListener('click', () => {
+  const boxes = [...dpEl('dp-list').querySelectorAll('input[type=checkbox]')];
+  const all = boxes.every(b => b.checked);
+  boxes.forEach(b => { b.checked = !all; });
+  dpRefreshLoadBtn();
+});
+dpEl('dp-load').addEventListener('click', dpLoad);
+
 // ─── Collection mode: mark a batch/folder as one collection ───
 const collectionModeToggle = document.getElementById('collection-mode-toggle');
 collectionModeToggle.checked = state.collection_mode;

@@ -481,11 +481,28 @@
       <div style="margin-inline-start:auto; display:flex; gap:6px;">
         <label id="batch-add-btn" class="upload-btn" for="batch-file-input" style="padding:5px 10px; font-size:12px;">📤 העלה batch</label>
         <label id="batch-folder-btn" class="upload-btn" for="batch-folder-input" style="padding:5px 10px; font-size:12px;">📁 העלה תיקייה</label>
+        <button type="button" id="drive-photos-btn" class="upload-btn" style="padding:5px 10px; font-size:12px; font-family:inherit;">☁ מהדרייב</button>
         <input type="file" id="batch-file-input" accept="image/*" multiple class="visually-hidden-file">
         <input type="file" id="batch-folder-input" accept="image/*" webkitdirectory multiple class="visually-hidden-file">
       </div>
     </div>
     <div class="body">
+
+      <!-- ☁ Google Drive picker — the server streams the photos (rclone), so a photo the
+           Mac's Drive app can't materialize still reaches the queue -->
+      <div id="drive-photos-panel" style="display:none; direction:rtl; text-align:right; margin-bottom:14px; padding:10px 12px; border:1px solid color-mix(in srgb, var(--photos) 40%, transparent); border-radius:8px;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <b>☁ תצלומים מגוגל דרייב</b>
+          <span id="dp-path" style="color:var(--muted); font-size:12px; unicode-bidi:isolate;"></span>
+          <span style="margin-inline-start:auto; display:flex; gap:6px;">
+            <button type="button" id="dp-all" class="ghost">בחר הכול</button>
+            <button type="button" id="dp-load" disabled>☁ טען לתור</button>
+            <button type="button" id="dp-close" class="ghost" aria-label="סגור">✕</button>
+          </span>
+        </div>
+        <div id="dp-list" style="max-height:300px; overflow:auto; margin-top:8px; font-size:13px;"></div>
+        <div id="dp-status" style="font-size:12px; color:var(--muted); margin-top:6px; unicode-bidi:plaintext;"></div>
+      </div>
 
       <!-- Queue panel — shown only when queue has items -->
       <div id="queue-panel" style="display:none; margin-bottom:14px; padding:10px 12px; background:color-mix(in srgb, var(--photos) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--photos) 40%, transparent); border-radius:8px;">
@@ -818,7 +835,7 @@
 <!-- shared AI transport (anthropicFetch/geminiBase/parseJson) — loaded BEFORE
      the main module because the module references window.yvProviders -->
 <script src="yv-providers.js?v=20261007a"></script>
-<script src="photos.inline3.js?v=20261021b"></script>
+<script src="photos.inline3.js?v=20261023a"></script>
 <script src="item-research.js?v=20261021e"></script>
 <script src="photo-research.js?v=20261021c"></script>
 <script src="photos.inline4.js?v=20260722e"></script>
