@@ -191,6 +191,36 @@
   .diff .f { font-weight:700; color:var(--muted); margin-top:6px; font-size:11px; }
   .diff .old { color:var(--error); text-decoration:line-through; opacity:.8; white-space:pre-wrap; unicode-bidi:isolate; }
   .diff .new { color:var(--good); white-space:pre-wrap; unicode-bidi:isolate; }
+  /* catalog decisions (013) — Hebrew content: explicit RTL + isolate */
+  #decisions, #decisions .dec, #decisions .ddispute, #decisions .decform label, #decisions .dhit { direction:rtl; text-align:right; }
+  /* user-written Hebrew stays RTL in the English UI too (yv-i18n.js skips [lang="he"]) */
+  #decisions [lang="he"] { direction:rtl; unicode-bidi:isolate; }
+  #decisions div[lang="he"] { text-align:right; }
+  .dec { padding:8px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+  .dec:last-of-type { border-bottom:none; }
+  .dec .dh { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+  .dtopic { font-size:10.5px; color:var(--muted); border:1px solid var(--line); border-radius:4px; padding:0 5px; }
+  .dst { font-size:10.5px; border-radius:4px; padding:0 5px; border:1px solid currentColor; }
+  .dst.approved { color:var(--good); } .dst.draft { color:var(--muted); } .dst.superseded, .dst.revoked { color:var(--muted); text-decoration:line-through; }
+  .dec .did { margin-inline-start:auto; font-size:10.5px; color:var(--muted); unicode-bidi:isolate; }
+  .dec .dtext { font-weight:600; unicode-bidi:isolate; }
+  .dec .dtext.en { direction:ltr; text-align:left; font-weight:400; font-family:Georgia,'Times New Roman',serif; }
+  .dec .dwhy, .dec .dsrc, .dec .dq { font-size:12px; margin-top:3px; unicode-bidi:isolate; }
+  .dec .dq { color:var(--warn); }
+  .dec .dmeta, .dhit .dmeta { font-size:11px; color:var(--muted); margin-top:3px; unicode-bidi:isolate; }
+  .dec .dmeta a, .dhit .dmeta a { color:var(--accent); cursor:pointer; }
+  .dec.superseded .dtext, .dec.revoked .dtext { font-weight:400; color:var(--muted); }
+  .dec .dacts { margin-top:6px; }
+  .ddispute { font-size:12px; color:var(--warn); background:color-mix(in srgb, var(--warn) 12%, var(--card)); border:1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius:var(--radius-sm); padding:6px 8px; margin:4px 0; }
+  .dsub { font-size:11px; color:var(--muted); font-weight:700; margin-top:8px; }
+  .dhist { margin-top:8px; font-size:12px; } .dhist summary { cursor:pointer; color:var(--muted); }
+  .decform { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .decform[hidden] { display:none; }
+  .decform label { display:flex; flex-direction:column; gap:2px; font-size:11.5px; color:var(--muted); }
+  .decform textarea, .decform select, .decform input { font-size:13px; padding:6px 8px; min-height:0; }
+  .decform textarea { direction:rtl; text-align:right; unicode-bidi:isolate; }
+  .dsearch { display:flex; gap:6px; margin-top:10px; } .dsearch input { flex:1; min-width:0; font-size:12.5px; padding:6px 8px; direction:rtl; text-align:right; }
+  .dhit { font-size:12px; padding:6px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent); unicode-bidi:isolate; }
   .kv { display:grid; grid-template-columns:auto 1fr; gap:3px 10px; font-size:12px; color:var(--muted); }
   .kv b { color:var(--ink); font-weight:600; unicode-bidi:isolate; }
 
@@ -273,6 +303,6 @@
   </div>
 </div>
 <div id="toast"></div>
-<script src="archive.inline1.js?v=20260914f"></script>
+<script src="archive.inline1.js?v=20261106a"></script>
 </body>
 </html>

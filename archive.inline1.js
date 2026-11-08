@@ -321,6 +321,9 @@ function renderRail(d) {
       </div>
     </div>
 
+    <h4>החלטות קודמות והקשר <span style="font-weight:400" id="dec-count"></span></h4>
+    <div class="box" id="decisions"><div class="more">טוען…</div></div>
+
     <h4>אישים וגופים <span style="font-weight:400">· ${d.agents.length}</span></h4>
     <div class="box">${ents(d.agents, a => `<div class="ent">${CONF[a.confidence] || ''}<a class="n" href="entities.html#a=${a.id}" title="${esc(a.authorized_en || '')} — פתיחה בישויות" style="color:inherit;text-decoration:none">${esc(a.authorized_he)}${a.authorized_en ? `<small>${esc(a.authorized_en)}</small>` : ''}</a>
       <span class="role">${esc(AGENT_ROLE_HE[a.role] || a.role)}</span><span class="${a.status === 'approved' ? 'appr' : 'cand'}">${a.status === 'approved' ? 'מאושר' : 'מועמד'}</span></div>`)}</div>
@@ -349,6 +352,143 @@ function renderRail(d) {
       <span>מסלול הפקה</span><b>${esc(KIND_HE[r.kind] || r.kind || '—')}</b>
       <span>ודאות שדות</span><b dir="ltr">${esc(Object.entries(r.confidence || {}).map(([k, v]) => `${k}: ${typeof v === 'object' ? Object.entries(v).map(([a, b]) => a + '=' + b).join('/') : v}`).join('; ') || '—')}</b>
     </div>`;
+  loadDecisions(r.id);
+}
+
+// ---- catalog decisions (arc/db/013) -----------------------------------------
+// What was decided about this record, why, on which source, and what replaced
+// what. Anyone writes a draft; only the owner approves / supersedes / revokes
+// (can_decide). The binding decision is picked by the server from the data —
+// no model. Two approved decisions on one topic = an open dispute, shown as such.
+const TOPIC_HE = { relation: 'קשר בין פריטים', identity: 'זהות אדם', date: 'תאריך', place: 'מקום', title: 'כותר', access: 'גישה והגבלות', other: 'אחר' };
+const TOPIC_HINT = { relation: 'עותק / תרגום / קטע / מפגש נוסף / גרסה' };
+const DEC_STATUS_HE = { draft: 'טיוטה', approved: 'תקפה', superseded: 'הוחלפה', revoked: 'בוטלה' };
+
+function decSources(list) {
+  if (!list || !list.length) return '<div class="dmeta">אין מקור</div>';
+  return `<div class="dsrc"><b>מקורות:</b> ${list.map(s => esc(s.ref) + (s.page ? ` · עמ׳ ${esc(s.page)}` : '') + (s.note ? ` — ${esc(s.note)}` : '')).join('; ')}</div>`;
+}
+const decApproved = d => ` · <span>אושרה: ${esc(d.decided_by)} · ${esc(fmtDate(d.decided_at))}</span>`;
+function decItem(d, ctx) {
+  const others = (d.records || []).filter(x => Number(x.id) !== Number(ctx.rid));
+  const acts = [];
+  if (d.status === 'draft') {
+    if (ctx.can) {
+      acts.push(`<button type="button" class="primary" data-dec-approve="${d.id}">✓ אישור</button>`);
+      for (const o of ctx.approvedByTopic[d.topic] || []) acts.push(`<button type="button" class="secondary" data-dec-approve="${d.id}" data-dec-supersedes="${o.id}">✓ אישור במקום החלטה #${o.id}</button>`);
+    }
+    acts.push(`<button type="button" class="gear" data-dec-delete="${d.id}">🗑 מחיקת הטיוטה</button>`);
+  } else if (d.status === 'approved' && ctx.can) {
+    acts.push(`<button type="button" class="gear" data-dec-revoke="${d.id}">⊘ ביטול ההחלטה</button>`);
+  }
+  return `<div class="dec ${esc(d.status)}">
+    <div class="dh"><span class="dtopic">${esc(TOPIC_HE[d.topic] || d.topic)}</span><span class="dst ${esc(d.status)}">${esc(DEC_STATUS_HE[d.status] || d.status)}</span><span class="did" dir="ltr">#${d.id}</span></div>
+    <div class="dtext" lang="he">${esc(d.decision_he)}</div>
+    ${d.decision_en ? `<div class="dtext en" dir="ltr">${esc(d.decision_en)}</div>` : ''}
+    ${d.rationale_he ? `<div class="dwhy"><b>נימוק:</b> <span lang="he">${esc(d.rationale_he)}</span></div>` : '<div class="dmeta">אין נימוק</div>'}
+    ${decSources(d.source_refs)}
+    ${others.length ? `<div class="dmeta">חלה גם על: ${others.map(o => `<a data-goto="${o.id}">${esc(o.ref_code)}</a>`).join(', ')}</div>` : ''}
+    ${d.open_questions ? `<div class="dq"><b>שאלות פתוחות:</b> <span lang="he">${esc(d.open_questions)}</span></div>` : ''}
+    ${d.status === 'superseded' ? `<div class="dmeta">הוחלפה בהחלטה #${esc(d.superseded_by)}</div>` : ''}
+    ${d.status === 'revoked' ? `<div class="dmeta">בוטלה: <span lang="he">${esc(d.revoked_reason)}</span> · ${esc(d.revoked_by)} · ${esc(fmtDate(d.revoked_at))}</div>` : ''}
+    <div class="dmeta"><span>נכתבה: ${esc(d.author)} · ${esc(fmtDate(d.created_at))}</span>${d.decided_by ? decApproved(d) : ''}</div>
+    ${acts.length ? `<div class="flow dacts">${acts.join('')}</div>` : ''}
+  </div>`;
+}
+function decForm() {
+  return `<div class="decform" id="dec-form" hidden>
+    <label>נושא<select id="dec-topic">${Object.entries(TOPIC_HE).map(([k, v]) => `<option value="${k}">${esc(v)}${TOPIC_HINT[k] ? ' (' + esc(TOPIC_HINT[k]) + ')' : ''}</option>`).join('')}</select></label>
+    <label>ההחלטה<textarea id="dec-text" rows="2"></textarea></label>
+    <label>נימוק (חובה לאישור)<textarea id="dec-why" rows="2"></textarea></label>
+    <label>מקורות (חובה לאישור): שורה לכל מקור, אפשר «מקור | עמוד | הערה»<textarea id="dec-src" rows="2"></textarea></label>
+    <label>שאלות פתוחות למקטלג הבא<textarea id="dec-q" rows="1"></textarea></label>
+    <label>רשומות נוספות שההחלטה חלה עליהן (מזהה פנימי, למשל 123, 456)<input id="dec-recs" dir="ltr"></label>
+    <div class="flow"><button type="button" class="primary" id="dec-save">שמירה כטיוטה</button><button type="button" class="gear" id="dec-cancel">ביטול</button></div>
+  </div>`;
+}
+async function loadDecisions(rid) {
+  const box = $('decisions'); if (!box) return;
+  let d;
+  try { d = await api('/api/arc/records/' + rid + '/decisions'); }
+  catch (e) { box.innerHTML = `<div class="more">לא ניתן לטעון החלטות: ${esc(e.message)}</div>`; return; }
+  if (!state.rec || Number(state.rec.record.id) !== Number(rid)) return;            // the user moved on
+  const approvedByTopic = {};
+  for (const x of d.effective) (approvedByTopic[x.topic] = approvedByTopic[x.topic] || []).push(x);
+  for (const g of d.disputed) approvedByTopic[g.topic] = [...(approvedByTopic[g.topic] || []), ...g.decisions];
+  const ctx = { rid, can: !!d.can_decide, approvedByTopic };
+  const total = d.effective.length + d.disputed.reduce((n, g) => n + g.decisions.length, 0) + d.drafts.length + d.history.length;
+  $('dec-count').textContent = total ? '· ' + total : '';
+  const parts = [];
+  for (const g of d.disputed) {
+    parts.push(`<div class="ddispute">⚠ מחלוקת פתוחה: ${g.decisions.length} החלטות מאושרות באותו נושא, ואף אחת לא מחליפה את האחרת. המערכת לא בוחרת ביניהן; ההכרעה היא החלטה חדשה שמחליפה את כולן.</div>`);
+    parts.push(g.decisions.map(x => decItem(x, ctx)).join(''));
+  }
+  parts.push(d.effective.map(x => decItem(x, ctx)).join(''));
+  if (d.drafts.length) parts.push(`<div class="dsub">טיוטות · ${d.drafts.length}</div>` + d.drafts.map(x => decItem(x, ctx)).join(''));
+  if (d.history.length) parts.push(`<details class="dhist"><summary>היסטוריה · ${d.history.length} (הוחלפו או בוטלו)</summary>${d.history.map(x => decItem(x, ctx)).join('')}</details>`);
+  if (!total) parts.push('<div class="more">אין החלטות מתועדות לרשומה הזו.</div>');
+  box.innerHTML = parts.join('') + `
+    <div class="flow" style="margin-top:8px"><button type="button" class="gear" id="dec-new">＋ החלטה חדשה</button></div>
+    ${decForm()}
+    <div class="dsearch"><input id="dec-sq" placeholder="איך הוחלט במקרה דומה? (חיפוש בהחלטות)"><button type="button" class="gear" id="dec-sgo">חיפוש</button></div>
+    <div id="dec-sres"></div>`;
+}
+function parseSources(text) {
+  return String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const [ref, page, ...note] = l.split('|').map(s => s.trim());
+    return { ref, page: page || undefined, note: note.join(' | ') || undefined };
+  });
+}
+async function decAction(t) {
+  const rid = state.rec && state.rec.record.id; if (!rid) return false;
+  const reload = () => loadDecisions(rid);
+  if (t.id === 'dec-new') { const f = $('dec-form'); f.hidden = !f.hidden; if (!f.hidden) $('dec-text').focus(); return true; }
+  if (t.id === 'dec-cancel') { $('dec-form').hidden = true; return true; }
+  if (t.id === 'dec-save') {
+    const decision_he = $('dec-text').value.trim(); if (!decision_he) { toast('נדרש נוסח ההחלטה', 'err'); return true; }
+    const extra = $('dec-recs').value.split(/[\s,]+/).map(s => s.replace(/^#/, '')).filter(Boolean).map(Number);
+    if (extra.some(n => !Number.isInteger(n) || n <= 0)) { toast('מזהה רשומה לא תקין', 'err'); return true; }
+    try {
+      await api('/api/arc/decisions', { method: 'POST', body: {
+        topic: $('dec-topic').value, decision_he, rationale_he: $('dec-why').value.trim() || null,
+        source_refs: parseSources($('dec-src').value), open_questions: $('dec-q').value.trim() || null,
+        record_ids: [Number(rid), ...extra.filter(n => n !== Number(rid))],
+      } });
+      toast('הטיוטה נשמרה'); await reload();
+    } catch (e) { toast(e.message, 'err'); }
+    return true;
+  }
+  if (t.dataset.decApprove) {
+    const sup = t.dataset.decSupersedes ? [Number(t.dataset.decSupersedes)] : [];
+    const msg = sup.length ? `לאשר את ההחלטה במקום החלטה #${sup[0]}? הישנה תסומן «הוחלפה» ותישאר בהיסטוריה.` : 'לאשר את ההחלטה? אחרי האישור היא נעולה; שינוי ייעשה בהחלטה חדשה שמחליפה אותה.';
+    if (!confirm(msg)) return true;
+    try { await api(`/api/arc/decisions/${t.dataset.decApprove}/approve`, { method: 'POST', body: { supersedes: sup } }); toast('ההחלטה אושרה'); await reload(); }
+    catch (e) { toast(e.message, 'err'); }
+    return true;
+  }
+  if (t.dataset.decRevoke) {
+    const reason = prompt('סיבת הביטול (נשמרת בהיסטוריה):'); if (reason == null) return true;
+    if (!reason.trim()) { toast('נדרשת סיבה לביטול', 'err'); return true; }
+    try { await api(`/api/arc/decisions/${t.dataset.decRevoke}/revoke`, { method: 'POST', body: { reason } }); toast('ההחלטה בוטלה'); await reload(); }
+    catch (e) { toast(e.message, 'err'); }
+    return true;
+  }
+  if (t.dataset.decDelete) {
+    if (!confirm('למחוק את הטיוטה?')) return true;
+    try { await api(`/api/arc/decisions/${t.dataset.decDelete}`, { method: 'DELETE' }); toast('הטיוטה נמחקה'); await reload(); }
+    catch (e) { toast(e.message, 'err'); }
+    return true;
+  }
+  if (t.id === 'dec-sgo') {
+    const q = $('dec-sq').value.trim(); const out = $('dec-sres');
+    try {
+      const hits = await api('/api/arc/decisions?q=' + encodeURIComponent(q));
+      out.innerHTML = hits.length ? hits.map(h => `<div class="dhit"><span class="dtopic">${esc(TOPIC_HE[h.topic] || h.topic)}</span> <span class="dst ${esc(h.status)}">${esc(DEC_STATUS_HE[h.status] || h.status)}</span> <span lang="he">${esc(h.decision_he)}</span>
+        <div class="dmeta">${(h.records || []).map(o => `<a data-goto="${o.id}">${esc(o.ref_code)}</a>`).join(', ')}${h.rationale_he ? ' · <span lang="he">' + esc(h.rationale_he) + '</span>' : ''}</div></div>`).join('') : '<div class="more">לא נמצאו החלטות מאושרות דומות.</div>';
+    } catch (e) { toast(e.message, 'err'); }
+    return true;
+  }
+  return false;
 }
 
 // A sidecar the server produced (…/output/<kind>_<stem>_<date>.json) has the
@@ -551,6 +691,7 @@ document.addEventListener('click', async ev => {
     } catch (e) { toast(e.message + (e.data && e.data.blockers ? ' — ' + e.data.blockers.map(b => BLOCKER_HE[b] || b).join('; ') : ''), 'err'); }
     return;
   }
+  if (t.closest('#decisions') && await decAction(t)) return;
   if (t.id === 'btn-move') return startMove();
   if (t.id === 'btn-integration') return openIntegration();
   if (t.id === 'integ-toggle') return toggleIntegration(t.dataset.on === '1');
@@ -588,6 +729,7 @@ document.addEventListener('keydown', ev => {
   if ((ev.ctrlKey || ev.metaKey) && ev.key === 's') { ev.preventDefault(); save(); }
   if (ev.key === 'Escape') { endMove(); $('newnode').classList.remove('show'); }
   if (ev.key === 'Enter' && ev.target.id === 'nt-body') $('nt-add').click();
+  if (ev.key === 'Enter' && ev.target.id === 'dec-sq') $('dec-sgo').click();
   if (ev.key === 'Enter' && (ev.target.id === 'dt-display' || ev.target.id === 'dt-iso')) $('dt-add').click();
   if (ev.key === 'Enter' && ev.target.closest('#newnode')) createNode();
 });
